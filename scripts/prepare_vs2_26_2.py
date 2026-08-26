@@ -27,8 +27,9 @@ def regex(path: str, pattern: str, replacement: str, flags=0):
         raise SystemExit(f"Pattern not found in {path}: {pattern!r}")
     p.write_text(new, encoding="utf-8")
 
-# Java 25 requires Gradle 9.1+ to run Gradle itself.
-replace("gradle/wrapper/gradle-wrapper.properties", "gradle-8.11-all.zip", "gradle-9.1.0-all.zip")
+# Loom 1.17.x projects targeting MC 26.2 use modern Gradle 9.x. 9.7.0 is pinned
+# from a known-good 26.2 Architectury Loom project and supports Java 25.
+replace("gradle/wrapper/gradle-wrapper.properties", "gradle-8.11-all.zip", "gradle-9.7.0-all.zip")
 
 # Core target/toolchain.
 replace("gradle.properties", "minecraft_version=1.21.11", "minecraft_version=26.2")

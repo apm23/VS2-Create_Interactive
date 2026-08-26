@@ -44,6 +44,14 @@ replace("build.gradle", 'id "architectury-plugin" version "3.4.161"', 'id "archi
 replace("build.gradle", 'id "dev.architectury.loom" version "1.14.473" apply false', 'id "dev.architectury.loom" version "1.17.483" apply false')
 replace("build.gradle", 'id "org.jetbrains.kotlin.jvm" version "2.0.0" apply false', 'id "org.jetbrains.kotlin.jvm" version "2.4.10" apply false')
 
+# Gradle 9 removed the legacy archivesBaseName project property. Use the modern
+# BasePluginExtension instead while preserving the exact artifact name.
+replace(
+    "build.gradle",
+    "    archivesBaseName = rootProject.archives_base_name\n",
+    "    base {\n        archivesName = rootProject.archives_base_name\n    }\n",
+)
+
 # Minecraft 26.2 runs on Java 25. Ensure both Java and Kotlin target it.
 insert_marker = 'allprojects {\n    apply plugin: "java"'
 p = ROOT / "build.gradle"

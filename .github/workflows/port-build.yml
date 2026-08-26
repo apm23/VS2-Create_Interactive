@@ -1,0 +1,51 @@
+name: port-build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/port-build.yml'
+
+jobs:
+  build-vs2-core-26-2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 1.21.11 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Prepare 26.2 port
+        run: python3 scripts/prepare_vs2_26_2.py
+
+      - name: Show patched target versions
+        run: |
+          grep -E '^(minecraft_version|fabric_loader_version|fabric_api_version|architectury_version|fcap_version|vs_core_version)=' upstream/gradle.properties || true
+          java -version
+
+      - name: Compile Fabric core
+        working-directory: upstream
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :fabric:build
+
+      - name: Upload build outputs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vs2-core-26.2-first-pass
+          path: upstream/fabric/build/libs/*.jar
+          if-no-files-found: error

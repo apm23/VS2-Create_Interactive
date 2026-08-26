@@ -27,6 +27,9 @@ def regex(path: str, pattern: str, replacement: str, flags=0):
         raise SystemExit(f"Pattern not found in {path}: {pattern!r}")
     p.write_text(new, encoding="utf-8")
 
+# Java 25 requires Gradle 9.1+ to run Gradle itself.
+replace("gradle/wrapper/gradle-wrapper.properties", "gradle-8.11-all.zip", "gradle-9.1.0-all.zip")
+
 # Core target/toolchain.
 replace("gradle.properties", "minecraft_version=1.21.11", "minecraft_version=26.2")
 replace("gradle.properties", "archives_base_name=valkyrienskies-1-21-11", "archives_base_name=valkyrienskies-26-2")

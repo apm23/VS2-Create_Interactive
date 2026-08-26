@@ -18,7 +18,8 @@ Fabric 26.2 project targeting Valkyrien-Skies-style moving-ship physics plus Cre
 6. No release candidate is considered final unless build, dedicated-server boot, clean-world smoke test, and train-world regression gates pass.
 
 ## Upstream policy
-- Valkyrien Skies 2 is LGPL-3.0 and may be used as a porting baseline subject to its license.
+- The current modern port baseline is `Eminai-LeoVinci/VS2` branch `1.21.11`, pinned by commit in CI. That fork is GPL-3.0; any distributed derivative/binary from that source must remain GPL-compliant and retain required notices/source availability.
+- Official Valkyrien Skies 2 is LGPL-3.0, but the current port harness intentionally starts from the newer GPL fork because it already contains substantial 1.21.11 movement/synchronization porting work.
 - Create: Interactive upstream is All Rights Reserved. This repository must not copy its source. Interactive-style behavior will be independently implemented around the required behavior and public APIs.
 
 ## Test fixture

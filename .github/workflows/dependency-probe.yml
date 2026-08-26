@@ -1,0 +1,36 @@
+name: dependency-probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/dependency-probe.yml'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query Modrinth VS2 unofficial 26.2 Fabric versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, urllib.parse, urllib.request
+          base='https://api.modrinth.com/v2/project/GE25t0ct/version'
+          q=urllib.parse.urlencode({
+              'loaders': json.dumps(['fabric']),
+              'game_versions': json.dumps(['26.2']),
+              'include_changelog': 'false',
+          })
+          req=urllib.request.Request(base+'?'+q, headers={'User-Agent':'VS2-Create-Interactive-dependency-probe/1.0'})
+          with urllib.request.urlopen(req, timeout=30) as r:
+              versions=json.load(r)
+          print('MATCHES', len(versions))
+          for v in versions:
+              print('VERSION', v.get('id'), v.get('version_number'), v.get('date_published'))
+              for f in v.get('files', []):
+                  print('FILE', f.get('filename'), f.get('url'))
+                  print('SHA512', f.get('hashes',{}).get('sha512'))
+          if not versions:
+              raise SystemExit('No Fabric 26.2 version published on Modrinth')
+          PY

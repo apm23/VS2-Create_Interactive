@@ -4,6 +4,12 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 
+# The 1.21.11 fork carries CRLF in its Gradle launcher. Normalize scripts first so
+# Linux CI executes the exact pinned checkout reliably.
+for relative in ("gradlew", "gradle/wrapper/gradle-wrapper.properties"):
+    p = ROOT / relative
+    p.write_bytes(p.read_bytes().replace(b"\r\n", b"\n"))
+
 
 def replace(path: str, old: str, new: str):
     p = ROOT / path

@@ -29,7 +29,9 @@ jobs:
           java-version: '25'
 
       - name: Prepare 26.2 port
-        run: python3 scripts/prepare_vs2_26_2.py
+        run: |
+          python3 scripts/prepare_vs2_26_2.py
+          python3 scripts/prepare_vs2_26_2_phase2.py
 
       - name: Show patched target versions
         run: |

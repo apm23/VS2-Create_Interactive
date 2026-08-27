@@ -34,6 +34,22 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon :fabric:tasks --all | tee ../client-tasks.txt
           grep -E '(^|[[:space:]])runClient([[:space:]]|$)' ../client-tasks.txt
+      - name: Prefetch Minecraft client assets with retry
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            echo "Minecraft asset download attempt ${attempt}/3"
+            if ./gradlew --no-daemon :fabric:downloadAssets; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo 'Minecraft assets could not be downloaded after 3 attempts.'
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
       - name: Headless client boot and stability hold
         working-directory: upstream
         shell: bash

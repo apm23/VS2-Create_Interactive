@@ -36,6 +36,7 @@ jobs:
           python3 scripts/prepare_vs2_26_2_phase4.py
           python3 scripts/prepare_vs2_26_2_phase5.py
           python3 scripts/prepare_vs2_26_2_phase6.py
+          python3 scripts/prepare_vs2_26_2_phase7.py
 
       - name: Show patched target versions
         run: |

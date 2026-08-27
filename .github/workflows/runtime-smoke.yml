@@ -27,7 +27,7 @@ jobs:
           java-version: '25'
       - name: Prepare 26.2 runtime port
         run: |
-          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..45}.py; do python3 "$script"; done
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..46}.py; do python3 "$script"; done
       - name: Verify runServer task exists
         working-directory: upstream
         run: |

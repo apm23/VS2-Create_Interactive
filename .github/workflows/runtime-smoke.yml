@@ -27,7 +27,7 @@ jobs:
           java-version: '25'
       - name: Prepare 26.2 runtime port
         run: |
-          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..40}.py; do python3 "$script"; done
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..41}.py; do python3 "$script"; done
       - name: Verify runServer task exists
         working-directory: upstream
         run: |
@@ -57,11 +57,7 @@ jobs:
             sleep 1
           done
           if [ "$READY" -ne 1 ]; then echo 'Server did not reach ready state within 210 seconds.'; cat ../runtime-smoke.log; exit 1; fi
-          if ! grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../runtime-smoke.log; then
-            echo 'Pinned Create Fly 6.0.9-1 was not observed in the Fabric runtime mod list.'
-            grep -Ei 'create|fabric loader' ../runtime-smoke.log || true
-            exit 1
-          fi
+          if ! grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../runtime-smoke.log; then echo 'Pinned Create Fly 6.0.9-1 was not observed in the Fabric runtime mod list.'; exit 1; fi
           echo 'Server reached ready state with pinned Create loaded; holding 45 seconds for async physics/runtime failures...'
           sleep 45
           if grep -Eiq 'Exception in server tick loop|Could not execute entrypoint|Mixin apply failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)' ../runtime-smoke.log; then echo 'Fatal runtime signature detected after extended idle.'; cat ../runtime-smoke.log; exit 1; fi
@@ -73,23 +69,11 @@ jobs:
             sleep 1
           done
           if [ "$STOPPED" -ne 1 ]; then echo 'Server did not complete clean VS2/world shutdown.'; cat ../runtime-smoke.log; exit 1; fi
-          if grep -Eq 'Method overwrite conflict for (getLevel|setLevel).*MixinPersistentEntitySectionManager' ../runtime-smoke.log; then
-            echo 'Duplicate shipyard PersistentEntitySectionManager mixin conflict detected.'
-            grep -E 'Method overwrite conflict for (getLevel|setLevel).*MixinPersistentEntitySectionManager' ../runtime-smoke.log || true
-            exit 1
-          fi
-          if grep -Eq 'ChunkMapAccessor.*callDropChunk.*should be static as its target is' ../runtime-smoke.log; then
-            echo 'ChunkMap dropChunk invoker is still instance-bound despite static MC 26.2 target.'
-            grep -E 'ChunkMapAccessor.*callDropChunk.*should be static as its target is' ../runtime-smoke.log || true
-            exit 1
-          fi
-          # Minecraft 26.2 is unobfuscated and uses Loom no-remap. A blank refmap
-          # warning can be emitted by the development launcher even though no
-          # runtime remapping is required; real Mixin/linkage failures above fail.
+          if grep -Eq 'Method overwrite conflict for (getLevel|setLevel).*MixinPersistentEntitySectionManager' ../runtime-smoke.log; then echo 'Duplicate shipyard PersistentEntitySectionManager mixin conflict detected.'; exit 1; fi
+          if grep -Eq 'ChunkMapAccessor.*callDropChunk.*should be static as its target is' ../runtime-smoke.log; then echo 'ChunkMap dropChunk invoker is still instance-bound despite static MC 26.2 target.'; exit 1; fi
           for i in $(seq 1 30); do if ! kill -0 "$GRADLE_PID" 2>/dev/null; then break; fi; sleep 1; done
           if kill -0 "$GRADLE_PID" 2>/dev/null; then kill "$GRADLE_PID" 2>/dev/null || true; fi
           wait "$GRADLE_PID" || true
-          grep -E 'Done \(|Stopping server|Saving worlds|ThreadedAnvilChunkStorage|VSPhysicsPipelineStage|Physics pipeline ending|Valkyrien|valkyrienskies|(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../runtime-smoke.log || true
           echo 'Dedicated server pinned Create+VS2 extended runtime smoke passed.'
       - name: Upload runtime log
         if: always()

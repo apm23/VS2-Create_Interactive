@@ -36,10 +36,7 @@ old = '''        override fun processBlock(
         ): StructureTemplate.StructureBlockInfo? {
             val block = newStructureBlockInfo.state.block
             if (block !is ICopyableBlock) return newStructureBlockInfo
-            block.onPaste(
-                (levelReader as ServerLevelAccessor).level, newBPos, newStructureBlockInfo.state,
-                oldShipIdToNewShipId, centerPositions, newStructureBlockInfo.nbt
-            )
+            block.onPaste((levelReader as ServerLevelAccessor).level, newBPos, newStructureBlockInfo.state, oldShipIdToNewShipId, centerPositions, newStructureBlockInfo.nbt)
             return newStructureBlockInfo
         }
 '''

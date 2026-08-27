@@ -14,38 +14,30 @@ jobs:
     steps:
       - name: Checkout integration repo
         uses: actions/checkout@v5
-
       - name: Checkout pinned VS2 1.21.11 baseline
         uses: actions/checkout@v5
         with:
           repository: Eminai-LeoVinci/VS2
           ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
           path: upstream
-
       - name: Set up Java 25
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '25'
-
       - name: Prepare 26.2 port
         run: |
           python3 scripts/prepare_vs2_26_2.py
-          for script in scripts/prepare_vs2_26_2_phase{2..24}.py; do
-            python3 "$script"
-          done
-
+          for script in scripts/prepare_vs2_26_2_phase{2..25}.py; do python3 "$script"; done
       - name: Show patched target versions
         run: |
           grep -E '^(minecraft_version|fabric_loader_version|fabric_api_version|architectury_version|fcap_version|vs_core_version)=' upstream/gradle.properties || true
           java -version
-
       - name: Compile Fabric core
         working-directory: upstream
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace :fabric:build
-
       - name: Upload build outputs
         if: success()
         uses: actions/upload-artifact@v4

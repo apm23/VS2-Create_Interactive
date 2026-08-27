@@ -1,0 +1,67 @@
+name: client-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/**'
+      - '.github/workflows/client-smoke.yml'
+
+jobs:
+  headless-client-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Prepare Phase 41 client baseline
+        run: |
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..41}.py; do python3 "$script"; done
+      - name: Verify runClient task exists
+        working-directory: upstream
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :fabric:tasks --all | tee ../client-tasks.txt
+          grep -E '(^|[[:space:]])runClient([[:space:]]|$)' ../client-tasks.txt
+      - name: Headless client boot and stability hold
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f ../client-smoke.log
+          xvfb-run -a ./gradlew --no-daemon :fabric:runClient > ../client-smoke.log 2>&1 &
+          CLIENT_PID=$!
+          cleanup() { if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi; }
+          trap cleanup EXIT
+          READY=0
+          for i in $(seq 1 300); do
+            if grep -q 'Sound engine started' ../client-smoke.log && grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../client-smoke.log; then READY=1; break; fi
+            if grep -Eiq 'Could not execute entrypoint|Mixin apply failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|GLFW error|Failed to initialize graphics|Minecraft has crashed' ../client-smoke.log; then echo 'Fatal client runtime signature detected before client ready.'; cat ../client-smoke.log; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client process exited before reaching stable resource-load state.'; cat ../client-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
+            sleep 1
+          done
+          if [ "$READY" -ne 1 ]; then echo 'Client did not reach stable resource-load state within 300 seconds.'; cat ../client-smoke.log; exit 1; fi
+          echo 'Client reached resource-loaded state with Create+VS2; holding 30 seconds for async client failures...'
+          sleep 30
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during stability hold.'; cat ../client-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
+          if grep -Eiq 'Could not execute entrypoint|Mixin apply failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|GLFW error|Failed to initialize graphics|Minecraft has crashed' ../client-smoke.log; then echo 'Fatal client runtime signature detected during stability hold.'; cat ../client-smoke.log; exit 1; fi
+          grep -E '(^|[[:space:]])- create 6\.0\.9-1|valkyrienskies|Sound engine started|Registering Ponder Scenes|Created: .*atlas' ../client-smoke.log | tail -80 || true
+          echo 'Headless Create+VS2 client startup smoke passed.'
+      - name: Upload client runtime log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vs2-26.2-client-smoke-log
+          path: client-smoke.log
+          if-no-files-found: warn

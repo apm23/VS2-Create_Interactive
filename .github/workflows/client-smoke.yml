@@ -56,10 +56,18 @@ jobs:
         run: |
           set -euo pipefail
           rm -f ../client-smoke.log
+          rm -rf fabric/run/crash-reports
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
           xvfb-run -a ./gradlew --no-daemon :fabric:runClient > ../client-smoke.log 2>&1 &
           CLIENT_PID=$!
           cleanup() { if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi; }
           trap cleanup EXIT
+          fatal_client_state() {
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|GLFW error|Failed to initialize graphics|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../client-smoke.log \
+              || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
+              || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
+              || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
+          }
           READY=0
           for i in $(seq 1 300); do
             # Hosted Linux runners do not expose a real audio device, so OpenAL may
@@ -72,7 +80,7 @@ jobs:
               READY=1
               break
             fi
-            if grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|GLFW error|Failed to initialize graphics|Minecraft has crashed' ../client-smoke.log; then echo 'Fatal client runtime signature detected before client ready.'; cat ../client-smoke.log; exit 1; fi
+            if fatal_client_state; then echo 'Fatal client runtime state detected before client ready.'; cat ../client-smoke.log; find fabric/run/crash-reports -maxdepth 1 -type f -print -exec cat {} \; 2>/dev/null || true; exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client process exited before reaching stable resource-load state.'; cat ../client-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
             sleep 1
           done
@@ -80,7 +88,7 @@ jobs:
           echo 'Client reached resource-loaded state with Create+VS2; holding 30 seconds for async client failures...'
           sleep 30
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during stability hold.'; cat ../client-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
-          if grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|GLFW error|Failed to initialize graphics|Minecraft has crashed' ../client-smoke.log; then echo 'Fatal client runtime signature detected during stability hold.'; cat ../client-smoke.log; exit 1; fi
+          if fatal_client_state; then echo 'Fatal client runtime state detected during stability hold.'; cat ../client-smoke.log; find fabric/run/crash-reports -maxdepth 1 -type f -print -exec cat {} \; 2>/dev/null || true; exit 1; fi
           grep -E '(^|[[:space:]])- create 6\.0\.9-1|Initialized VSCore on Fabric|valkyrienskies|Registering Ponder Scenes|Created: .*atlas|Loaded [0-9]+ shader sources' ../client-smoke.log | tail -80 || true
           echo 'Headless Create+VS2 client startup smoke passed.'
       - name: Upload client runtime log

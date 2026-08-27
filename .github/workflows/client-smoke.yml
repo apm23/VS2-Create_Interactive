@@ -62,7 +62,16 @@ jobs:
           trap cleanup EXIT
           READY=0
           for i in $(seq 1 300); do
-            if grep -q 'Sound engine started' ../client-smoke.log && grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../client-smoke.log; then READY=1; break; fi
+            # Hosted Linux runners do not expose a real audio device, so OpenAL may
+            # deliberately disable sound. Use hardware-independent resource/client
+            # milestones instead of requiring the "Sound engine started" line.
+            if grep -q 'Initialized VSCore on Fabric!' ../client-smoke.log \
+              && grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../client-smoke.log \
+              && grep -q 'Registering Ponder Scenes' ../client-smoke.log \
+              && grep -q 'minecraft:textures/atlas/blocks.png-atlas' ../client-smoke.log; then
+              READY=1
+              break
+            fi
             if grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|GLFW error|Failed to initialize graphics|Minecraft has crashed' ../client-smoke.log; then echo 'Fatal client runtime signature detected before client ready.'; cat ../client-smoke.log; exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client process exited before reaching stable resource-load state.'; cat ../client-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
             sleep 1
@@ -72,7 +81,7 @@ jobs:
           sleep 30
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during stability hold.'; cat ../client-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
           if grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|GLFW error|Failed to initialize graphics|Minecraft has crashed' ../client-smoke.log; then echo 'Fatal client runtime signature detected during stability hold.'; cat ../client-smoke.log; exit 1; fi
-          grep -E '(^|[[:space:]])- create 6\.0\.9-1|valkyrienskies|Sound engine started|Registering Ponder Scenes|Created: .*atlas' ../client-smoke.log | tail -80 || true
+          grep -E '(^|[[:space:]])- create 6\.0\.9-1|Initialized VSCore on Fabric|valkyrienskies|Registering Ponder Scenes|Created: .*atlas|Loaded [0-9]+ shader sources' ../client-smoke.log | tail -80 || true
           echo 'Headless Create+VS2 client startup smoke passed.'
       - name: Upload client runtime log
         if: always()

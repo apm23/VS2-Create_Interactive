@@ -31,7 +31,7 @@ jobs:
       - name: Prepare 26.2 port
         run: |
           python3 scripts/prepare_vs2_26_2.py
-          for script in scripts/prepare_vs2_26_2_phase{2..23}.py; do
+          for script in scripts/prepare_vs2_26_2_phase{2..24}.py; do
             python3 "$script"
           done
 

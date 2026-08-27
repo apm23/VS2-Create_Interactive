@@ -13,7 +13,7 @@ t = p.read_text(encoding="utf-8")
 anchor = '            exclude "org/valkyrienskies/mod/mixin/world/level/levelgen/MixinNoiseBasedChunkGenerator.java"\n'
 if anchor not in t:
     raise SystemExit("Expected Java source exclusion anchor not found")
-extra = anchor + '''            // MC 26.2 core-port isolation: legacy 1.21.x rendering/optional compat.\n            exclude "org/valkyrienskies/mod/common/render/**"\n            exclude "org/valkyrienskies/mod/mixin/client/renderer/MixinLevelRenderer.java"\n            exclude "org/valkyrienskies/mod/mixin/feature/vs2_alpha_hud/**"\n            exclude "org/valkyrienskies/mod/mixin/feature/hit_outline/**"\n            exclude "org/valkyrienskies/mod/mixin/feature/shipyard_entities/MixinEntityRenderDispatcher.java"\n            exclude "org/valkyrienskies/mod/mixin/mod_compat/sodium/**"\n            exclude "org/valkyrienskies/mod/mixinducks/mod_compat/sodium/**"\n            exclude "org/valkyrienskies/mod/compat/SodiumCompat.java"\n            exclude "org/valkyrienskies/mod/compat/create/**"\n'''
+extra = anchor + '''            // MC 26.2 core-port isolation: legacy 1.21.x rendering/optional compat.\n            exclude "org/valkyrienskies/mod/common/render/**"\n            exclude "org/valkyrienskies/mod/mixin/client/renderer/MixinLevelRenderer.java"\n            exclude "org/valkyrienskies/mod/mixin/client/renderer/MixinFeatureRenderDispatcher.java"\n            exclude "org/valkyrienskies/mod/mixin/client/world/MixinClientChunkCache.java"\n            exclude "org/valkyrienskies/mod/mixin/client/world/MixinLevelChunkClientRender.java"\n            exclude "org/valkyrienskies/mod/mixin/feature/vs2_alpha_hud/**"\n            exclude "org/valkyrienskies/mod/mixin/feature/hit_outline/**"\n            exclude "org/valkyrienskies/mod/mixin/feature/shipyard_entities/MixinEntityRenderDispatcher.java"\n            exclude "org/valkyrienskies/mod/mixin/mod_compat/sodium/**"\n            exclude "org/valkyrienskies/mod/mixinducks/mod_compat/sodium/**"\n            exclude "org/valkyrienskies/mod/compat/SodiumCompat.java"\n            exclude "org/valkyrienskies/mod/compat/create/**"\n'''
 t = t.replace(anchor, extra, 1)
 p.write_text(t, encoding="utf-8")
 
@@ -44,6 +44,9 @@ remove_mixins = {
 }
 remove_client = {
     "client.renderer.MixinLevelRenderer",
+    "client.renderer.MixinFeatureRenderDispatcher",
+    "client.world.MixinClientChunkCache",
+    "client.world.MixinLevelChunkClientRender",
     "feature.shipyard_entities.MixinEntityRenderDispatcher",
     "feature.vs2_alpha_hud.MixinGui",
     "mod_compat.sodium.MixinChunkTracker",

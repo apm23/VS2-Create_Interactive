@@ -41,18 +41,19 @@ jobs:
           set -euo pipefail
           mkdir -p fabric/run
           printf 'eula=true\n' > fabric/run/eula.txt
+          printf 'online-mode=false\n' > fabric/run/server.properties
           rm -f ../server.in ../runtime-smoke.log
           mkfifo ../server.in
           exec 3<>../server.in
           ./gradlew --no-daemon :fabric:runServer < ../server.in > ../runtime-smoke.log 2>&1 &
-          SERVER_PID=$!
-          cleanup() { if kill -0 "$SERVER_PID" 2>/dev/null; then kill "$SERVER_PID" 2>/dev/null || true; fi; }
+          GRADLE_PID=$!
+          cleanup() { if kill -0 "$GRADLE_PID" 2>/dev/null; then kill "$GRADLE_PID" 2>/dev/null || true; fi; }
           trap cleanup EXIT
           READY=0
           for i in $(seq 1 210); do
             if grep -Eq 'Done \([0-9.]+s\)!|Done \(' ../runtime-smoke.log; then READY=1; break; fi
             if grep -Eiq 'Exception in server tick loop|Could not execute entrypoint|Mixin apply failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)' ../runtime-smoke.log; then echo 'Fatal runtime signature detected before ready.'; cat ../runtime-smoke.log; exit 1; fi
-            if ! kill -0 "$SERVER_PID" 2>/dev/null; then echo 'Server process exited before ready.'; cat ../runtime-smoke.log; wait "$SERVER_PID" || true; exit 1; fi
+            if ! kill -0 "$GRADLE_PID" 2>/dev/null; then echo 'Server process exited before ready.'; cat ../runtime-smoke.log; wait "$GRADLE_PID" || true; exit 1; fi
             sleep 1
           done
           if [ "$READY" -ne 1 ]; then echo 'Server did not reach ready state within 210 seconds.'; cat ../runtime-smoke.log; exit 1; fi
@@ -61,10 +62,17 @@ jobs:
           if grep -Eiq 'Exception in server tick loop|Could not execute entrypoint|Mixin apply failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)' ../runtime-smoke.log; then echo 'Fatal runtime signature detected after ready.'; cat ../runtime-smoke.log; exit 1; fi
           echo 'stop' >&3
           exec 3>&-
-          for i in $(seq 1 60); do if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi; sleep 1; done
-          if kill -0 "$SERVER_PID" 2>/dev/null; then echo 'Server failed to stop cleanly.'; cat ../runtime-smoke.log; exit 1; fi
-          wait "$SERVER_PID"
-          grep -E 'Done \(|Stopping server|Saving worlds|ThreadedAnvilChunkStorage|Valkyrien|valkyrienskies' ../runtime-smoke.log || true
+          STOPPED=0
+          for i in $(seq 1 90); do
+            if grep -q 'VSPhysicsPipelineStage is fully deleted!' ../runtime-smoke.log && grep -q 'ThreadedAnvilChunkStorage: All dimensions are saved' ../runtime-smoke.log; then STOPPED=1; break; fi
+            sleep 1
+          done
+          if [ "$STOPPED" -ne 1 ]; then echo 'Server did not complete clean VS2/world shutdown.'; cat ../runtime-smoke.log; exit 1; fi
+          # Gradle/Architectury may remain alive briefly after Minecraft and VS physics have fully stopped.
+          for i in $(seq 1 30); do if ! kill -0 "$GRADLE_PID" 2>/dev/null; then break; fi; sleep 1; done
+          if kill -0 "$GRADLE_PID" 2>/dev/null; then kill "$GRADLE_PID" 2>/dev/null || true; fi
+          wait "$GRADLE_PID" || true
+          grep -E 'Done \(|Stopping server|Saving worlds|ThreadedAnvilChunkStorage|VSPhysicsPipelineStage|Physics pipeline ending|Valkyrien|valkyrienskies' ../runtime-smoke.log || true
           echo 'Dedicated server runtime smoke passed.'
       - name: Upload runtime log
         if: always()

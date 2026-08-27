@@ -19,7 +19,7 @@ if end < start:
     raise SystemExit("Could not locate MixinGameRenderer class end for Phase 47")
 game_text = game_text[:start] + game_text[end:]
 game_text = game_text.replace("import com.llamalad7.mixinextras.injector.ModifyReturnValue;\n", "", 1)
-if 'getDepthFar' in game_text or '@ModifyReturnValue' in game_text:
+if '@ModifyReturnValue(method = "getDepthFar"' in game_text or 'public float includeShipsIn' in game_text:
     raise SystemExit("Stale GameRenderer far-plane hook survived Phase 47")
 game_renderer.write_text(game_text, encoding="utf-8")
 
@@ -61,8 +61,10 @@ if "MC 26.2 moved the far plane" not in camera_text:
 
 if "this.depthFar = Math.max(this.depthFar, VSClientConfig.CLIENT.getShipRenderDistance())" not in camera_text:
     raise SystemExit("Phase 47 Camera.depthFar extension was not installed")
-if 'getDepthFar' in camera_text:
-    raise SystemExit("Unexpected legacy getDepthFar reference survived in MixinCamera")
+# Only executable/injection leftovers are invalid; documentation may legitimately name
+# the removed GameRenderer.getDepthFar() API while explaining the 26.2 migration.
+if '@ModifyReturnValue(method = "getDepthFar"' in camera_text or 'public float includeShipsIn' in camera_text:
+    raise SystemExit("Unexpected executable legacy far-plane hook survived in MixinCamera")
 
 camera_mixin.write_text(camera_text, encoding="utf-8")
 print("Phase 47: moved ship far-plane extension from removed GameRenderer.getDepthFar into Camera.update before frustum/projection")

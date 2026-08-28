@@ -81,7 +81,13 @@ jobs:
             sleep $((attempt * 10))
           done
 
-      - name: Load verified real train save through quick play and hold
+      - name: Install X11 functional probe
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y xdotool
+
+      - name: Load verified real train save and run functional Gate D
         working-directory: upstream
         shell: bash
         env:
@@ -91,17 +97,26 @@ jobs:
           ALSOFT_DRIVERS: 'null'
         run: |
           set -euo pipefail
-          rm -f ../world-smoke.log ../world-smoke-thread-dumps.txt
+          rm -f ../world-smoke.log ../world-smoke-thread-dumps.txt ../xvfb.log
           rm -rf fabric/run/crash-reports
           rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
-          xvfb-run -a ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-smoke' > ../world-smoke.log 2>&1 &
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > ../xvfb.log 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+          ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-smoke' > ../world-smoke.log 2>&1 &
           CLIENT_PID=$!
-          cleanup() { if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi; }
+          cleanup() {
+            if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
+            if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
+          }
           trap cleanup EXIT
+
           dump_threads() {
             {
               echo "=== thread/process diagnostic $(date -u +%FT%TZ) ==="
-              ps -eo pid,ppid,stat,etime,%cpu,%mem,args | grep -E 'java|gradle|xvfb' | grep -v grep || true
+              ps -eo pid,ppid,stat,etime,%cpu,%mem,args | grep -E 'java|gradle|Xvfb' | grep -v grep || true
               mapfile -t JVM_PIDS < <(pgrep -f 'net.fabricmc.devlaunchinjector.Main|KnotClient|TransformerRuntime|fabric:runClient' || true)
               if [ "${#JVM_PIDS[@]}" -eq 0 ]; then mapfile -t JVM_PIDS < <(pgrep -f 'java' || true); fi
               for pid in "${JVM_PIDS[@]}"; do
@@ -111,20 +126,49 @@ jobs:
               done
             } >> ../world-smoke-thread-dumps.txt 2>&1
           }
+
           dump_diagnostics() {
-            echo '=== readiness/error markers ==='
-            grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -300 || true
+            echo '=== readiness/Gate-D/error markers ==='
+            grep -Ein 'GATE_D_|Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -340 || true
             echo '=== final log tail ==='
-            tail -180 ../world-smoke.log || true
+            tail -220 ../world-smoke.log || true
             echo '=== latest thread dump tail ==='
             tail -220 ../world-smoke-thread-dumps.txt 2>/dev/null || true
+            echo '=== Xvfb tail ==='
+            tail -80 ../xvfb.log 2>/dev/null || true
           }
+
           fatal_state() {
             grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../world-smoke.log \
               || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
               || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
               || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
           }
+
+          minecraft_window() {
+            xdotool search --name 'Minecraft' 2>/dev/null | tail -1 || true
+          }
+
+          send_chat() {
+            local command="$1"
+            local window=''
+            for _ in $(seq 1 30); do
+              window="$(minecraft_window)"
+              [ -n "$window" ] && break
+              sleep 1
+            done
+            if [ -z "$window" ]; then
+              echo "Gate D could not locate Minecraft X11 window."
+              return 1
+            fi
+            xdotool windowfocus --sync "$window" || true
+            xdotool key --window "$window" t
+            sleep 0.35
+            xdotool type --window "$window" --delay 1 -- "$command"
+            xdotool key --window "$window" Return
+            sleep 0.8
+          }
+
           WORLD_READY=0
           LAST_SIZE=0
           STALE_WINDOWS=0
@@ -151,13 +195,58 @@ jobs:
             sleep 1
           done
           if [ "$WORLD_READY" -ne 1 ]; then echo 'Verified real train world did not reach integrated-server ready state.'; dump_threads; dump_diagnostics; exit 1; fi
-          echo 'Verified real train save loaded; holding 90 seconds for train/entity/physics activity...'
-          sleep 90
-          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during real-world hold.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
-          if fatal_state; then echo 'Fatal state during real train world hold.'; dump_threads; dump_diagnostics; exit 1; fi
+
+          echo 'Gate D: world ready; allowing player and carriage entities to settle.'
+          sleep 8
+          send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s run say GATE_D_CARRIAGE_PRESENT'
+          send_chat '/kill @e[type=minecraft:marker,tag=vs2_gate_anchor]'
+          send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s run summon minecraft:marker ~ ~ ~ {Tags:["vs2_gate_anchor"]}'
+          send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s if entity @a[distance=..12] run say GATE_D_PLAYER_NEAR_START'
+          sleep 2
+
+          if ! grep -q 'GATE_D_CARRIAGE_PRESENT' ../world-smoke.log; then
+            echo 'Gate D failed to observe a loaded Create carriage entity or command probe feedback.'
+            dump_diagnostics
+            exit 1
+          fi
+
+          echo 'Gate D: carriage present; polling up to 120 seconds for automatic train motion.'
+          TRAIN_MOVED=0
+          for attempt in $(seq 1 6); do
+            sleep 20
+            send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s unless entity @e[type=minecraft:marker,tag=vs2_gate_anchor,distance=..1] run say GATE_D_TRAIN_MOVED'
+            if grep -q 'GATE_D_TRAIN_MOVED' ../world-smoke.log; then
+              TRAIN_MOVED=1
+              break
+            fi
+            if fatal_state; then echo 'Fatal state while waiting for automatic train motion.'; dump_threads; dump_diagnostics; exit 1; fi
+          done
+
+          if [ "$TRAIN_MOVED" -ne 1 ]; then
+            echo 'Gate D did not observe carriage displacement greater than one block within 120 seconds.'
+            dump_diagnostics
+            exit 1
+          fi
+
+          if grep -q 'GATE_D_PLAYER_NEAR_START' ../world-smoke.log; then
+            send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s if entity @a[distance=..12] run say GATE_D_PLAYER_NEAR_END'
+            sleep 2
+            if ! grep -q 'GATE_D_PLAYER_NEAR_END' ../world-smoke.log; then
+              echo 'Gate D observed player near the train initially but not after carriage motion.'
+              dump_diagnostics
+              exit 1
+            fi
+            echo 'Gate D player-relative proximity remained bounded during observed train motion.'
+          else
+            echo 'Gate D note: saved player was not within 12 blocks of the sampled carriage at start; player-relative check is not asserted in this fixture.'
+          fi
+
+          send_chat '/kill @e[type=minecraft:marker,tag=vs2_gate_anchor]' || true
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during functional Gate D.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+          if fatal_state; then echo 'Fatal state during functional Gate D.'; dump_threads; dump_diagnostics; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
-          grep -E 'Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro|graphics backend|graphics device' ../world-smoke.log | tail -160 || true
-          echo 'Verified real train world load/stability smoke passed.'
+          grep -E 'GATE_D_|Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro|graphics backend|graphics device' ../world-smoke.log | tail -220 || true
+          echo 'Verified real train world functional Gate D passed: carriage loaded and moved without fatal runtime failure.'
 
       - name: Summarize real-world smoke diagnostics
         if: always()
@@ -165,15 +254,15 @@ jobs:
         run: |
           set -uo pipefail
           {
-            echo '## Verified r0v3 real train world smoke'
+            echo '## Verified r0v3 real train world smoke + functional Gate D'
             if [ -f fixture-parts.txt ]; then echo "Fixture parts: $(tr '\n' ' ' < fixture-parts.txt)"; fi
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
             echo 'Fixture gate: exactly 17 parts + 116120 Base64 bytes + 87090 ZIP bytes + exact SHA256 + ZIP CRC + level.dat + compressed tracks.dat + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
-              grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -300 || true
+              grep -Ein 'GATE_D_|Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -340 || true
               echo '--- tail ---'
-              tail -180 world-smoke.log
+              tail -220 world-smoke.log
               echo '```'
             fi
             if [ -f world-smoke-thread-dumps.txt ]; then
@@ -192,4 +281,5 @@ jobs:
           path: |
             world-smoke.log
             world-smoke-thread-dumps.txt
+            xvfb.log
           if-no-files-found: warn

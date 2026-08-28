@@ -32,8 +32,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v2.part-*' -print | sort -V)
-          test "${#parts[@]}" -ge 1
+          mapfile -t discovered < <(find .ci/world -maxdepth 1 -type f -name 'r0v2.part-*' -print | sort -V)
+          test "${#discovered[@]}" -ge 1
+          parts=()
+          for part in "${discovered[@]}"; do
+            if [ "$part" = '.ci/world/r0v2.part-01' ] && [ -s '.ci/world/r0v2.part-01a' ]; then
+              echo 'Skipping corrupted r0v2.part-01; using split replacement r0v2.part-01a..01e.'
+              continue
+            fi
+            parts+=("$part")
+          done
           printf '%s\n' "${parts[@]}" | tee fixture-parts.txt
           : > train-test-world-r0v2.zip
           for part in "${parts[@]}"; do
@@ -42,13 +50,8 @@ jobs:
             tr -cd 'A-Za-z0-9+/=' < "$part" > "$clean"
             n=$(wc -c < "$clean")
             echo "Decoding $part raw=$(wc -c < "$part") clean=$n mod4=$((n % 4))"
-            if [ $((n % 4)) -ne 0 ]; then
-              PART="$part" python3 -c 'import os; p=os.environ["PART"]; b=open(p,"rb").read(); v=set(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="); [(print(f"invalid offset={i} byte=0x{c:02x} context={b[max(0,i-18):min(len(b),i+19)]!r}")) for i,c in enumerate(b) if c not in v]'
-            fi
-            if ! base64 -d "$clean" >> train-test-world-r0v2.zip; then
-              echo "Malformed Base64 fixture segment: $part" >&2
-              exit 21
-            fi
+            test $((n % 4)) -eq 0
+            base64 -d "$clean" >> train-test-world-r0v2.zip
           done
           sha256sum train-test-world-r0v2.zip | tee fixture-sha256.txt
           unzip -tq train-test-world-r0v2.zip
@@ -128,7 +131,7 @@ jobs:
             echo '## Compact real train world smoke'
             if [ -f fixture-parts.txt ]; then echo "Fixture parts: $(tr '\n' ' ' < fixture-parts.txt)"; fi
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
-            echo 'Fixture validation: per-part Base64 decode + binary concatenation + ZIP CRC/integrity + level.dat + tracks.dat >= 50 KB + Hayajiro marker'
+            echo 'Fixture validation: split replacement selection + per-part Base64 decode + ZIP CRC/integrity + level.dat + tracks.dat >= 50 KB + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|Caused by:|ERROR' world-smoke.log | tail -100 || true

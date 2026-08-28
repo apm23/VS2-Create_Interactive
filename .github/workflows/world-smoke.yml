@@ -1,0 +1,128 @@
+name: world-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.ci/world/train-test-world-smoke-r6.b64'
+      - '.github/workflows/world-smoke.yml'
+
+jobs:
+  real-train-world-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Prepare Phase 50 train runtime baseline
+        run: |
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..50}.py; do python3 "$script"; done
+      - name: Reconstruct and fingerprint real train save
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s .ci/world/train-test-world-smoke-r6.b64
+          base64 -d .ci/world/train-test-world-smoke-r6.b64 > train-test-world-smoke-r6.zip
+          echo '00fc4f9973029228ee7a7740057475c1c89c018fd0f08cd758bdd90720919783  train-test-world-smoke-r6.zip' | sha256sum -c -
+          rm -rf world-fixture
+          mkdir world-fixture
+          unzip -q train-test-world-smoke-r6.zip -d world-fixture
+          test -f 'world-fixture/train build 1/level.dat'
+          test -f 'world-fixture/train build 1/data/create/tracks.dat'
+          echo 'c1d0dd2eef04228df9c65984001f81eb14f00992f9389dfd1b6d8326470c25c9  world-fixture/train build 1/data/create/tracks.dat' | sha256sum -c -
+          echo 'a570d8a89926a64ed74c29b6370fafa340e5ebebb476332bcf8ea9aad724f164  world-fixture/train build 1/level.dat' | sha256sum -c -
+          test "$(stat -c%s 'world-fixture/train build 1/data/create/tracks.dat')" -eq 51026
+      - name: Install exact save into client game directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/fabric/run/saves
+          rm -rf upstream/fabric/run/saves/train-smoke
+          mv 'world-fixture/train build 1' upstream/fabric/run/saves/train-smoke
+          test -f upstream/fabric/run/saves/train-smoke/data/create/tracks.dat
+      - name: Prefetch Minecraft client assets with retry
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:downloadAssets; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+      - name: Load real train save through quick play and hold
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f ../world-smoke.log
+          rm -rf fabric/run/crash-reports
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
+          xvfb-run -a ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-smoke' > ../world-smoke.log 2>&1 &
+          CLIENT_PID=$!
+          cleanup() { if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi; }
+          trap cleanup EXIT
+          fatal_state() {
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../world-smoke.log \
+              || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
+              || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
+              || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
+          }
+          WORLD_READY=0
+          for i in $(seq 1 360); do
+            if grep -Eq 'Starting integrated minecraft server|Starting integrated server' ../world-smoke.log \
+              && grep -Eq 'Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements' ../world-smoke.log \
+              && grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../world-smoke.log \
+              && grep -Eq '(^|[[:space:]])- railways ' ../world-smoke.log \
+              && grep -Eq '(^|[[:space:]])- copycats ' ../world-smoke.log \
+              && grep -q 'Initialized VSCore on Fabric!' ../world-smoke.log; then
+              WORLD_READY=1
+              break
+            fi
+            if fatal_state; then echo 'Fatal state while loading real train world.'; cat ../world-smoke.log; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before real train world reached ready state.'; cat ../world-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
+            sleep 1
+          done
+          if [ "$WORLD_READY" -ne 1 ]; then echo 'Real train world did not reach integrated-server ready state.'; cat ../world-smoke.log; exit 1; fi
+          echo 'Real train save loaded; holding 90 seconds so scheduled train/entity/physics activity can surface failures...'
+          sleep 90
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during real-world hold.'; cat ../world-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
+          if fatal_state; then echo 'Fatal state during real train world hold.'; cat ../world-smoke.log; exit 1; fi
+          test -f fabric/run/saves/train-smoke/data/create/tracks.dat
+          grep -E 'Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train' ../world-smoke.log | tail -160 || true
+          echo 'Real train world load/stability smoke passed.'
+      - name: Summarize real-world smoke diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          {
+            echo '## Real train world smoke'
+            echo 'Fixture ZIP SHA256: 00fc4f9973029228ee7a7740057475c1c89c018fd0f08cd758bdd90720919783'
+            echo 'Create tracks.dat SHA256: c1d0dd2eef04228df9c65984001f81eb14f00992f9389dfd1b6d8326470c25c9'
+            if [ -f world-smoke.log ]; then
+              echo '```text'
+              grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|Caused by:|ERROR' world-smoke.log | tail -100 || true
+              tail -120 world-smoke.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload real-world runtime log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vs2-create-real-train-world-smoke-log
+          path: world-smoke.log
+          if-no-files-found: warn

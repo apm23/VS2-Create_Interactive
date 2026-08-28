@@ -38,7 +38,14 @@ jobs:
           : > train-test-world-r0v2.zip
           for part in "${parts[@]}"; do
             test -s "$part"
-            tr -cd 'A-Za-z0-9+/=\n' < "$part" | base64 -d >> train-test-world-r0v2.zip
+            clean="${part}.clean"
+            tr -cd 'A-Za-z0-9+/=' < "$part" > "$clean"
+            n=$(wc -c < "$clean")
+            echo "Decoding $part raw=$(wc -c < "$part") clean=$n mod4=$((n % 4))"
+            if ! base64 -d "$clean" >> train-test-world-r0v2.zip; then
+              echo "Malformed Base64 fixture segment: $part" >&2
+              exit 21
+            fi
           done
           sha256sum train-test-world-r0v2.zip | tee fixture-sha256.txt
           unzip -tq train-test-world-r0v2.zip

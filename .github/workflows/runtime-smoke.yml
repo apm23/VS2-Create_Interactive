@@ -77,6 +77,33 @@ jobs:
           if kill -0 "$GRADLE_PID" 2>/dev/null; then kill "$GRADLE_PID" 2>/dev/null || true; fi
           wait "$GRADLE_PID" || true
           echo 'Dedicated server Phase 49 train runtime smoke passed.'
+      - name: Summarize dedicated smoke diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          {
+            echo '## VS2 26.2 dedicated runtime smoke diagnostics'
+            if [ ! -f runtime-smoke.log ]; then
+              echo 'No runtime-smoke.log was produced; failure occurred before runServer launched.'
+              exit 0
+            fi
+            echo
+            echo '### Fatal/error context'
+            echo '```text'
+            MATCHES=$(grep -Ein 'Exception in server tick loop|Could not execute entrypoint|Mixin (apply|prepare) failed|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Caused by:|Exception|ERROR|WARN' runtime-smoke.log | tail -80 || true)
+            if [ -n "$MATCHES" ]; then
+              printf '%s\n' "$MATCHES"
+            else
+              echo 'No configured fatal/error signature matched.'
+            fi
+            echo '```'
+            echo
+            echo '### Last 120 runtime lines'
+            echo '```text'
+            tail -120 runtime-smoke.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload runtime log
         if: always()
         uses: actions/upload-artifact@v4

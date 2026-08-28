@@ -42,6 +42,18 @@ jobs:
             tr -cd 'A-Za-z0-9+/=' < "$part" > "$clean"
             n=$(wc -c < "$clean")
             echo "Decoding $part raw=$(wc -c < "$part") clean=$n mod4=$((n % 4))"
+            if [ $((n % 4)) -ne 0 ]; then
+              PART="$part" python3 - <<'PY'
+import os
+p=os.environ['PART']
+b=open(p,'rb').read()
+valid=set(b'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
+for i,c in enumerate(b):
+    if c not in valid:
+        lo=max(0,i-18); hi=min(len(b),i+19)
+        print(f'invalid offset={i} byte=0x{c:02x} context={b[lo:hi]!r}')
+PY
+            fi
             if ! base64 -d "$clean" >> train-test-world-r0v2.zip; then
               echo "Malformed Base64 fixture segment: $part" >&2
               exit 21

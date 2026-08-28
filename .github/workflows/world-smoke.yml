@@ -36,7 +36,7 @@ jobs:
           test "${#parts[@]}" -ge 1
           for part in "${parts[@]}"; do test -s "$part"; done
           printf '%s\n' "${parts[@]}" | tee fixture-parts.txt
-          cat "${parts[@]}" > train-test-world-r0v2.b64
+          cat "${parts[@]}" | tr -cd 'A-Za-z0-9+/=\n' > train-test-world-r0v2.b64
           base64 -d train-test-world-r0v2.b64 > train-test-world-r0v2.zip
           sha256sum train-test-world-r0v2.zip | tee fixture-sha256.txt
           unzip -tq train-test-world-r0v2.zip
@@ -116,7 +116,7 @@ jobs:
             echo '## Compact real train world smoke'
             if [ -f fixture-parts.txt ]; then echo "Fixture parts: $(tr '\n' ' ' < fixture-parts.txt)"; fi
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
-            echo 'Fixture validation: Base64 decode + ZIP CRC/integrity + level.dat + tracks.dat >= 50 KB + Hayajiro marker'
+            echo 'Fixture validation: Base64 alphabet normalization + decode + ZIP CRC/integrity + level.dat + tracks.dat >= 50 KB + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|Caused by:|ERROR' world-smoke.log | tail -100 || true

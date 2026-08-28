@@ -34,10 +34,12 @@ jobs:
           set -euo pipefail
           mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v2.part-*' -print | sort -V)
           test "${#parts[@]}" -ge 1
-          for part in "${parts[@]}"; do test -s "$part"; done
           printf '%s\n' "${parts[@]}" | tee fixture-parts.txt
-          cat "${parts[@]}" | tr -cd 'A-Za-z0-9+/=\n' > train-test-world-r0v2.b64
-          base64 -d train-test-world-r0v2.b64 > train-test-world-r0v2.zip
+          : > train-test-world-r0v2.zip
+          for part in "${parts[@]}"; do
+            test -s "$part"
+            tr -cd 'A-Za-z0-9+/=\n' < "$part" | base64 -d >> train-test-world-r0v2.zip
+          done
           sha256sum train-test-world-r0v2.zip | tee fixture-sha256.txt
           unzip -tq train-test-world-r0v2.zip
           rm -rf world-fixture
@@ -116,7 +118,7 @@ jobs:
             echo '## Compact real train world smoke'
             if [ -f fixture-parts.txt ]; then echo "Fixture parts: $(tr '\n' ' ' < fixture-parts.txt)"; fi
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
-            echo 'Fixture validation: Base64 alphabet normalization + decode + ZIP CRC/integrity + level.dat + tracks.dat >= 50 KB + Hayajiro marker'
+            echo 'Fixture validation: per-part Base64 decode + binary concatenation + ZIP CRC/integrity + level.dat + tracks.dat >= 50 KB + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|Caused by:|ERROR' world-smoke.log | tail -100 || true

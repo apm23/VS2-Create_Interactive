@@ -1,0 +1,191 @@
+VS2 26.2 dedicated runtime smoke failure diagnostic
+source_commit=86f88215d9d82ea51e75b9103581e1ce9d2f2793
+
+=== fatal/error context (last 80 matches) ===
+1:WARNING: A restricted method in java.lang.System has been called
+2:WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/home/runner/.gradle/wrapper/dists/gradle-9.7.0-all/5hez1j29szzu41ldlyeeyuiv4/gradle-9.7.0/lib/native-platform-0.22-milestone-29.jar)
+3:WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+4:WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+17:> Task :common:checkKotlinGradlePluginConfigurationErrors SKIPPED
+20:> Task :fabric:checkKotlinGradlePluginConfigurationErrors SKIPPED
+588:[m[34m[01:42:23][m [33m[main/WARN][m [36m(FabricLoader/Resolution)[m [0mWarnings were found!
+666:[m[34m[01:42:23][m [31m[main/ERROR][m [36m(FabricLoader/Mixin)[m [31mInvalid REFMAP JSON in : org.spongepowered.include.com.google.gson.JsonSyntaxException java.lang.IllegalStateException: Expected BEGIN_OBJECT but was STRING at line 1 column 1
+667:[m[34m[01:42:23][m [33m[main/WARN][m [36m(FabricLoader/Mixin)[m [0mReference map '' for valkyrienskies-fabric.mixins.json could not be read. If this is a development environment you can ignore this message
+851:[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin)[m [0mInstancing error handler class org.valkyrienskies.mod.mixin.ValkyrienMixinErrorHandler
+852:[m[34m[01:42:35][m [31m[main/ERROR][m [36m(FabricLoader/Mixin)[m [31mMixin apply for mod valkyrienskies failed valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> net.minecraft.world.entity.ai.behavior.InteractWith: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$baf000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
+854:org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException: Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$baf000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
+898:[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: java.nio.file.NoSuchFileException: ./config/create/server.json
+899:[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:92)
+900:[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:106)
+901:[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:111)
+927:[m[34m[01:42:36][m [31m[main/ERROR][m [36m(Minecraft)[m [31mFailed to start the minecraft server
+929:java.lang.RuntimeException: Could not execute entrypoint stage 'main' due to errors, provided by 'railways' at 'com.railwayteam.railways.fabric.RailwaysImpl'!
+931:	at net.fabricmc.loader.impl.util.ExceptionUtil.gatherExceptions(ExceptionUtil.java:33)
+940:Caused by: java.lang.RuntimeException: Mixin transformation of net.minecraft.world.entity.ai.behavior.InteractWith failed
+956:Caused by: org.spongepowered.asm.mixin.transformer.throwables.MixinTransformerError: An unexpected critical error was encountered
+962:Caused by: org.spongepowered.asm.mixin.throwables.MixinApplyError: Mixin [valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies] from phase [DEFAULT] in config [valkyrienskies-common.mixins.json] FAILED during APPLY
+963:	at org.spongepowered.asm.mixin.transformer.MixinProcessor.handleMixinError(MixinProcessor.java:685)
+964:	at org.spongepowered.asm.mixin.transformer.MixinProcessor.handleMixinApplyError(MixinProcessor.java:636)
+967:Caused by: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException: Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$baf000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
+
+=== last 160 runtime lines ===
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.entity.ai.behavior.AcquirePoi$JitteredLinearRetry
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.level.ChunkMap$TrackedEntity
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.item.Item$TooltipContext$2
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.pathfinder.PathfindingContext
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.entity.PersistentEntitySectionManager
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.chunk.storage.IOWorker
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.entity.ai.village.poi.PoiManager
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.data.recipes.SingleItemRecipeBuilder
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.saveddata.maps.MapItemSavedData
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.redstone.CollectingNeighborUpdater$MultiNeighborUpdate
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.level.GenerationChunkHolder
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.network.ServerCommonPacketListenerImpl
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.packs.repository.Pack
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.redstone.ExperimentalRedstoneWireEvaluator
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.commands.data.EntityDataAccessor
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.network.ServerHandshakePacketListenerImpl
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.pathfinder.WalkNodeEvaluator
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.entity.ai.behavior.MoveToTargetSink
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.data.recipes.TransmuteRecipeBuilder
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.chunk.ImposterProtoChunk
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.commands.Commands
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.entity.PersistentEntitySectionManager$Callback
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.entity.ai.behavior.InteractWith
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(FabricLoader/Mixin)[m [0mInstancing error handler class org.valkyrienskies.mod.mixin.ValkyrienMixinErrorHandler
+[m[34m[01:42:35][m [31m[main/ERROR][m [36m(FabricLoader/Mixin)[m [31mMixin apply for mod valkyrienskies failed valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> net.minecraft.world.entity.ai.behavior.InteractWith: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$baf000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
+[m
+org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException: Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$baf000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
+	at org.spongepowered.asm.mixin.injection.selectors.TargetSelectors.validate(TargetSelectors.java:346)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.readAnnotation(InjectionInfo.java:369)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.<init>(InjectionInfo.java:340)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.<init>(InjectionInfo.java:331)
+	at org.spongepowered.asm.mixin.injection.struct.CallbackInjectionInfo.<init>(CallbackInjectionInfo.java:48)
+	at java.base/jdk.internal.reflect.DirectConstructorHandleAccessor.newInstance(DirectConstructorHandleAccessor.java:62)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:499)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:483)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo$InjectorEntry.create(InjectionInfo.java:196)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.parse(InjectionInfo.java:664)
+	at org.spongepowered.asm.mixin.transformer.MixinTargetContext.prepareInjections(MixinTargetContext.java:1386)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.prepareInjections(MixinApplicatorStandard.java:811)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.lambda$runApplicatorPass$3(MixinApplicatorStandard.java:323)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.processMixins(MixinApplicatorStandard.java:381)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.runApplicatorPass(MixinApplicatorStandard.java:320)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.apply(MixinApplicatorStandard.java:240)
+	at org.spongepowered.asm.mixin.transformer.TargetClassContext.apply(TargetClassContext.java:437)
+	at org.spongepowered.asm.mixin.transformer.TargetClassContext.applyMixins(TargetClassContext.java:418)
+	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:351)
+	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClass(MixinTransformer.java:237)
+	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClassBytes(MixinTransformer.java:202)
+	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.getPostMixinClassByteArray(KnotClassDelegate.java:435)
+	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.tryLoadClass(KnotClassDelegate.java:336)
+	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.loadClass(KnotClassDelegate.java:231)
+	at net.fabricmc.loader.impl.launch.knot.KnotClassLoader.loadClass(KnotClassLoader.java:119)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:490)
+	at java.base/java.lang.Class.forName0(Native Method)
+	at java.base/java.lang.Class.forName(Class.java:547)
+	at net.fabricmc.loader.impl.launch.knot.MixinServiceKnot.findClass(MixinServiceKnot.java:104)
+	at org.spongepowered.asm.mixin.transformer.MixinProcessor.audit(MixinProcessor.java:253)
+	at org.spongepowered.asm.mixin.transformer.MixinTransformer.audit(MixinTransformer.java:171)
+	at org.spongepowered.asm.mixin.MixinEnvironment.audit(MixinEnvironment.java:1718)
+	at knot//com.railwayteam.railways.Railways.init(Railways.java:109)
+	at knot//com.railwayteam.railways.fabric.RailwaysImpl.onInitialize(RailwaysImpl.java:43)
+	at net.fabricmc.loader.impl.FabricLoaderImpl.invokeEntrypoints(FabricLoaderImpl.java:409)
+	at net.fabricmc.loader.impl.game.minecraft.Hooks.startServer(Hooks.java:63)
+	at knot//net.minecraft.server.Main.main(Main.java:114)
+	at net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider.launch(MinecraftGameProvider.java:514)
+	at net.fabricmc.loader.impl.launch.knot.Knot.launch(Knot.java:72)
+	at net.fabricmc.loader.impl.launch.knot.KnotServer.main(KnotServer.java:23)
+	at net.fabricmc.devlaunchinjector.Main.main(Main.java:86)
+	at dev.architectury.transformer.TransformerRuntime.main(TransformerRuntime.java:220)
+[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: Failed to read config file: /home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/run/./config/create/server.json
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: java.nio.file.NoSuchFileException: ./config/create/server.json
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:92)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:106)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:111)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixFileSystemProvider.newFileChannel(UnixFileSystemProvider.java:213)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixFileSystemProvider.newByteChannel(UnixFileSystemProvider.java:244)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/java.nio.file.Files.newByteChannel(Files.java:357)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/java.nio.file.Files.newByteChannel(Files.java:399)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/java.nio.file.spi.FileSystemProvider.newInputStream(FileSystemProvider.java:371)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/java.nio.file.Files.newInputStream(Files.java:154)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//org.apache.commons.io.FileUtils.lambda$readFileToString$14(FileUtils.java:2768)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//org.apache.commons.io.IOUtils.toString(IOUtils.java:3204)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//org.apache.commons.io.IOUtils.toString(IOUtils.java:3179)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//org.apache.commons.io.FileUtils.readFileToString(FileUtils.java:2768)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.catnip.config.Builder.read(Builder.java:136)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.catnip.config.Builder.<init>(Builder.java:36)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.catnip.config.Builder.create(Builder.java:49)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.catnip.config.Builder.create(Builder.java:44)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.infrastructure.config.AllConfigs.register(AllConfigs.java:28)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.Create.onInitialize(Create.java:62)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.FabricLoaderImpl.invokeEntrypoints(FabricLoaderImpl.java:409)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.game.minecraft.Hooks.startServer(Hooks.java:63)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//net.minecraft.server.Main.main(Main.java:114)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider.launch(MinecraftGameProvider.java:514)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.launch.knot.Knot.launch(Knot.java:72)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.launch.knot.KnotServer.main(KnotServer.java:23)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.devlaunchinjector.Main.main(Main.java:86)
+[m[34m[01:42:35][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at dev.architectury.transformer.TransformerRuntime.main(TransformerRuntime.java:220)
+[m[34m[01:42:36][m [32m[main/INFO][m [36m(VSCoreProviderImpl)[m [0mInitialized VSCore on Fabric!
+[m[34m[01:42:36][m [31m[main/ERROR][m [36m(Minecraft)[m [31mFailed to start the minecraft server
+[m
+java.lang.RuntimeException: Could not execute entrypoint stage 'main' due to errors, provided by 'railways' at 'com.railwayteam.railways.fabric.RailwaysImpl'!
+	at net.fabricmc.loader.impl.FabricLoaderImpl.lambda$invokeEntrypoints$0(FabricLoaderImpl.java:413)
+	at net.fabricmc.loader.impl.util.ExceptionUtil.gatherExceptions(ExceptionUtil.java:33)
+	at net.fabricmc.loader.impl.FabricLoaderImpl.invokeEntrypoints(FabricLoaderImpl.java:411)
+	at net.fabricmc.loader.impl.game.minecraft.Hooks.startServer(Hooks.java:63)
+	at knot//net.minecraft.server.Main.main(Main.java:114)
+	at net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider.launch(MinecraftGameProvider.java:514)
+	at net.fabricmc.loader.impl.launch.knot.Knot.launch(Knot.java:72)
+	at net.fabricmc.loader.impl.launch.knot.KnotServer.main(KnotServer.java:23)
+	at net.fabricmc.devlaunchinjector.Main.main(Main.java:86)
+	at dev.architectury.transformer.TransformerRuntime.main(TransformerRuntime.java:220)
+Caused by: java.lang.RuntimeException: Mixin transformation of net.minecraft.world.entity.ai.behavior.InteractWith failed
+	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.getPostMixinClassByteArray(KnotClassDelegate.java:440)
+	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.tryLoadClass(KnotClassDelegate.java:336)
+	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.loadClass(KnotClassDelegate.java:231)
+	at net.fabricmc.loader.impl.launch.knot.KnotClassLoader.loadClass(KnotClassLoader.java:119)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:490)
+	at java.base/java.lang.Class.forName0(Native Method)
+	at java.base/java.lang.Class.forName(Class.java:547)
+	at net.fabricmc.loader.impl.launch.knot.MixinServiceKnot.findClass(MixinServiceKnot.java:104)
+	at org.spongepowered.asm.mixin.transformer.MixinProcessor.audit(MixinProcessor.java:253)
+	at org.spongepowered.asm.mixin.transformer.MixinTransformer.audit(MixinTransformer.java:171)
+	at org.spongepowered.asm.mixin.MixinEnvironment.audit(MixinEnvironment.java:1718)
+	at knot//com.railwayteam.railways.Railways.init(Railways.java:109)
+	at knot//com.railwayteam.railways.fabric.RailwaysImpl.onInitialize(RailwaysImpl.java:43)
+	at net.fabricmc.loader.impl.FabricLoaderImpl.invokeEntrypoints(FabricLoaderImpl.java:409)
+	... 7 more
+Caused by: org.spongepowered.asm.mixin.transformer.throwables.MixinTransformerError: An unexpected critical error was encountered
+	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:380)
+	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClass(MixinTransformer.java:237)
+	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClassBytes(MixinTransformer.java:202)
+	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.getPostMixinClassByteArray(KnotClassDelegate.java:435)
+	... 20 more
+Caused by: org.spongepowered.asm.mixin.throwables.MixinApplyError: Mixin [valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies] from phase [DEFAULT] in config [valkyrienskies-common.mixins.json] FAILED during APPLY
+	at org.spongepowered.asm.mixin.transformer.MixinProcessor.handleMixinError(MixinProcessor.java:685)
+	at org.spongepowered.asm.mixin.transformer.MixinProcessor.handleMixinApplyError(MixinProcessor.java:636)
+	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:367)
+	... 23 more
+Caused by: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException: Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$baf000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
+	at org.spongepowered.asm.mixin.injection.selectors.TargetSelectors.validate(TargetSelectors.java:346)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.readAnnotation(InjectionInfo.java:369)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.<init>(InjectionInfo.java:340)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.<init>(InjectionInfo.java:331)
+	at org.spongepowered.asm.mixin.injection.struct.CallbackInjectionInfo.<init>(CallbackInjectionInfo.java:48)
+	at java.base/jdk.internal.reflect.DirectConstructorHandleAccessor.newInstance(DirectConstructorHandleAccessor.java:62)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:499)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:483)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo$InjectorEntry.create(InjectionInfo.java:196)
+	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.parse(InjectionInfo.java:664)
+	at org.spongepowered.asm.mixin.transformer.MixinTargetContext.prepareInjections(MixinTargetContext.java:1386)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.prepareInjections(MixinApplicatorStandard.java:811)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.lambda$runApplicatorPass$3(MixinApplicatorStandard.java:323)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.processMixins(MixinApplicatorStandard.java:381)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.runApplicatorPass(MixinApplicatorStandard.java:320)
+	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.apply(MixinApplicatorStandard.java:240)
+	at org.spongepowered.asm.mixin.transformer.TargetClassContext.apply(TargetClassContext.java:437)
+	at org.spongepowered.asm.mixin.transformer.TargetClassContext.applyMixins(TargetClassContext.java:418)
+	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:351)
+	... 23 more

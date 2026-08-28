@@ -175,11 +175,12 @@ jobs:
               return 1
             fi
             echo "Gate D using X11 window $window: $(xdotool getwindowname "$window" 2>/dev/null || true)"
-            xdotool windowactivate --sync "$window" 2>/dev/null || xdotool windowfocus --sync "$window" 2>/dev/null || true
-            xdotool key --window "$window" t
+            xdotool windowfocus --sync "$window"
+            sleep 0.2
+            xdotool key t
             sleep 0.35
-            xdotool type --window "$window" --delay 1 -- "$command"
-            xdotool key --window "$window" Return
+            xdotool type --delay 1 -- "$command"
+            xdotool key Return
             sleep 0.8
           }
 

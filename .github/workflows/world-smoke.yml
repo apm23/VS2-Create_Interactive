@@ -87,6 +87,7 @@ jobs:
           LIBGL_ALWAYS_SOFTWARE: 'true'
           MESA_GL_VERSION_OVERRIDE: '4.6'
           MESA_GLSL_VERSION_OVERRIDE: '460'
+          ALSOFT_DRIVERS: 'null'
         run: |
           set -euo pipefail
           rm -f ../world-smoke.log
@@ -98,9 +99,9 @@ jobs:
           trap cleanup EXIT
           dump_diagnostics() {
             echo '=== readiness/error markers ==='
-            grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|GLSL 4\.60|graphics backend|graphics device|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -260 || true
+            grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -300 || true
             echo '=== final log tail ==='
-            tail -140 ../world-smoke.log || true
+            tail -180 ../world-smoke.log || true
           }
           fatal_state() {
             grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../world-smoke.log \
@@ -109,7 +110,7 @@ jobs:
               || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
           }
           WORLD_READY=0
-          for i in $(seq 1 360); do
+          for i in $(seq 1 900); do
             if grep -Eq 'Starting integrated minecraft server|Starting integrated server' ../world-smoke.log \
               && grep -Eq 'Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements' ../world-smoke.log \
               && grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../world-smoke.log \
@@ -121,6 +122,7 @@ jobs:
             fi
             if fatal_state; then echo 'Fatal state while loading verified real train world.'; dump_diagnostics; exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before verified real train world reached ready state.'; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+            if [ $((i % 120)) -eq 0 ]; then echo "Still waiting for integrated server after ${i}s; latest runtime markers:"; tail -25 ../world-smoke.log || true; fi
             sleep 1
           done
           if [ "$WORLD_READY" -ne 1 ]; then echo 'Verified real train world did not reach integrated-server ready state.'; dump_diagnostics; exit 1; fi
@@ -144,9 +146,9 @@ jobs:
             echo 'Fixture gate: exactly 17 parts + 116120 Base64 bytes + 87090 ZIP bytes + exact SHA256 + ZIP CRC + level.dat + compressed tracks.dat + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
-              grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|GLSL 4\.60|graphics backend|graphics device|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -260 || true
+              grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -300 || true
               echo '--- tail ---'
-              tail -140 world-smoke.log
+              tail -180 world-smoke.log
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

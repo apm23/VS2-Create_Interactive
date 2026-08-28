@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - '.ci/world/train-test-world-smoke-r6.b64'
+      - '.github/workflows/world-smoke.yml'
 
 jobs:
   real-train-world-smoke:

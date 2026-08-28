@@ -83,6 +83,10 @@ jobs:
       - name: Load verified real train save through quick play and hold
         working-directory: upstream
         shell: bash
+        env:
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
         run: |
           set -euo pipefail
           rm -f ../world-smoke.log
@@ -94,7 +98,7 @@ jobs:
           trap cleanup EXIT
           dump_diagnostics() {
             echo '=== readiness/error markers ==='
-            grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -260 || true
+            grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|GLSL 4\.60|graphics backend|graphics device|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -260 || true
             echo '=== final log tail ==='
             tail -140 ../world-smoke.log || true
           }
@@ -125,7 +129,7 @@ jobs:
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during real-world hold.'; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
           if fatal_state; then echo 'Fatal state during real train world hold.'; dump_diagnostics; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
-          grep -E 'Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro' ../world-smoke.log | tail -160 || true
+          grep -E 'Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro|graphics backend|graphics device' ../world-smoke.log | tail -160 || true
           echo 'Verified real train world load/stability smoke passed.'
 
       - name: Summarize real-world smoke diagnostics
@@ -140,7 +144,7 @@ jobs:
             echo 'Fixture gate: exactly 17 parts + 116120 Base64 bytes + 87090 ZIP bytes + exact SHA256 + ZIP CRC + level.dat + compressed tracks.dat + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
-              grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -260 || true
+              grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|GLSL 4\.60|graphics backend|graphics device|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -260 || true
               echo '--- tail ---'
               tail -140 world-smoke.log
               echo '```'

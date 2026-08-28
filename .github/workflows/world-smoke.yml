@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.ci/world/train-test-world-smoke-r6.b64'
+      - '.ci/world/train-test-world-server-r0.b64.part-*'
       - '.github/workflows/world-smoke.yml'
 
 jobs:
@@ -32,8 +32,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -s .ci/world/train-test-world-smoke-r6.b64
-          base64 -d .ci/world/train-test-world-smoke-r6.b64 > train-test-world-smoke-r6.zip
+          parts=(
+            .ci/world/train-test-world-server-r0.b64.part-00
+            .ci/world/train-test-world-server-r0.b64.part-01
+            .ci/world/train-test-world-server-r0.b64.part-02
+            .ci/world/train-test-world-server-r0.b64.part-03
+            .ci/world/train-test-world-server-r0.b64.part-04
+            .ci/world/train-test-world-server-r0.b64.part-05a
+            .ci/world/train-test-world-server-r0.b64.part-05b
+            .ci/world/train-test-world-server-r0.b64.part-06a
+          )
+          for part in "${parts[@]}"; do test -s "$part"; done
+          cat "${parts[@]}" > train-test-world-server-r0.b64
+          base64 -d train-test-world-server-r0.b64 > train-test-world-smoke-r6.zip
           echo '00fc4f9973029228ee7a7740057475c1c89c018fd0f08cd758bdd90720919783  train-test-world-smoke-r6.zip' | sha256sum -c -
           rm -rf world-fixture
           mkdir world-fixture
@@ -107,6 +118,7 @@ jobs:
           set -uo pipefail
           {
             echo '## Real train world smoke'
+            echo 'Fixture source: train-test-world-server-r0.b64.part-00..06a'
             echo 'Fixture ZIP SHA256: 00fc4f9973029228ee7a7740057475c1c89c018fd0f08cd758bdd90720919783'
             echo 'Required save files checked: level.dat and data/create/tracks.dat'
             if [ -f world-smoke.log ]; then

@@ -90,18 +90,33 @@ jobs:
           ALSOFT_DRIVERS: 'null'
         run: |
           set -euo pipefail
-          rm -f ../world-smoke.log
+          rm -f ../world-smoke.log ../world-smoke-thread-dumps.txt
           rm -rf fabric/run/crash-reports
           rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
           xvfb-run -a ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-smoke' > ../world-smoke.log 2>&1 &
           CLIENT_PID=$!
           cleanup() { if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi; }
           trap cleanup EXIT
+          dump_threads() {
+            {
+              echo "=== thread/process diagnostic $(date -u +%FT%TZ) ==="
+              ps -eo pid,ppid,stat,etime,%cpu,%mem,args | grep -E 'java|gradle|xvfb' | grep -v grep || true
+              mapfile -t JVM_PIDS < <(pgrep -f 'net.fabricmc.devlaunchinjector.Main|KnotClient|TransformerRuntime|fabric:runClient' || true)
+              if [ "${#JVM_PIDS[@]}" -eq 0 ]; then mapfile -t JVM_PIDS < <(pgrep -f 'java' || true); fi
+              for pid in "${JVM_PIDS[@]}"; do
+                [ -r "/proc/$pid/cmdline" ] || continue
+                echo "--- JVM PID $pid: $(tr '\0' ' ' < /proc/$pid/cmdline) ---"
+                jcmd "$pid" Thread.print -l 2>&1 || jstack -l "$pid" 2>&1 || true
+              done
+            } >> ../world-smoke-thread-dumps.txt 2>&1
+          }
           dump_diagnostics() {
             echo '=== readiness/error markers ==='
             grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -300 || true
             echo '=== final log tail ==='
             tail -180 ../world-smoke.log || true
+            echo '=== latest thread dump tail ==='
+            tail -220 ../world-smoke-thread-dumps.txt 2>/dev/null || true
           }
           fatal_state() {
             grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../world-smoke.log \
@@ -110,6 +125,8 @@ jobs:
               || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
           }
           WORLD_READY=0
+          LAST_SIZE=0
+          STALE_WINDOWS=0
           for i in $(seq 1 900); do
             if grep -Eq 'Starting integrated minecraft server|Starting integrated server' ../world-smoke.log \
               && grep -Eq 'Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements' ../world-smoke.log \
@@ -120,16 +137,23 @@ jobs:
               WORLD_READY=1
               break
             fi
-            if fatal_state; then echo 'Fatal state while loading verified real train world.'; dump_diagnostics; exit 1; fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before verified real train world reached ready state.'; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
-            if [ $((i % 120)) -eq 0 ]; then echo "Still waiting for integrated server after ${i}s; latest runtime markers:"; tail -25 ../world-smoke.log || true; fi
+            if fatal_state; then echo 'Fatal state while loading verified real train world.'; dump_threads; dump_diagnostics; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before verified real train world reached ready state.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+            if [ $((i % 120)) -eq 0 ]; then
+              CURRENT_SIZE=$(stat -c%s ../world-smoke.log 2>/dev/null || echo 0)
+              if [ "$CURRENT_SIZE" -eq "$LAST_SIZE" ]; then STALE_WINDOWS=$((STALE_WINDOWS + 1)); else STALE_WINDOWS=0; fi
+              LAST_SIZE=$CURRENT_SIZE
+              echo "Still waiting after ${i}s; log_bytes=${CURRENT_SIZE}; stale_windows=${STALE_WINDOWS}"
+              tail -25 ../world-smoke.log || true
+              if [ "$STALE_WINDOWS" -ge 1 ]; then dump_threads; fi
+            fi
             sleep 1
           done
-          if [ "$WORLD_READY" -ne 1 ]; then echo 'Verified real train world did not reach integrated-server ready state.'; dump_diagnostics; exit 1; fi
+          if [ "$WORLD_READY" -ne 1 ]; then echo 'Verified real train world did not reach integrated-server ready state.'; dump_threads; dump_diagnostics; exit 1; fi
           echo 'Verified real train save loaded; holding 90 seconds for train/entity/physics activity...'
           sleep 90
-          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during real-world hold.'; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
-          if fatal_state; then echo 'Fatal state during real train world hold.'; dump_diagnostics; exit 1; fi
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during real-world hold.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+          if fatal_state; then echo 'Fatal state during real train world hold.'; dump_threads; dump_diagnostics; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
           grep -E 'Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro|graphics backend|graphics device' ../world-smoke.log | tail -160 || true
           echo 'Verified real train world load/stability smoke passed.'
@@ -151,12 +175,20 @@ jobs:
               tail -180 world-smoke.log
               echo '```'
             fi
+            if [ -f world-smoke-thread-dumps.txt ]; then
+              echo '### Thread dump tail'
+              echo '```text'
+              tail -260 world-smoke-thread-dumps.txt
+              echo '```'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload real-world runtime log
+      - name: Upload real-world runtime diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vs2-create-real-train-world-smoke-log
-          path: world-smoke.log
+          path: |
+            world-smoke.log
+            world-smoke-thread-dumps.txt
           if-no-files-found: warn

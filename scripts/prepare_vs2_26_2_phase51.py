@@ -70,9 +70,8 @@ object GateDProbe {
                 val dz = player.getZ() - carriage.getZ()
                 playerNearAtStart = dx * dx + dy * dy + dz * dz <= 144.0
                 val box = carriage.getBoundingBox()
-                logger.info("GATE_D_CARRIAGE_PRESENT type={} pos={},{},{}",
-                    BuiltInRegistries.ENTITY_TYPE.getKey(carriage.getType()), startX, startY, startZ)
-                logger.info("GATE_E_GEOMETRY player_pos={},{},{} carriage_box={},{},{} -> {},{},{}",
+                logger.info("GATE_D_CARRIAGE_PRESENT type={} pos={},{},{} gate_e_player_pos={},{},{} gate_e_carriage_box={},{},{} -> {},{},{}",
+                    BuiltInRegistries.ENTITY_TYPE.getKey(carriage.getType()), startX, startY, startZ,
                     player.getX(), player.getY(), player.getZ(),
                     box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)
                 if (playerNearAtStart) logger.info("GATE_D_PLAYER_NEAR_START")
@@ -85,9 +84,9 @@ object GateDProbe {
                 val displacementSq = dx * dx + dy * dy + dz * dz
                 if (displacementSq > 1.0) {
                     moved = true
-                    logger.info("GATE_D_TRAIN_MOVED displacement_sq={}", displacementSq)
                     val box = carriage.getBoundingBox()
-                    logger.info("GATE_E_GEOMETRY_AFTER player_pos={},{},{} carriage_box={},{},{} -> {},{},{}",
+                    logger.info("GATE_D_TRAIN_MOVED displacement_sq={} gate_e_player_pos={},{},{} gate_e_carriage_box={},{},{} -> {},{},{}",
+                        displacementSq,
                         player.getX(), player.getY(), player.getZ(),
                         box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)
                     if (playerNearAtStart) {
@@ -104,4 +103,4 @@ object GateDProbe {
 }
 ''', encoding="utf-8")
 
-print("Phase 51: added read-only Gate E geometry telemetry around the existing Gate D observer; no train controls, schedules, player motion, or VS2 physics are modified")
+print("Phase 51: embedded read-only Gate E player/carriage geometry into the required Gate D carriage-present and train-moved markers; no train controls, schedules, player motion, or VS2 physics are modified")

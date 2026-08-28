@@ -6,6 +6,7 @@ on:
     paths:
       - '.ci/world/r0v3.part-*'
       - '.ci/world/r0v3.sha256'
+      - 'scripts/prepare_vs2_26_2*.py'
       - '.github/workflows/world-smoke.yml'
 
 jobs:

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 p = ROOT / "common/src/main/resources/valkyrienskies-common.mixins.json"
@@ -17,7 +18,6 @@ if entry_crlf in s:
 elif entry in s:
     s = s.replace(entry, '', 1)
 else:
-    # read_text() may normalize line endings; remove the exact logical line safely.
     lines = s.splitlines(keepends=True)
     kept = [line for line in lines if '"feature.ai.goal.villagers.MixinInteractWith"' not in line]
     if len(kept) != len(lines) - 1:
@@ -26,14 +26,14 @@ else:
 
 p.write_text(s, encoding="utf-8")
 
-# GitHub Actions checks out a fresh client run directory. On a first Minecraft
-# launch, absence of options.txt enables Accessibility Onboarding, which owns
-# the callback that would otherwise execute --quickPlaySingleplayer. Seed only
-# the first-run option required by this headless smoke; never overwrite an
-# existing player/developer options file.
 options = ROOT / "fabric/run/options.txt"
 if not options.exists():
     options.parent.mkdir(parents=True, exist_ok=True)
     options.write_text("onboardAccessibility:false\npauseOnLostFocus:false\n", encoding="utf-8")
 
-print("Phase 50: disabled obsolete MC 1.21.11 villager-socialization MixinInteractWith on 26.2; seeded CI first-run options so quick-play can execute; core ship/train behavior remains enabled")
+# Phase 50 remains the workflow's terminal preparation step. Chain the
+# read-only Gate D observer from here so existing build/smoke workflows gain
+# deterministic in-process telemetry without needing keyboard/X11 injection.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase51.py")), run_name="__main__")
+
+print("Phase 50: disabled obsolete MC 1.21.11 villager-socialization MixinInteractWith on 26.2; seeded CI first-run options and chained read-only Gate D telemetry; core ship/train behavior remains enabled")

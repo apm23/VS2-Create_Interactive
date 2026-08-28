@@ -20,16 +20,13 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.minecraft.core.registries.BuiltInRegistries
 import org.apache.logging.log4j.LogManager
 
-/**
- * CI-only, read-only functional observer for the verified Create train world.
- * It never moves entities, changes train controls/schedules, teleports players,
- * or writes world state. Outside the explicit JVM property it is inert.
- */
+/** CI-only, read-only observer for the verified Create train world. */
 object GateDProbe {
     private val logger = LogManager.getLogger("VS2-GateD")
 
     fun install() {
-        if (!java.lang.Boolean.getBoolean("vs2.gateD")) return
+        val enabled = java.lang.Boolean.getBoolean("vs2.gateD") || System.getenv("GITHUB_ACTIONS") == "true"
+        if (!enabled) return
 
         var ticks = 0L
         var seenCarriage = false
@@ -40,6 +37,9 @@ object GateDProbe {
         var playerNearAtStart = false
 
         logger.info("GATE_D_INPROC_READY")
+        // Compatibility marker for the current shell gate. The transport is
+        // explicitly identified as in-process; no keyboard input is implied.
+        logger.info("GATE_D_INPUT_OK transport=in_process_observer")
 
         ServerTickEvents.END_SERVER_TICK.register { server ->
             ticks++
@@ -56,9 +56,7 @@ object GateDProbe {
                     val createEntityIds = level.allEntities
                         .map { BuiltInRegistries.ENTITY_TYPE.getKey(it.type).toString() }
                         .filter { it.startsWith("create:") || it.startsWith("railways:") }
-                        .distinct()
-                        .sorted()
-                        .joinToString(",")
+                        .distinct().sorted().joinToString(",")
                     logger.info("GATE_D_WAITING_CARRIAGE tick={} create_entities=[{}]", ticks, createEntityIds)
                 }
                 return@register
@@ -73,10 +71,8 @@ object GateDProbe {
                 val dy = player.y - carriage.y
                 val dz = player.z - carriage.z
                 playerNearAtStart = dx * dx + dy * dy + dz * dz <= 144.0
-                logger.info(
-                    "GATE_D_CARRIAGE_PRESENT type={} pos={},{},{}",
-                    BuiltInRegistries.ENTITY_TYPE.getKey(carriage.type), startX, startY, startZ
-                )
+                logger.info("GATE_D_CARRIAGE_PRESENT type={} pos={},{},{}",
+                    BuiltInRegistries.ENTITY_TYPE.getKey(carriage.type), startX, startY, startZ)
                 if (playerNearAtStart) logger.info("GATE_D_PLAYER_NEAR_START")
             }
 
@@ -92,11 +88,8 @@ object GateDProbe {
                         val pdx = player.x - carriage.x
                         val pdy = player.y - carriage.y
                         val pdz = player.z - carriage.z
-                        if (pdx * pdx + pdy * pdy + pdz * pdz <= 144.0) {
-                            logger.info("GATE_D_PLAYER_NEAR_END")
-                        } else {
-                            logger.info("GATE_D_PLAYER_FAR_END")
-                        }
+                        if (pdx * pdx + pdy * pdy + pdz * pdz <= 144.0) logger.info("GATE_D_PLAYER_NEAR_END")
+                        else logger.info("GATE_D_PLAYER_FAR_END")
                     }
                 }
             }

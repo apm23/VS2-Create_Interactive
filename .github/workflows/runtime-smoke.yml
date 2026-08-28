@@ -7,6 +7,9 @@ on:
       - 'scripts/**'
       - '.github/workflows/runtime-smoke.yml'
 
+permissions:
+  contents: write
+
 jobs:
   dedicated-server-smoke:
     runs-on: ubuntu-latest
@@ -111,3 +114,33 @@ jobs:
           name: vs2-26.2-runtime-smoke-log
           path: runtime-smoke.log
           if-no-files-found: warn
+      - name: Persist latest failed runtime diagnostic
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          {
+            echo 'VS2 26.2 dedicated runtime smoke failure diagnostic'
+            echo "source_commit=${GITHUB_SHA}"
+            echo
+            if [ ! -f runtime-smoke.log ]; then
+              echo 'No runtime-smoke.log was produced.'
+            else
+              echo '=== fatal/error context (last 80 matches) ==='
+              grep -Ein 'Exception in server tick loop|Could not execute entrypoint|Mixin (apply|prepare) failed|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Caused by:|Exception|ERROR|WARN' runtime-smoke.log | tail -80 || true
+              echo
+              echo '=== last 160 runtime lines ==='
+              tail -160 runtime-smoke.log
+            fi
+          } > diagnostics/latest-runtime-smoke.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/latest-runtime-smoke.txt
+          if git diff --cached --quiet; then
+            echo 'Diagnostic content unchanged; nothing to persist.'
+            exit 0
+          fi
+          git commit -m 'ci: record latest dedicated runtime failure'
+          git pull --rebase origin main
+          git push origin HEAD:main

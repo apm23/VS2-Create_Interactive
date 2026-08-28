@@ -130,6 +130,11 @@ jobs:
           dump_diagnostics() {
             echo '=== readiness/Gate-D/error markers ==='
             grep -Ein 'GATE_D_|Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -340 || true
+            echo '=== visible X11 windows ==='
+            for window in $(xdotool search --onlyvisible --name '.*' 2>/dev/null || true); do
+              echo "window=$window name=$(xdotool getwindowname "$window" 2>/dev/null || true) class=$(xdotool getwindowclassname "$window" 2>/dev/null || true)"
+              xdotool getwindowgeometry --shell "$window" 2>/dev/null || true
+            done
             echo '=== final log tail ==='
             tail -220 ../world-smoke.log || true
             echo '=== latest thread dump tail ==='
@@ -145,42 +150,71 @@ jobs:
               || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
           }
 
+          largest_visible_window() {
+            local best=''
+            local best_area=0
+            local window geometry width height area
+            for window in "$@"; do
+              [ -n "$window" ] || continue
+              geometry="$(xdotool getwindowgeometry --shell "$window" 2>/dev/null || true)"
+              width="$(printf '%s\n' "$geometry" | sed -n 's/^WIDTH=//p' | tail -1)"
+              height="$(printf '%s\n' "$geometry" | sed -n 's/^HEIGHT=//p' | tail -1)"
+              width="${width:-0}"
+              height="${height:-0}"
+              area=$((width * height))
+              if [ "$area" -gt "$best_area" ]; then
+                best="$window"
+                best_area="$area"
+              fi
+            done
+            [ -n "$best" ] && echo "$best"
+          }
+
           minecraft_window() {
-            local window=''
-            window="$(xdotool search --name 'Minecraft' 2>/dev/null | tail -1 || true)"
-            [ -n "$window" ] && { echo "$window"; return; }
-            window="$(xdotool search --class 'Minecraft' 2>/dev/null | tail -1 || true)"
-            [ -n "$window" ] && { echo "$window"; return; }
-            window="$(xdotool search --class 'GLFW' 2>/dev/null | tail -1 || true)"
-            [ -n "$window" ] && { echo "$window"; return; }
+            local pid window=''
+            local -a candidates=()
             mapfile -t GAME_PIDS < <(pgrep -f 'net.fabricmc.devlaunchinjector.Main|KnotClient|TransformerRuntime' || true)
             for pid in "${GAME_PIDS[@]}"; do
-              window="$(xdotool search --pid "$pid" 2>/dev/null | tail -1 || true)"
-              [ -n "$window" ] && { echo "$window"; return; }
+              while read -r candidate; do
+                [ -n "$candidate" ] && candidates+=("$candidate")
+              done < <(xdotool search --onlyvisible --pid "$pid" 2>/dev/null || true)
             done
-            xdotool search --onlyvisible --name '.*' 2>/dev/null | tail -1 || true
+            if [ "${#candidates[@]}" -gt 0 ]; then
+              window="$(largest_visible_window "${candidates[@]}")"
+              [ -n "$window" ] && { echo "$window"; return; }
+            fi
+
+            candidates=()
+            while read -r candidate; do
+              [ -n "$candidate" ] && candidates+=("$candidate")
+            done < <(xdotool search --onlyvisible --name '.*' 2>/dev/null || true)
+            if [ "${#candidates[@]}" -gt 0 ]; then
+              largest_visible_window "${candidates[@]}"
+            fi
           }
 
           send_chat() {
-            local command="$1"
+            local message="$1"
             local window=''
+            local geometry=''
             for _ in $(seq 1 30); do
               window="$(minecraft_window)"
               [ -n "$window" ] && break
               sleep 1
             done
             if [ -z "$window" ]; then
-              echo "Gate D could not locate Minecraft X11 window."
-              xdotool search --name '.*' getwindowname %@ 2>/dev/null || true
+              echo 'Gate D could not locate a visible Minecraft X11 window.'
+              dump_diagnostics
               return 1
             fi
-            echo "Gate D using X11 window $window: $(xdotool getwindowname "$window" 2>/dev/null || true)"
-            xdotool windowfocus --sync "$window"
+            geometry="$(xdotool getwindowgeometry --shell "$window" 2>/dev/null | tr '\n' ' ' || true)"
+            echo "Gate D using X11 window $window: name='$(xdotool getwindowname "$window" 2>/dev/null || true)' class='$(xdotool getwindowclassname "$window" 2>/dev/null || true)' $geometry"
+            xdotool windowfocus "$window" 2>/dev/null || true
             sleep 0.2
-            xdotool key t
+            xdotool key --window "$window" t
             sleep 0.35
-            xdotool type --delay 1 -- "$command"
-            xdotool key Return
+            xdotool type --window "$window" --delay 1 -- "$message"
+            xdotool key --window "$window" Return
             sleep 0.8
           }
 
@@ -213,6 +247,17 @@ jobs:
 
           echo 'Gate D: world ready; allowing player and carriage entities to settle.'
           sleep 8
+
+          # First prove that synthetic X11 input reaches the actual game window.
+          send_chat 'GATE_D_INPUT_OK'
+          sleep 2
+          if ! grep -q 'GATE_D_INPUT_OK' ../world-smoke.log; then
+            echo 'Gate D X11 input probe did not reach Minecraft; train assertions were not executed.'
+            dump_diagnostics
+            exit 1
+          fi
+          echo 'Gate D: X11 input path verified.'
+
           send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s run say GATE_D_CARRIAGE_PRESENT'
           send_chat '/kill @e[type=minecraft:marker,tag=vs2_gate_anchor]'
           send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s run summon minecraft:marker ~ ~ ~ {Tags:["vs2_gate_anchor"]}'
@@ -220,7 +265,7 @@ jobs:
           sleep 2
 
           if ! grep -q 'GATE_D_CARRIAGE_PRESENT' ../world-smoke.log; then
-            echo 'Gate D failed to observe a loaded Create carriage entity or command probe feedback.'
+            echo 'Gate D input works, but no loaded Create carriage command marker was observed.'
             dump_diagnostics
             exit 1
           fi

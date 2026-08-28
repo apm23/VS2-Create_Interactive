@@ -146,7 +146,19 @@ jobs:
           }
 
           minecraft_window() {
-            xdotool search --name 'Minecraft' 2>/dev/null | tail -1 || true
+            local window=''
+            window="$(xdotool search --name 'Minecraft' 2>/dev/null | tail -1 || true)"
+            [ -n "$window" ] && { echo "$window"; return; }
+            window="$(xdotool search --class 'Minecraft' 2>/dev/null | tail -1 || true)"
+            [ -n "$window" ] && { echo "$window"; return; }
+            window="$(xdotool search --class 'GLFW' 2>/dev/null | tail -1 || true)"
+            [ -n "$window" ] && { echo "$window"; return; }
+            mapfile -t GAME_PIDS < <(pgrep -f 'net.fabricmc.devlaunchinjector.Main|KnotClient|TransformerRuntime' || true)
+            for pid in "${GAME_PIDS[@]}"; do
+              window="$(xdotool search --pid "$pid" 2>/dev/null | tail -1 || true)"
+              [ -n "$window" ] && { echo "$window"; return; }
+            done
+            xdotool search --onlyvisible --name '.*' 2>/dev/null | tail -1 || true
           }
 
           send_chat() {
@@ -159,9 +171,11 @@ jobs:
             done
             if [ -z "$window" ]; then
               echo "Gate D could not locate Minecraft X11 window."
+              xdotool search --name '.*' getwindowname %@ 2>/dev/null || true
               return 1
             fi
-            xdotool windowfocus --sync "$window" || true
+            echo "Gate D using X11 window $window: $(xdotool getwindowname "$window" 2>/dev/null || true)"
+            xdotool windowactivate --sync "$window" 2>/dev/null || xdotool windowfocus --sync "$window" 2>/dev/null || true
             xdotool key --window "$window" t
             sleep 0.35
             xdotool type --window "$window" --delay 1 -- "$command"

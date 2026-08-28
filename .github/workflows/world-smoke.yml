@@ -54,9 +54,10 @@ jobs:
           mkdir world-fixture
           unzip -q train-world-state-r0v3.zip -d world-fixture
           test -f 'world-fixture/train build 1/level.dat'
-          test -f 'world-fixture/train build 1/data/create/tracks.dat'
-          test "$(stat -c%s 'world-fixture/train build 1/data/create/tracks.dat')" -ge 50000
-          strings 'world-fixture/train build 1/data/create/tracks.dat' | grep -q 'Hayajiro'
+          TRACKS='world-fixture/train build 1/data/create/tracks.dat'
+          test -f "$TRACKS"
+          test "$(stat -c%s "$TRACKS")" -ge 50000
+          gzip -cd "$TRACKS" | strings | grep -q 'Hayajiro'
 
       - name: Install exact save into client game directory
         shell: bash
@@ -130,7 +131,7 @@ jobs:
             echo '## Verified r0v3 real train world smoke'
             if [ -f fixture-parts.txt ]; then echo "Fixture parts: $(tr '\n' ' ' < fixture-parts.txt)"; fi
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
-            echo 'Fixture gate: exactly 17 parts + 116120 Base64 bytes + 87090 ZIP bytes + exact SHA256 + ZIP CRC + level.dat + tracks.dat + Hayajiro marker'
+            echo 'Fixture gate: exactly 17 parts + 116120 Base64 bytes + 87090 ZIP bytes + exact SHA256 + ZIP CRC + level.dat + compressed tracks.dat + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|Caused by:|ERROR' world-smoke.log | tail -100 || true

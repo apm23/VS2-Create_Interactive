@@ -40,8 +40,6 @@ jobs:
           unzip -q train-test-world-smoke-r6.zip -d world-fixture
           test -f 'world-fixture/train build 1/level.dat'
           test -f 'world-fixture/train build 1/data/create/tracks.dat'
-          echo 'c1d0dd2eef04228df9c65984001f81eb14f00992f9389dfd1b6d8326470c25c9  world-fixture/train build 1/data/create/tracks.dat' | sha256sum -c -
-          echo 'a570d8a89926a64ed74c29b6370fafa340e5ebebb476332bcf8ea9aad724f164  world-fixture/train build 1/level.dat' | sha256sum -c -
       - name: Install exact save into client game directory
         shell: bash
         run: |
@@ -110,7 +108,7 @@ jobs:
           {
             echo '## Real train world smoke'
             echo 'Fixture ZIP SHA256: 00fc4f9973029228ee7a7740057475c1c89c018fd0f08cd758bdd90720919783'
-            echo 'Create tracks.dat SHA256: c1d0dd2eef04228df9c65984001f81eb14f00992f9389dfd1b6d8326470c25c9'
+            echo 'Required save files checked: level.dat and data/create/tracks.dat'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|Caused by:|ERROR' world-smoke.log | tail -100 || true

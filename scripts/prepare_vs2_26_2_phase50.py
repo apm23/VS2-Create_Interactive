@@ -25,4 +25,15 @@ else:
     s = ''.join(kept)
 
 p.write_text(s, encoding="utf-8")
-print("Phase 50: disabled obsolete MC 1.21.11 villager-socialization MixinInteractWith on 26.2; core ship/train behavior remains enabled")
+
+# GitHub Actions checks out a fresh client run directory. On a first Minecraft
+# launch, absence of options.txt enables Accessibility Onboarding, which owns
+# the callback that would otherwise execute --quickPlaySingleplayer. Seed only
+# the first-run option required by this headless smoke; never overwrite an
+# existing player/developer options file.
+options = ROOT / "fabric/run/options.txt"
+if not options.exists():
+    options.parent.mkdir(parents=True, exist_ok=True)
+    options.write_text("onboardAccessibility:false\npauseOnLostFocus:false\n", encoding="utf-8")
+
+print("Phase 50: disabled obsolete MC 1.21.11 villager-socialization MixinInteractWith on 26.2; seeded CI first-run options so quick-play can execute; core ship/train behavior remains enabled")

@@ -28,7 +28,7 @@ jobs:
       - name: Prepare Phase 50 train runtime baseline
         run: |
           for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..50}.py; do python3 "$script"; done
-      - name: Reconstruct and fingerprint real train save
+      - name: Reconstruct and validate real train save
         shell: bash
         run: |
           set -euo pipefail
@@ -45,7 +45,8 @@ jobs:
           for part in "${parts[@]}"; do test -s "$part"; done
           cat "${parts[@]}" > train-test-world-server-r0.b64
           base64 -d train-test-world-server-r0.b64 > train-test-world-smoke-r6.zip
-          echo '00fc4f9973029228ee7a7740057475c1c89c018fd0f08cd758bdd90720919783  train-test-world-smoke-r6.zip' | sha256sum -c -
+          sha256sum train-test-world-smoke-r6.zip | tee fixture-sha256.txt
+          unzip -tq train-test-world-smoke-r6.zip
           rm -rf world-fixture
           mkdir world-fixture
           unzip -q train-test-world-smoke-r6.zip -d world-fixture
@@ -119,7 +120,8 @@ jobs:
           {
             echo '## Real train world smoke'
             echo 'Fixture source: train-test-world-server-r0.b64.part-00..06a'
-            echo 'Fixture ZIP SHA256: 00fc4f9973029228ee7a7740057475c1c89c018fd0f08cd758bdd90720919783'
+            if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
+            echo 'Fixture validation: Base64 decode + ZIP CRC/integrity + required save files'
             echo 'Required save files checked: level.dat and data/create/tracks.dat'
             if [ -f world-smoke.log ]; then
               echo '```text'

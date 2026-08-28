@@ -37,8 +37,6 @@ object GateDProbe {
         var playerNearAtStart = false
 
         logger.info("GATE_D_INPROC_READY")
-        // Compatibility marker for the current shell gate. The transport is
-        // explicitly identified as in-process; no keyboard input is implied.
         logger.info("GATE_D_INPUT_OK transport=in_process_observer")
 
         ServerTickEvents.END_SERVER_TICK.register { server ->
@@ -71,8 +69,12 @@ object GateDProbe {
                 val dy = player.getY() - carriage.getY()
                 val dz = player.getZ() - carriage.getZ()
                 playerNearAtStart = dx * dx + dy * dy + dz * dz <= 144.0
+                val box = carriage.getBoundingBox()
                 logger.info("GATE_D_CARRIAGE_PRESENT type={} pos={},{},{}",
                     BuiltInRegistries.ENTITY_TYPE.getKey(carriage.getType()), startX, startY, startZ)
+                logger.info("GATE_E_GEOMETRY player_pos={},{},{} carriage_box={},{},{} -> {},{},{}",
+                    player.getX(), player.getY(), player.getZ(),
+                    box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)
                 if (playerNearAtStart) logger.info("GATE_D_PLAYER_NEAR_START")
             }
 
@@ -84,6 +86,10 @@ object GateDProbe {
                 if (displacementSq > 1.0) {
                     moved = true
                     logger.info("GATE_D_TRAIN_MOVED displacement_sq={}", displacementSq)
+                    val box = carriage.getBoundingBox()
+                    logger.info("GATE_E_GEOMETRY_AFTER player_pos={},{},{} carriage_box={},{},{} -> {},{},{}",
+                        player.getX(), player.getY(), player.getZ(),
+                        box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)
                     if (playerNearAtStart) {
                         val pdx = player.getX() - carriage.getX()
                         val pdy = player.getY() - carriage.getY()
@@ -98,4 +104,4 @@ object GateDProbe {
 }
 ''', encoding="utf-8")
 
-print("Phase 51: installed CI-only read-only in-process Gate D observer with MC 26.2 entity accessors; no train controls, schedules, player motion, or VS2 physics are modified")
+print("Phase 51: added read-only Gate E geometry telemetry around the existing Gate D observer; no train controls, schedules, player motion, or VS2 physics are modified")

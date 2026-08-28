@@ -41,7 +41,6 @@ jobs:
           test -f 'world-fixture/train build 1/data/create/tracks.dat'
           echo 'c1d0dd2eef04228df9c65984001f81eb14f00992f9389dfd1b6d8326470c25c9  world-fixture/train build 1/data/create/tracks.dat' | sha256sum -c -
           echo 'a570d8a89926a64ed74c29b6370fafa340e5ebebb476332bcf8ea9aad724f164  world-fixture/train build 1/level.dat' | sha256sum -c -
-          test "$(stat -c%s 'world-fixture/train build 1/data/create/tracks.dat')" -eq 51026
       - name: Install exact save into client game directory
         shell: bash
         run: |

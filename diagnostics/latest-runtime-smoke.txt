@@ -1,5 +1,5 @@
 VS2 26.2 dedicated runtime smoke failure diagnostic
-source_commit=f7853845f8cf28318212ccc40986df34382b7b43
+source_commit=9014f728f74d1d4a7475f06cf7b63985bbb40ba3
 
 === fatal/error context (last 80 matches) ===
 1:WARNING: A restricted method in java.lang.System has been called
@@ -8,184 +8,169 @@ source_commit=f7853845f8cf28318212ccc40986df34382b7b43
 4:WARNING: Restricted methods will be blocked in a future release unless native access is enabled
 17:> Task :common:checkKotlinGradlePluginConfigurationErrors SKIPPED
 20:> Task :fabric:checkKotlinGradlePluginConfigurationErrors SKIPPED
-589:[m[34m[02:40:46][m [33m[main/WARN][m [36m(FabricLoader/Resolution)[m [0mWarnings were found!
-667:[m[34m[02:40:47][m [31m[main/ERROR][m [36m(FabricLoader/Mixin)[m [31mInvalid REFMAP JSON in : org.spongepowered.include.com.google.gson.JsonSyntaxException java.lang.IllegalStateException: Expected BEGIN_OBJECT but was STRING at line 1 column 1
-668:[m[34m[02:40:47][m [33m[main/WARN][m [36m(FabricLoader/Mixin)[m [0mReference map '' for valkyrienskies-fabric.mixins.json could not be read. If this is a development environment you can ignore this message
-855:[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin)[m [0mInstancing error handler class org.valkyrienskies.mod.mixin.ValkyrienMixinErrorHandler
-856:[m[34m[02:40:56][m [31m[main/ERROR][m [36m(FabricLoader/Mixin)[m [31mMixin apply for mod valkyrienskies failed valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> net.minecraft.world.entity.ai.behavior.InteractWith: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$bdn000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
-858:org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException: Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$bdn000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
-902:[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: java.nio.file.NoSuchFileException: ./config/create/server.json
-903:[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:92)
-904:[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:106)
-905:[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:111)
-931:[m[34m[02:40:57][m [31m[main/ERROR][m [36m(Minecraft)[m [31mFailed to start the minecraft server
-933:java.lang.RuntimeException: Could not execute entrypoint stage 'main' due to errors, provided by 'railways' at 'com.railwayteam.railways.fabric.RailwaysImpl'!
-935:	at net.fabricmc.loader.impl.util.ExceptionUtil.gatherExceptions(ExceptionUtil.java:33)
-944:Caused by: java.lang.RuntimeException: Mixin transformation of net.minecraft.world.entity.ai.behavior.InteractWith failed
-960:Caused by: org.spongepowered.asm.mixin.transformer.throwables.MixinTransformerError: An unexpected critical error was encountered
-966:Caused by: org.spongepowered.asm.mixin.throwables.MixinApplyError: Mixin [valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies] from phase [DEFAULT] in config [valkyrienskies-common.mixins.json] FAILED during APPLY
-967:	at org.spongepowered.asm.mixin.transformer.MixinProcessor.handleMixinError(MixinProcessor.java:685)
-968:	at org.spongepowered.asm.mixin.transformer.MixinProcessor.handleMixinApplyError(MixinProcessor.java:636)
-971:Caused by: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException: Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$bdn000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
+600:FAILURE: Build failed with an exception.
+605:   > Compilation error. See log for more details
+615:You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+617:For more on this, please refer to https://docs.gradle.org/9.7.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
 === last 160 runtime lines ===
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.level.ChunkMap$TrackedEntity
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.item.Item$TooltipContext$2
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.pathfinder.PathfindingContext
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.entity.PersistentEntitySectionManager
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class com.zurrtum.create.content.trains.entity.TravellingPoint
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.chunk.storage.IOWorker
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.entity.ai.village.poi.PoiManager
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.data.recipes.SingleItemRecipeBuilder
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.saveddata.maps.MapItemSavedData
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.redstone.CollectingNeighborUpdater$MultiNeighborUpdate
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.level.GenerationChunkHolder
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.network.ServerCommonPacketListenerImpl
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.packs.repository.Pack
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.redstone.ExperimentalRedstoneWireEvaluator
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.commands.data.EntityDataAccessor
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.server.network.ServerHandshakePacketListenerImpl
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.pathfinder.WalkNodeEvaluator
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.entity.ai.behavior.MoveToTargetSink
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.data.recipes.TransmuteRecipeBuilder
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.chunk.ImposterProtoChunk
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.commands.Commands
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.level.entity.PersistentEntitySectionManager$Callback
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin/audit)[m [0mForce-loading class net.minecraft.world.entity.ai.behavior.InteractWith
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(FabricLoader/Mixin)[m [0mInstancing error handler class org.valkyrienskies.mod.mixin.ValkyrienMixinErrorHandler
-[m[34m[02:40:56][m [31m[main/ERROR][m [36m(FabricLoader/Mixin)[m [31mMixin apply for mod valkyrienskies failed valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> net.minecraft.world.entity.ai.behavior.InteractWith: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$bdn000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
-[m
-org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException: Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$bdn000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
-	at org.spongepowered.asm.mixin.injection.selectors.TargetSelectors.validate(TargetSelectors.java:346)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.readAnnotation(InjectionInfo.java:369)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.<init>(InjectionInfo.java:340)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.<init>(InjectionInfo.java:331)
-	at org.spongepowered.asm.mixin.injection.struct.CallbackInjectionInfo.<init>(CallbackInjectionInfo.java:48)
-	at java.base/jdk.internal.reflect.DirectConstructorHandleAccessor.newInstance(DirectConstructorHandleAccessor.java:62)
-	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:499)
-	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:483)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo$InjectorEntry.create(InjectionInfo.java:196)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.parse(InjectionInfo.java:664)
-	at org.spongepowered.asm.mixin.transformer.MixinTargetContext.prepareInjections(MixinTargetContext.java:1386)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.prepareInjections(MixinApplicatorStandard.java:811)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.lambda$runApplicatorPass$3(MixinApplicatorStandard.java:323)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.processMixins(MixinApplicatorStandard.java:381)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.runApplicatorPass(MixinApplicatorStandard.java:320)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.apply(MixinApplicatorStandard.java:240)
-	at org.spongepowered.asm.mixin.transformer.TargetClassContext.apply(TargetClassContext.java:437)
-	at org.spongepowered.asm.mixin.transformer.TargetClassContext.applyMixins(TargetClassContext.java:418)
-	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:351)
-	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClass(MixinTransformer.java:237)
-	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClassBytes(MixinTransformer.java:202)
-	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.getPostMixinClassByteArray(KnotClassDelegate.java:435)
-	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.tryLoadClass(KnotClassDelegate.java:336)
-	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.loadClass(KnotClassDelegate.java:231)
-	at net.fabricmc.loader.impl.launch.knot.KnotClassLoader.loadClass(KnotClassLoader.java:119)
-	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:490)
-	at java.base/java.lang.Class.forName0(Native Method)
-	at java.base/java.lang.Class.forName(Class.java:547)
-	at net.fabricmc.loader.impl.launch.knot.MixinServiceKnot.findClass(MixinServiceKnot.java:104)
-	at org.spongepowered.asm.mixin.transformer.MixinProcessor.audit(MixinProcessor.java:253)
-	at org.spongepowered.asm.mixin.transformer.MixinTransformer.audit(MixinTransformer.java:171)
-	at org.spongepowered.asm.mixin.MixinEnvironment.audit(MixinEnvironment.java:1718)
-	at knot//com.railwayteam.railways.Railways.init(Railways.java:109)
-	at knot//com.railwayteam.railways.fabric.RailwaysImpl.onInitialize(RailwaysImpl.java:43)
-	at net.fabricmc.loader.impl.FabricLoaderImpl.invokeEntrypoints(FabricLoaderImpl.java:409)
-	at net.fabricmc.loader.impl.game.minecraft.Hooks.startServer(Hooks.java:63)
-	at knot//net.minecraft.server.Main.main(Main.java:114)
-	at net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider.launch(MinecraftGameProvider.java:514)
-	at net.fabricmc.loader.impl.launch.knot.Knot.launch(Knot.java:72)
-	at net.fabricmc.loader.impl.launch.knot.KnotServer.main(KnotServer.java:23)
-	at net.fabricmc.devlaunchinjector.Main.main(Main.java:86)
-	at dev.architectury.transformer.TransformerRuntime.main(TransformerRuntime.java:220)
-[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: Failed to read config file: /home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/run/./config/create/server.json
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: java.nio.file.NoSuchFileException: ./config/create/server.json
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:92)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:106)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:111)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixFileSystemProvider.newFileChannel(UnixFileSystemProvider.java:213)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/sun.nio.fs.UnixFileSystemProvider.newByteChannel(UnixFileSystemProvider.java:244)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/java.nio.file.Files.newByteChannel(Files.java:357)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/java.nio.file.Files.newByteChannel(Files.java:399)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/java.nio.file.spi.FileSystemProvider.newInputStream(FileSystemProvider.java:371)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at java.base/java.nio.file.Files.newInputStream(Files.java:154)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//org.apache.commons.io.FileUtils.lambda$readFileToString$14(FileUtils.java:2768)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//org.apache.commons.io.IOUtils.toString(IOUtils.java:3204)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//org.apache.commons.io.IOUtils.toString(IOUtils.java:3179)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//org.apache.commons.io.FileUtils.readFileToString(FileUtils.java:2768)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.catnip.config.Builder.read(Builder.java:136)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.catnip.config.Builder.<init>(Builder.java:36)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.catnip.config.Builder.create(Builder.java:49)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.catnip.config.Builder.create(Builder.java:44)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.infrastructure.config.AllConfigs.register(AllConfigs.java:28)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//com.zurrtum.create.Create.onInitialize(Create.java:62)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.FabricLoaderImpl.invokeEntrypoints(FabricLoaderImpl.java:409)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.game.minecraft.Hooks.startServer(Hooks.java:63)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at knot//net.minecraft.server.Main.main(Main.java:114)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider.launch(MinecraftGameProvider.java:514)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.launch.knot.Knot.launch(Knot.java:72)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.loader.impl.launch.knot.KnotServer.main(KnotServer.java:23)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at net.fabricmc.devlaunchinjector.Main.main(Main.java:86)
-[m[34m[02:40:56][m [32m[main/INFO][m [36m(Minecraft)[m [0m[STDERR]: 	at dev.architectury.transformer.TransformerRuntime.main(TransformerRuntime.java:220)
-[m[34m[02:40:57][m [32m[main/INFO][m [36m(VSCoreProviderImpl)[m [0mInitialized VSCore on Fabric!
-[m[34m[02:40:57][m [31m[main/ERROR][m [36m(Minecraft)[m [31mFailed to start the minecraft server
-[m
-java.lang.RuntimeException: Could not execute entrypoint stage 'main' due to errors, provided by 'railways' at 'com.railwayteam.railways.fabric.RailwaysImpl'!
-	at net.fabricmc.loader.impl.FabricLoaderImpl.lambda$invokeEntrypoints$0(FabricLoaderImpl.java:413)
-	at net.fabricmc.loader.impl.util.ExceptionUtil.gatherExceptions(ExceptionUtil.java:33)
-	at net.fabricmc.loader.impl.FabricLoaderImpl.invokeEntrypoints(FabricLoaderImpl.java:411)
-	at net.fabricmc.loader.impl.game.minecraft.Hooks.startServer(Hooks.java:63)
-	at knot//net.minecraft.server.Main.main(Main.java:114)
-	at net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider.launch(MinecraftGameProvider.java:514)
-	at net.fabricmc.loader.impl.launch.knot.Knot.launch(Knot.java:72)
-	at net.fabricmc.loader.impl.launch.knot.KnotServer.main(KnotServer.java:23)
-	at net.fabricmc.devlaunchinjector.Main.main(Main.java:86)
-	at dev.architectury.transformer.TransformerRuntime.main(TransformerRuntime.java:220)
-Caused by: java.lang.RuntimeException: Mixin transformation of net.minecraft.world.entity.ai.behavior.InteractWith failed
-	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.getPostMixinClassByteArray(KnotClassDelegate.java:440)
-	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.tryLoadClass(KnotClassDelegate.java:336)
-	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.loadClass(KnotClassDelegate.java:231)
-	at net.fabricmc.loader.impl.launch.knot.KnotClassLoader.loadClass(KnotClassLoader.java:119)
-	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:490)
-	at java.base/java.lang.Class.forName0(Native Method)
-	at java.base/java.lang.Class.forName(Class.java:547)
-	at net.fabricmc.loader.impl.launch.knot.MixinServiceKnot.findClass(MixinServiceKnot.java:104)
-	at org.spongepowered.asm.mixin.transformer.MixinProcessor.audit(MixinProcessor.java:253)
-	at org.spongepowered.asm.mixin.transformer.MixinTransformer.audit(MixinTransformer.java:171)
-	at org.spongepowered.asm.mixin.MixinEnvironment.audit(MixinEnvironment.java:1718)
-	at knot//com.railwayteam.railways.Railways.init(Railways.java:109)
-	at knot//com.railwayteam.railways.fabric.RailwaysImpl.onInitialize(RailwaysImpl.java:43)
-	at net.fabricmc.loader.impl.FabricLoaderImpl.invokeEntrypoints(FabricLoaderImpl.java:409)
-	... 7 more
-Caused by: org.spongepowered.asm.mixin.transformer.throwables.MixinTransformerError: An unexpected critical error was encountered
-	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:380)
-	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClass(MixinTransformer.java:237)
-	at org.spongepowered.asm.mixin.transformer.MixinTransformer.transformClassBytes(MixinTransformer.java:202)
-	at net.fabricmc.loader.impl.launch.knot.KnotClassDelegate.getPostMixinClassByteArray(KnotClassDelegate.java:435)
-	... 20 more
-Caused by: org.spongepowered.asm.mixin.throwables.MixinApplyError: Mixin [valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies] from phase [DEFAULT] in config [valkyrienskies-common.mixins.json] FAILED during APPLY
-	at org.spongepowered.asm.mixin.transformer.MixinProcessor.handleMixinError(MixinProcessor.java:685)
-	at org.spongepowered.asm.mixin.transformer.MixinProcessor.handleMixinApplyError(MixinProcessor.java:636)
-	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:367)
-	... 23 more
-Caused by: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException: Critical injection failure: @Inject annotation on vs$dampShipSocialize could not find any targets matching 'method_46959(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;)Z' in net/minecraft/world/entity/ai/behavior/InteractWith. No refMap loaded. [INJECT_PREPARE_LEGACY Applicator Phase -> valkyrienskies-common.mixins.json:feature.ai.goal.villagers.MixinInteractWith from mod valkyrienskies -> Prepare Legacy Injections -> handler$bdn000$valkyrienskies$vs$dampShipSocialize(Lnet/minecraft/world/entity/LivingEntity;ILjava/util/function/Predicate;Lnet/minecraft/world/entity/LivingEntity;Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfoReturnable;)V -> Parse ->  -> Validate Targets]
-	at org.spongepowered.asm.mixin.injection.selectors.TargetSelectors.validate(TargetSelectors.java:346)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.readAnnotation(InjectionInfo.java:369)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.<init>(InjectionInfo.java:340)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.<init>(InjectionInfo.java:331)
-	at org.spongepowered.asm.mixin.injection.struct.CallbackInjectionInfo.<init>(CallbackInjectionInfo.java:48)
-	at java.base/jdk.internal.reflect.DirectConstructorHandleAccessor.newInstance(DirectConstructorHandleAccessor.java:62)
-	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:499)
-	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:483)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo$InjectorEntry.create(InjectionInfo.java:196)
-	at org.spongepowered.asm.mixin.injection.struct.InjectionInfo.parse(InjectionInfo.java:664)
-	at org.spongepowered.asm.mixin.transformer.MixinTargetContext.prepareInjections(MixinTargetContext.java:1386)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.prepareInjections(MixinApplicatorStandard.java:811)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.lambda$runApplicatorPass$3(MixinApplicatorStandard.java:323)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.processMixins(MixinApplicatorStandard.java:381)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.runApplicatorPass(MixinApplicatorStandard.java:320)
-	at org.spongepowered.asm.mixin.transformer.MixinApplicatorStandard.apply(MixinApplicatorStandard.java:240)
-	at org.spongepowered.asm.mixin.transformer.TargetClassContext.apply(TargetClassContext.java:437)
-	at org.spongepowered.asm.mixin.transformer.TargetClassContext.applyMixins(TargetClassContext.java:418)
-	at org.spongepowered.asm.mixin.transformer.MixinProcessor.applyMixins(MixinProcessor.java:351)
-	... 23 more
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:66:39 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:67:50 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:87:39 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:89:47 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:104:43 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:109:43 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:122:29 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:122:39 Unnecessary safe call on a non-null receiver of type 'LoadedServerShip'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:138:39 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:139:55 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:145:29 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:145:39 Unnecessary safe call on a non-null receiver of type 'LoadedServerShip'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:155:25 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/SplitHandler.kt:155:35 Unnecessary safe call on a non-null receiver of type 'LoadedServerShip'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:31:24 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:50:37 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:50:58 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:55:13 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:57:20 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:59:24 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:62:24 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:70:29 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:73:23 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:74:25 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:74:34 'val omega: Vector3dc' is deprecated. renamed.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:134:25 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/WaveBuoyancyAttachment.kt:140:66 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ChunkManagement.kt:41:37 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ChunkManagement.kt:42:52 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ChunkManagement.kt:117:42 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ChunkManagement.kt:146:9 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/RaycastUtils.kt:68:9 Condition is always 'false'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/RaycastUtils.kt:120:37 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/RaycastUtils.kt:121:37 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:124:25 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:149:22 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:149:32 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:150:26 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:153:27 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:153:46 'class SeatedControllingPlayer : Any' is deprecated. This API will be removed at a later date. Addons should make their own seat entities and handle their own inputs.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:154:33 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:156:56 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:160:69 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:160:87 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:163:27 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:165:27 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:165:44 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:166:35 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:167:41 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:167:64 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:175:44 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:191:13 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:191:34 'fun iterateChunkPos(func: (Int, Int) -> Unit): Unit' is deprecated. Uses boxed integers as parameters and requires Unit return type, bad for performance and Java interop.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:210:45 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:279:40 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:280:20 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:308:41 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:314:36 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:314:47 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:314:61 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:321:37 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:324:20 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:324:35 Elvis operator (?:) always returns the left operand of non-nullable type 'AABBdc'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:343:40 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:351:22 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:351:32 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:352:30 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:353:53 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:354:27 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:354:46 'class SeatedControllingPlayer : Any' is deprecated. This API will be removed at a later date. Addons should make their own seat entities and handle their own inputs.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:357:60 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:358:45 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:358:63 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:361:24 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:365:46 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:365:55 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:366:30 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:368:33 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:368:56 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipActivationManager.kt:379:21 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:82:25 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:85:22 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:85:32 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:87:13 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:88:17 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:89:56 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:90:13 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:90:17 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:94:27 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:95:20 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:95:35 Elvis operator (?:) always returns the left operand of non-nullable type 'AABBdc'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/world/ShipPlantMower.kt:114:27 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/ClientConnectivityUpdateQueue.kt:27:59 Elvis operator (?:) always returns the left operand of non-nullable type 'LevelChunk'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/ClientConnectivityUpdateQueue.kt:28:41 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/ClientConnectivityUpdateQueue.kt:29:17 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/ClientConnectivityUpdateQueue.kt:29:17 Condition is always 'true'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/ClientConnectivityUpdateQueue.kt:38:25 Condition is always 'true'.
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/ClientConnectivityUpdateQueue.kt:50:21 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/ClientConnectivityUpdateQueue.kt:53:25 This is a Game Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Physics Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/PhysicsBlockEntityUtil.kt:15:26 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/PhysicsBlockEntityUtil.kt:16:27 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+w: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/common/src/main/kotlin/org/valkyrienskies/mod/util/PhysicsBlockEntityUtil.kt:16:76 This is a Physics Thread only class or method. Ensure you are not accessing it, directly or by reference, from the Game Thread!
+
+> Task :common:compileJava
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+> Task :common:classes
+> Task :common:jar
+
+> Task :fabric:compileKotlin FAILED
+w: -Xjvm-default is deprecated. Use -jvm-default instead.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:33:32 Unresolved reference 'serverLevel'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:34:60 Cannot infer type for value parameter 'entity'. Specify it explicitly.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:35:61 Unresolved reference 'type'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:41:72 Unresolved reference 'type'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:42:38 Unresolved reference 'startsWith'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:42:66 Unresolved reference 'startsWith'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:51:35 Unresolved reference 'x'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:52:35 Unresolved reference 'y'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:53:35 Unresolved reference 'z'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:54:46 Unresolved reference 'x'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:55:46 Unresolved reference 'y'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:56:46 Unresolved reference 'z'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:57:65 'operator' modifier is required on 'fun <T> Comparable<T>.compareTo(other: T): Int'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:59:67 Unresolved reference 'type'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:64:35 Unresolved reference 'x'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:65:35 Unresolved reference 'y'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:66:35 Unresolved reference 'z'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:68:36 'operator' modifier is required on 'fun <T> Comparable<T>.compareTo(other: T): Int'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:72:55 Unresolved reference 'x'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:73:55 Unresolved reference 'y'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:74:55 Unresolved reference 'z'.
+e: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt:75:63 'operator' modifier is required on 'fun <T> Comparable<T>.compareTo(other: T): Int'.
+
+[Incubating] Problems report is available at: file:///home/runner/work/VS2-Create_Interactive/VS2-Create_Interactive/upstream/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':fabric:compileKotlin' (registered by plugin 'org.jetbrains.kotlin.jvm').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.7.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1m 31s
+11 actionable tasks: 11 executed

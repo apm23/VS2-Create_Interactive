@@ -90,6 +90,33 @@ jobs:
           if fatal_client_state; then echo 'Fatal client runtime state detected during stability hold.'; cat ../client-smoke.log; find fabric/run/crash-reports -maxdepth 1 -type f -print -exec cat {} \; 2>/dev/null || true; exit 1; fi
           grep -E '(^|[[:space:]])- (create|railways|copycats) |Initialized VSCore on Fabric|valkyrienskies|Registering Ponder Scenes|Created: .*atlas|Loaded [0-9]+ shader sources' ../client-smoke.log | tail -100 || true
           echo 'Headless train dependency client startup smoke passed.'
+      - name: Summarize client smoke diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          {
+            echo '## VS2 26.2 client smoke diagnostics'
+            if [ ! -f client-smoke.log ]; then
+              echo 'No client-smoke.log was produced; failure occurred before runClient launched.'
+              exit 0
+            fi
+            echo
+            echo '### Fatal-signature context'
+            echo '```text'
+            MATCHES=$(grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|GLFW error|Failed to initialize graphics|Minecraft has crashed|Exception in thread "Render thread"|Game crashed|Caused by:|Exception|ERROR' client-smoke.log | tail -80 || true)
+            if [ -n "$MATCHES" ]; then
+              printf '%s\n' "$MATCHES"
+            else
+              echo 'No configured fatal/error signature matched.'
+            fi
+            echo '```'
+            echo
+            echo '### Last 120 runtime lines'
+            echo '```text'
+            tail -120 client-smoke.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload client runtime log
         if: always()
         uses: actions/upload-artifact@v4

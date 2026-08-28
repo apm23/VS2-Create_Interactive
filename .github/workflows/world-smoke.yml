@@ -92,6 +92,12 @@ jobs:
           CLIENT_PID=$!
           cleanup() { if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi; }
           trap cleanup EXIT
+          dump_diagnostics() {
+            echo '=== readiness/error markers ==='
+            grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -260 || true
+            echo '=== final log tail ==='
+            tail -140 ../world-smoke.log || true
+          }
           fatal_state() {
             grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../world-smoke.log \
               || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
@@ -109,15 +115,15 @@ jobs:
               WORLD_READY=1
               break
             fi
-            if fatal_state; then echo 'Fatal state while loading verified real train world.'; cat ../world-smoke.log; exit 1; fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before verified real train world reached ready state.'; cat ../world-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
+            if fatal_state; then echo 'Fatal state while loading verified real train world.'; dump_diagnostics; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before verified real train world reached ready state.'; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
             sleep 1
           done
-          if [ "$WORLD_READY" -ne 1 ]; then echo 'Verified real train world did not reach integrated-server ready state.'; cat ../world-smoke.log; exit 1; fi
+          if [ "$WORLD_READY" -ne 1 ]; then echo 'Verified real train world did not reach integrated-server ready state.'; dump_diagnostics; exit 1; fi
           echo 'Verified real train save loaded; holding 90 seconds for train/entity/physics activity...'
           sleep 90
-          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during real-world hold.'; cat ../world-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
-          if fatal_state; then echo 'Fatal state during real train world hold.'; cat ../world-smoke.log; exit 1; fi
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during real-world hold.'; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+          if fatal_state; then echo 'Fatal state during real train world hold.'; dump_diagnostics; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
           grep -E 'Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro' ../world-smoke.log | tail -160 || true
           echo 'Verified real train world load/stability smoke passed.'
@@ -134,8 +140,9 @@ jobs:
             echo 'Fixture gate: exactly 17 parts + 116120 Base64 bytes + 87090 ZIP bytes + exact SHA256 + ZIP CRC + level.dat + compressed tracks.dat + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
-              grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|Caused by:|ERROR' world-smoke.log | tail -100 || true
-              tail -120 world-smoke.log
+              grep -Ein 'Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -260 || true
+              echo '--- tail ---'
+              tail -140 world-smoke.log
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

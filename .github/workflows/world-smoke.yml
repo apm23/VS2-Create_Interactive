@@ -32,18 +32,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          parts=(
-            .ci/world/r0v2.part-00
-            .ci/world/r0v2.part-01
-            .ci/world/r0v2.part-01a
-            .ci/world/r0v2.part-01b
-            .ci/world/r0v2.part-01c
-            .ci/world/r0v2.part-02
-            .ci/world/r0v2.part-03
-            .ci/world/r0v2.part-04
-            .ci/world/r0v2.part-05
-          )
+          mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v2.part-*' -print | sort -V)
+          test "${#parts[@]}" -ge 1
           for part in "${parts[@]}"; do test -s "$part"; done
+          printf '%s\n' "${parts[@]}" | tee fixture-parts.txt
           cat "${parts[@]}" > train-test-world-r0v2.b64
           base64 -d train-test-world-r0v2.b64 > train-test-world-r0v2.zip
           sha256sum train-test-world-r0v2.zip | tee fixture-sha256.txt
@@ -122,7 +114,7 @@ jobs:
           set -uo pipefail
           {
             echo '## Compact real train world smoke'
-            echo 'Fixture source: r0v2.part-00,01,01a,01b,01c,02,03,04,05'
+            if [ -f fixture-parts.txt ]; then echo "Fixture parts: $(tr '\n' ' ' < fixture-parts.txt)"; fi
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
             echo 'Fixture validation: Base64 decode + ZIP CRC/integrity + level.dat + tracks.dat >= 50 KB + Hayajiro marker'
             if [ -f world-smoke.log ]; then

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.ci/world/train-test-world-server-r0.b64.part-*'
+      - '.ci/world/r0v2.part-*'
       - '.github/workflows/world-smoke.yml'
 
 jobs:
@@ -28,30 +28,33 @@ jobs:
       - name: Prepare Phase 50 train runtime baseline
         run: |
           for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..50}.py; do python3 "$script"; done
-      - name: Reconstruct and validate real train save
+      - name: Reconstruct and validate compact real train save
         shell: bash
         run: |
           set -euo pipefail
           parts=(
-            .ci/world/train-test-world-server-r0.b64.part-00
-            .ci/world/train-test-world-server-r0.b64.part-01
-            .ci/world/train-test-world-server-r0.b64.part-02
-            .ci/world/train-test-world-server-r0.b64.part-03
-            .ci/world/train-test-world-server-r0.b64.part-04
-            .ci/world/train-test-world-server-r0.b64.part-05a
-            .ci/world/train-test-world-server-r0.b64.part-05b
-            .ci/world/train-test-world-server-r0.b64.part-06a
+            .ci/world/r0v2.part-00
+            .ci/world/r0v2.part-01
+            .ci/world/r0v2.part-01a
+            .ci/world/r0v2.part-01b
+            .ci/world/r0v2.part-01c
+            .ci/world/r0v2.part-02
+            .ci/world/r0v2.part-03
+            .ci/world/r0v2.part-04
+            .ci/world/r0v2.part-05
           )
           for part in "${parts[@]}"; do test -s "$part"; done
-          cat "${parts[@]}" > train-test-world-server-r0.b64
-          base64 -d train-test-world-server-r0.b64 > train-test-world-smoke-r6.zip
-          sha256sum train-test-world-smoke-r6.zip | tee fixture-sha256.txt
-          unzip -tq train-test-world-smoke-r6.zip
+          cat "${parts[@]}" > train-test-world-r0v2.b64
+          base64 -d train-test-world-r0v2.b64 > train-test-world-r0v2.zip
+          sha256sum train-test-world-r0v2.zip | tee fixture-sha256.txt
+          unzip -tq train-test-world-r0v2.zip
           rm -rf world-fixture
           mkdir world-fixture
-          unzip -q train-test-world-smoke-r6.zip -d world-fixture
+          unzip -q train-test-world-r0v2.zip -d world-fixture
           test -f 'world-fixture/train build 1/level.dat'
           test -f 'world-fixture/train build 1/data/create/tracks.dat'
+          test "$(stat -c%s 'world-fixture/train build 1/data/create/tracks.dat')" -ge 50000
+          strings 'world-fixture/train build 1/data/create/tracks.dat' | grep -q 'Hayajiro'
       - name: Install exact save into client game directory
         shell: bash
         run: |
@@ -71,7 +74,7 @@ jobs:
             if [ "$attempt" -eq 3 ]; then exit 1; fi
             sleep $((attempt * 10))
           done
-      - name: Load real train save through quick play and hold
+      - name: Load compact real train save through quick play and hold
         working-directory: upstream
         shell: bash
         run: |
@@ -100,29 +103,28 @@ jobs:
               WORLD_READY=1
               break
             fi
-            if fatal_state; then echo 'Fatal state while loading real train world.'; cat ../world-smoke.log; exit 1; fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before real train world reached ready state.'; cat ../world-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
+            if fatal_state; then echo 'Fatal state while loading compact real train world.'; cat ../world-smoke.log; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before compact real train world reached ready state.'; cat ../world-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
             sleep 1
           done
-          if [ "$WORLD_READY" -ne 1 ]; then echo 'Real train world did not reach integrated-server ready state.'; cat ../world-smoke.log; exit 1; fi
-          echo 'Real train save loaded; holding 90 seconds so scheduled train/entity/physics activity can surface failures...'
+          if [ "$WORLD_READY" -ne 1 ]; then echo 'Compact real train world did not reach integrated-server ready state.'; cat ../world-smoke.log; exit 1; fi
+          echo 'Compact real train save loaded; holding 90 seconds so scheduled train/entity/physics activity can surface failures...'
           sleep 90
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during real-world hold.'; cat ../world-smoke.log; wait "$CLIENT_PID" || true; exit 1; fi
           if fatal_state; then echo 'Fatal state during real train world hold.'; cat ../world-smoke.log; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
-          grep -E 'Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train' ../world-smoke.log | tail -160 || true
-          echo 'Real train world load/stability smoke passed.'
+          grep -E 'Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro' ../world-smoke.log | tail -160 || true
+          echo 'Compact real train world load/stability smoke passed.'
       - name: Summarize real-world smoke diagnostics
         if: always()
         shell: bash
         run: |
           set -uo pipefail
           {
-            echo '## Real train world smoke'
-            echo 'Fixture source: train-test-world-server-r0.b64.part-00..06a'
+            echo '## Compact real train world smoke'
+            echo 'Fixture source: r0v2.part-00,01,01a,01b,01c,02,03,04,05'
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
-            echo 'Fixture validation: Base64 decode + ZIP CRC/integrity + required save files'
-            echo 'Required save files checked: level.dat and data/create/tracks.dat'
+            echo 'Fixture validation: Base64 decode + ZIP CRC/integrity + level.dat + tracks.dat >= 50 KB + Hayajiro marker'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|Caused by:|ERROR' world-smoke.log | tail -100 || true

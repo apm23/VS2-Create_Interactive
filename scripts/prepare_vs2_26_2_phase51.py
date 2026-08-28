@@ -46,15 +46,15 @@ object GateDProbe {
             if (ticks % 20L != 0L) return@register
 
             val player = server.playerList.players.firstOrNull() ?: return@register
-            val level = player.serverLevel()
+            val level = player.level()
             val carriage = level.allEntities.firstOrNull { entity ->
-                BuiltInRegistries.ENTITY_TYPE.getKey(entity.type).toString() == "create:carriage_contraption"
+                BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString() == "create:carriage_contraption"
             }
 
             if (carriage == null) {
                 if (ticks % 100L == 0L) {
                     val createEntityIds = level.allEntities
-                        .map { BuiltInRegistries.ENTITY_TYPE.getKey(it.type).toString() }
+                        .map { BuiltInRegistries.ENTITY_TYPE.getKey(it.getType()).toString() }
                         .filter { it.startsWith("create:") || it.startsWith("railways:") }
                         .distinct().sorted().joinToString(",")
                     logger.info("GATE_D_WAITING_CARRIAGE tick={} create_entities=[{}]", ticks, createEntityIds)
@@ -64,30 +64,30 @@ object GateDProbe {
 
             if (!seenCarriage) {
                 seenCarriage = true
-                startX = carriage.x
-                startY = carriage.y
-                startZ = carriage.z
-                val dx = player.x - carriage.x
-                val dy = player.y - carriage.y
-                val dz = player.z - carriage.z
+                startX = carriage.getX()
+                startY = carriage.getY()
+                startZ = carriage.getZ()
+                val dx = player.getX() - carriage.getX()
+                val dy = player.getY() - carriage.getY()
+                val dz = player.getZ() - carriage.getZ()
                 playerNearAtStart = dx * dx + dy * dy + dz * dz <= 144.0
                 logger.info("GATE_D_CARRIAGE_PRESENT type={} pos={},{},{}",
-                    BuiltInRegistries.ENTITY_TYPE.getKey(carriage.type), startX, startY, startZ)
+                    BuiltInRegistries.ENTITY_TYPE.getKey(carriage.getType()), startX, startY, startZ)
                 if (playerNearAtStart) logger.info("GATE_D_PLAYER_NEAR_START")
             }
 
             if (!moved) {
-                val dx = carriage.x - startX
-                val dy = carriage.y - startY
-                val dz = carriage.z - startZ
+                val dx = carriage.getX() - startX
+                val dy = carriage.getY() - startY
+                val dz = carriage.getZ() - startZ
                 val displacementSq = dx * dx + dy * dy + dz * dz
                 if (displacementSq > 1.0) {
                     moved = true
                     logger.info("GATE_D_TRAIN_MOVED displacement_sq={}", displacementSq)
                     if (playerNearAtStart) {
-                        val pdx = player.x - carriage.x
-                        val pdy = player.y - carriage.y
-                        val pdz = player.z - carriage.z
+                        val pdx = player.getX() - carriage.getX()
+                        val pdy = player.getY() - carriage.getY()
+                        val pdz = player.getZ() - carriage.getZ()
                         if (pdx * pdx + pdy * pdy + pdz * pdz <= 144.0) logger.info("GATE_D_PLAYER_NEAR_END")
                         else logger.info("GATE_D_PLAYER_FAR_END")
                     }
@@ -98,4 +98,4 @@ object GateDProbe {
 }
 ''', encoding="utf-8")
 
-print("Phase 51: installed CI-only read-only in-process Gate D observer; no train controls, schedules, player motion, or VS2 physics are modified")
+print("Phase 51: installed CI-only read-only in-process Gate D observer with MC 26.2 entity accessors; no train controls, schedules, player motion, or VS2 physics are modified")

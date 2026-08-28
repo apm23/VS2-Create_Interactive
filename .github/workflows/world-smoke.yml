@@ -81,12 +81,6 @@ jobs:
             sleep $((attempt * 10))
           done
 
-      - name: Install X11 functional probe
-        shell: bash
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y xdotool
-
       - name: Load verified real train save and run functional Gate D
         working-directory: upstream
         shell: bash
@@ -107,6 +101,7 @@ jobs:
           sleep 2
           ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-smoke' > ../world-smoke.log 2>&1 &
           CLIENT_PID=$!
+
           cleanup() {
             if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
             if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
@@ -130,11 +125,6 @@ jobs:
           dump_diagnostics() {
             echo '=== readiness/Gate-D/error markers ==='
             grep -Ein 'GATE_D_|Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -340 || true
-            echo '=== visible X11 windows ==='
-            for window in $(xdotool search --onlyvisible --name '.*' 2>/dev/null || true); do
-              echo "window=$window name=$(xdotool getwindowname "$window" 2>/dev/null || true) class=$(xdotool getwindowclassname "$window" 2>/dev/null || true)"
-              xdotool getwindowgeometry --shell "$window" 2>/dev/null || true
-            done
             echo '=== final log tail ==='
             tail -220 ../world-smoke.log || true
             echo '=== latest thread dump tail ==='
@@ -148,74 +138,6 @@ jobs:
               || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
               || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
               || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
-          }
-
-          largest_visible_window() {
-            local best=''
-            local best_area=0
-            local window geometry width height area
-            for window in "$@"; do
-              [ -n "$window" ] || continue
-              geometry="$(xdotool getwindowgeometry --shell "$window" 2>/dev/null || true)"
-              width="$(printf '%s\n' "$geometry" | sed -n 's/^WIDTH=//p' | tail -1)"
-              height="$(printf '%s\n' "$geometry" | sed -n 's/^HEIGHT=//p' | tail -1)"
-              width="${width:-0}"
-              height="${height:-0}"
-              area=$((width * height))
-              if [ "$area" -gt "$best_area" ]; then
-                best="$window"
-                best_area="$area"
-              fi
-            done
-            [ -n "$best" ] && echo "$best"
-          }
-
-          minecraft_window() {
-            local pid window=''
-            local -a candidates=()
-            mapfile -t GAME_PIDS < <(pgrep -f 'net.fabricmc.devlaunchinjector.Main|KnotClient|TransformerRuntime' || true)
-            for pid in "${GAME_PIDS[@]}"; do
-              while read -r candidate; do
-                [ -n "$candidate" ] && candidates+=("$candidate")
-              done < <(xdotool search --onlyvisible --pid "$pid" 2>/dev/null || true)
-            done
-            if [ "${#candidates[@]}" -gt 0 ]; then
-              window="$(largest_visible_window "${candidates[@]}")"
-              [ -n "$window" ] && { echo "$window"; return; }
-            fi
-
-            candidates=()
-            while read -r candidate; do
-              [ -n "$candidate" ] && candidates+=("$candidate")
-            done < <(xdotool search --onlyvisible --name '.*' 2>/dev/null || true)
-            if [ "${#candidates[@]}" -gt 0 ]; then
-              largest_visible_window "${candidates[@]}"
-            fi
-          }
-
-          send_chat() {
-            local message="$1"
-            local window=''
-            local geometry=''
-            for _ in $(seq 1 30); do
-              window="$(minecraft_window)"
-              [ -n "$window" ] && break
-              sleep 1
-            done
-            if [ -z "$window" ]; then
-              echo 'Gate D could not locate a visible Minecraft X11 window.'
-              dump_diagnostics
-              return 1
-            fi
-            geometry="$(xdotool getwindowgeometry --shell "$window" 2>/dev/null | tr '\n' ' ' || true)"
-            echo "Gate D using X11 window $window: name='$(xdotool getwindowname "$window" 2>/dev/null || true)' class='$(xdotool getwindowclassname "$window" 2>/dev/null || true)' $geometry"
-            xdotool windowfocus "$window" 2>/dev/null || true
-            sleep 0.2
-            xdotool key --window "$window" t
-            sleep 0.35
-            xdotool type --window "$window" --delay 1 -- "$message"
-            xdotool key --window "$window" Return
-            sleep 0.8
           }
 
           WORLD_READY=0
@@ -245,43 +167,34 @@ jobs:
           done
           if [ "$WORLD_READY" -ne 1 ]; then echo 'Verified real train world did not reach integrated-server ready state.'; dump_threads; dump_diagnostics; exit 1; fi
 
-          echo 'Gate D: world ready; allowing player and carriage entities to settle.'
-          sleep 8
-
-          # First prove that synthetic X11 input reaches the actual game window.
-          send_chat 'GATE_D_INPUT_OK'
-          sleep 2
-          if ! grep -q 'GATE_D_INPUT_OK' ../world-smoke.log; then
-            echo 'Gate D X11 input probe did not reach Minecraft; train assertions were not executed.'
-            dump_diagnostics
-            exit 1
-          fi
-          echo 'Gate D: X11 input path verified.'
-
-          send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s run say GATE_D_CARRIAGE_PRESENT'
-          send_chat '/kill @e[type=minecraft:marker,tag=vs2_gate_anchor]'
-          send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s run summon minecraft:marker ~ ~ ~ {Tags:["vs2_gate_anchor"]}'
-          send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s if entity @a[distance=..12] run say GATE_D_PLAYER_NEAR_START'
-          sleep 2
-
-          if ! grep -q 'GATE_D_CARRIAGE_PRESENT' ../world-smoke.log; then
-            echo 'Gate D input works, but no loaded Create carriage command marker was observed.'
+          echo 'Gate D: world ready; using read-only in-process observer as authoritative telemetry.'
+          if ! grep -q 'GATE_D_INPROC_READY' ../world-smoke.log; then
+            echo 'Gate D in-process observer did not initialize.'
             dump_diagnostics
             exit 1
           fi
 
-          echo 'Gate D: carriage present; polling up to 120 seconds for automatic train motion.'
-          TRAIN_MOVED=0
-          for attempt in $(seq 1 6); do
-            sleep 20
-            send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s unless entity @e[type=minecraft:marker,tag=vs2_gate_anchor,distance=..1] run say GATE_D_TRAIN_MOVED'
-            if grep -q 'GATE_D_TRAIN_MOVED' ../world-smoke.log; then
-              TRAIN_MOVED=1
-              break
-            fi
-            if fatal_state; then echo 'Fatal state while waiting for automatic train motion.'; dump_threads; dump_diagnostics; exit 1; fi
+          CARRIAGE_PRESENT=0
+          for i in $(seq 1 120); do
+            if grep -q 'GATE_D_CARRIAGE_PRESENT' ../world-smoke.log; then CARRIAGE_PRESENT=1; break; fi
+            if fatal_state; then echo 'Fatal state while waiting for Create carriage.'; dump_threads; dump_diagnostics; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited while waiting for Create carriage.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+            sleep 1
           done
+          if [ "$CARRIAGE_PRESENT" -ne 1 ]; then
+            echo 'Gate D did not observe a loaded Create carriage within 120 seconds.'
+            dump_diagnostics
+            exit 1
+          fi
 
+          echo 'Gate D: carriage present; polling in-process observer up to 120 seconds for automatic train motion.'
+          TRAIN_MOVED=0
+          for i in $(seq 1 120); do
+            if grep -q 'GATE_D_TRAIN_MOVED' ../world-smoke.log; then TRAIN_MOVED=1; break; fi
+            if fatal_state; then echo 'Fatal state while waiting for automatic train motion.'; dump_threads; dump_diagnostics; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited while waiting for automatic train motion.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+            sleep 1
+          done
           if [ "$TRAIN_MOVED" -ne 1 ]; then
             echo 'Gate D did not observe carriage displacement greater than one block within 120 seconds.'
             dump_diagnostics
@@ -289,9 +202,7 @@ jobs:
           fi
 
           if grep -q 'GATE_D_PLAYER_NEAR_START' ../world-smoke.log; then
-            send_chat '/execute as @e[type=create:carriage_contraption,limit=1] at @s if entity @a[distance=..12] run say GATE_D_PLAYER_NEAR_END'
-            sleep 2
-            if ! grep -q 'GATE_D_PLAYER_NEAR_END' ../world-smoke.log; then
+            if grep -q 'GATE_D_PLAYER_FAR_END' ../world-smoke.log || ! grep -q 'GATE_D_PLAYER_NEAR_END' ../world-smoke.log; then
               echo 'Gate D observed player near the train initially but not after carriage motion.'
               dump_diagnostics
               exit 1
@@ -301,12 +212,11 @@ jobs:
             echo 'Gate D note: saved player was not within 12 blocks of the sampled carriage at start; player-relative check is not asserted in this fixture.'
           fi
 
-          send_chat '/kill @e[type=minecraft:marker,tag=vs2_gate_anchor]' || true
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during functional Gate D.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
           if fatal_state; then echo 'Fatal state during functional Gate D.'; dump_threads; dump_diagnostics; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
           grep -E 'GATE_D_|Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro|graphics backend|graphics device' ../world-smoke.log | tail -220 || true
-          echo 'Verified real train world functional Gate D passed: carriage loaded and moved without fatal runtime failure.'
+          echo 'Verified real train world functional Gate D passed: in-process observer saw carriage load and motion without fatal runtime failure.'
 
       - name: Summarize real-world smoke diagnostics
         if: always()
@@ -318,6 +228,7 @@ jobs:
             if [ -f fixture-parts.txt ]; then echo "Fixture parts: $(tr '\n' ' ' < fixture-parts.txt)"; fi
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
             echo 'Fixture gate: exactly 17 parts + 116120 Base64 bytes + 87090 ZIP bytes + exact SHA256 + ZIP CRC + level.dat + compressed tracks.dat + Hayajiro marker'
+            echo 'Functional gate: read-only in-process observer; no chat commands, marker entities, train controls, schedules, player motion, or VS2 physics are modified.'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'GATE_D_|Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -340 || true

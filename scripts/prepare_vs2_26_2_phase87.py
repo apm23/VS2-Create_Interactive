@@ -100,8 +100,8 @@ if production_missing:
 # Sustained production-world smoke now proves repeated Create-filtered carry. Before
 # attempting any use/place mutation on an assembled moving train, observe what the
 # vanilla client is actually targeting during those successful carry ticks. This is
-# deliberately read-only: it only records HitResult type/string and does not call
-# gameMode/useItemOn, alter inventory, place blocks, or touch contraption state.
+# deliberately read-only: it only records concrete HitResult geometry and does not
+# call gameMode/useItemOn, alter inventory, place blocks, or touch contraption state.
 interaction_anchor = '''                                LOGGER.info(
                                     "GATE_E_PHASE85_CARRY_REPLAY carriage_id={} requested={},{},{} allowed={},{},{} before={},{},{} after={},{},{}",
                                     carriage.getId(),
@@ -111,18 +111,26 @@ interaction_anchor = '''                                LOGGER.info(
                                     player.getX(), player.getY(), player.getZ());'''
 interaction_replacement = interaction_anchor + '''
                                 if (productionSmoke && explicitCarryCompat && client.hitResult != null) {
+                                    net.minecraft.world.phys.HitResult interactionHit = client.hitResult;
+                                    String interactionDetail = "generic";
+                                    if (interactionHit instanceof net.minecraft.world.phys.BlockHitResult blockHit) {
+                                        interactionDetail = "block_pos=" + blockHit.getBlockPos().toShortString()
+                                            + ";direction=" + blockHit.getDirection()
+                                            + ";inside=" + blockHit.isInside();
+                                    }
+                                    Vec3 hitLocation = interactionHit.getLocation();
                                     LOGGER.info(
-                                        "GATE_F_INTERACTION_TARGET carriage_id={} player_tick={} hit_type={} hit={}",
-                                        carriage.getId(), player.tickCount,
-                                        client.hitResult.getType(), String.valueOf(client.hitResult));
+                                        "GATE_F_INTERACTION_TARGET carriage_id={} player_tick={} hit_type={} hit_location={},{},{} detail={}",
+                                        carriage.getId(), player.tickCount, interactionHit.getType(),
+                                        hitLocation.x, hitLocation.y, hitLocation.z, interactionDetail);
                                 }'''
 if "GATE_F_INTERACTION_TARGET" not in source:
     if interaction_anchor not in source:
         raise SystemExit("Phase 87 could not find Phase 85 replay logger for interaction targeting")
     source = source.replace(interaction_anchor, interaction_replacement, 1)
 
-if "GATE_F_INTERACTION_TARGET" not in source:
-    raise SystemExit("Phase 87 failed to install read-only interaction-target telemetry")
+if "hit_location={},{},{} detail={}" not in source:
+    raise SystemExit("Phase 87 failed to install concrete interaction-target geometry telemetry")
 
 client_probe.write_text(source, encoding="utf-8")
 
@@ -149,4 +157,4 @@ if server_missing:
     raise SystemExit("Phase 87 lost server fixture isolation anchors: " + ", ".join(server_missing))
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 87: production isolation plus explicit test-only support fixture, bounded carry telemetry, and read-only interaction targeting")
+print("Phase 87: production isolation plus explicit test-only support fixture, bounded carry telemetry, and concrete read-only interaction targeting")

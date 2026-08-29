@@ -77,10 +77,31 @@ new_state = '''            var playerBox = player.getBoundingBox();
                                 supportValue = supportInfo.getClass().getName();
                             }
                         }
+                        StringBuilder nearby = new StringBuilder();
+                        double nearestDistanceSq = Double.POSITIVE_INFINITY;
+                        Object nearestKey = null;
+                        for (Object key : blocks.keySet()) {
+                            if (!(key instanceof net.minecraft.core.BlockPos pos)) continue;
+                            double dx = (pos.getX() + 0.5) - localFeet.x;
+                            double dy = (pos.getY() + 1.0) - localFeet.y;
+                            double dz = (pos.getZ() + 0.5) - localFeet.z;
+                            double distanceSq = dx * dx + dy * dy + dz * dz;
+                            if (distanceSq < nearestDistanceSq) {
+                                nearestDistanceSq = distanceSq;
+                                nearestKey = pos;
+                            }
+                            if (Math.abs(dx) <= 2.5 && Math.abs(dy) <= 2.5 && Math.abs(dz) <= 2.5) {
+                                if (nearby.length() > 0) nearby.append('|');
+                                nearby.append(pos.toShortString());
+                            }
+                        }
                         localSupportState = "local_feet=" + localFeet.x + "," + localFeet.y + "," + localFeet.z
                             + ";support_pos=" + supportPos.toShortString()
                             + ";support_present=" + (supportInfo != null)
                             + ";support=" + supportValue
+                            + ";nearest_block=" + String.valueOf(nearestKey)
+                            + ";nearest_top_distance_sq=" + nearestDistanceSq
+                            + ";nearby_blocks=" + nearby
                             + ";block_count=" + blocks.size();
                     } else {
                         localSupportState = "blocks_type=" + (blocksObject == null ? "null" : blocksObject.getClass().getName());
@@ -104,4 +125,4 @@ if old_state not in probe_source:
 probe_source = probe_source.replace(old_state, new_state, 1)
 client_probe.write_text(probe_source, encoding="utf-8")
 
-print("Phase 52: Gate E validates Create collision eligibility/broadphase/contact map and traces the exact local contraption support block beneath the client player; telemetry remains read-only and no gameplay or physics behavior is modified")
+print("Phase 52: Gate E validates collision/contact and traces exact plus nearest local Create support blocks around the client player; telemetry remains read-only and no gameplay or physics behavior is modified")

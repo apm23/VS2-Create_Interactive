@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -35,3 +36,4 @@ if "GATE_E_PHASE79_CARRY_REPLAY" not in source:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 79: replayed Create's own collision-filtered horizontal carry only for the exact Gate E carriage after genuine contact; harness-only functional hypothesis check")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase80.py")), run_name="__main__")

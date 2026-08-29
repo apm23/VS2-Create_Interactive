@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -114,3 +115,8 @@ server = server.replace(old, new, 1)
 server_probe.write_text(server, encoding="utf-8")
 
 print("Phase 68: aligned both ServerPlayer and LocalPlayer exactly to Create's simplified collision-surface top so standing contact is tested without the previous 0.05-block air gap; CI harness only")
+
+# The verified save starts ServerPlayer far from real collision geometry, so Phase
+# 68's under-feet selector alone cannot normalize the server fixture. Chain the
+# globally-nearest simplified-collider selector before smoke execution.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase69.py")), run_name="__main__")

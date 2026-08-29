@@ -82,26 +82,33 @@ if "GATE_F_INTERACTION_TARGET_PROFILE" not in source:
         raise SystemExit("Phase 98 could not find Phase 97 native-hit profile anchor")
     source = source.replace(profile_anchor, profile_replacement, 1)
 
-# Production-world #43 exposed a harness race rather than a carry regression: the
-# one-shot support fixture was installed while the autonomous train was still in its
-# stationary startup frame. At player tick 12 the saved carriage still reported zero
-# motion; by tick 13 Create had advanced to sibling carriage entities roughly 14 blocks
-# away, before Phase 85 had any non-zero motion sample to replay. Delay only the
-# explicitly test-only production fixture until player tick 20 so normalization occurs
-# after that startup discontinuity. Normal CI and all production gameplay paths are
-# unchanged; this does not repeat/pin the player during movement.
+# Production-world #45 showed tick >=20 is too late on a slower client: Create had
+# already advanced from carriage id 2 through ids 7/8/10 before LocalPlayer fixture
+# normalization, so the train moved away while server/client fixture timing diverged.
+# The startup discontinuity itself is already complete by the transition after player
+# tick 12. Start the one-shot production fixture at tick 14 instead: after the startup
+# jump, but before sustained travel can outrun the client fixture. Normal CI and all
+# production gameplay paths remain unchanged and the fixture still runs only once.
+old_client_fixture_20 = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 20)) && !fixtureClientNormalized'
+new_client_fixture = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 14)) && !fixtureClientNormalized'
 old_client_fixture = 'if ((ciHarness || productionSmokeFixture) && !fixtureClientNormalized'
-new_client_fixture = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 20)) && !fixtureClientNormalized'
+old_collider_fixture_20 = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 20)) && !fixtureColliderNormalized'
+new_collider_fixture = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 14)) && !fixtureColliderNormalized'
 old_collider_fixture = 'if ((ciHarness || productionSmokeFixture) && !fixtureColliderNormalized'
-new_collider_fixture = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 20)) && !fixtureColliderNormalized'
 if new_client_fixture not in source:
-    if old_client_fixture not in source:
+    if old_client_fixture_20 in source:
+        source = source.replace(old_client_fixture_20, new_client_fixture, 1)
+    elif old_client_fixture in source:
+        source = source.replace(old_client_fixture, new_client_fixture, 1)
+    else:
         raise SystemExit("Phase 98 could not find production client fixture guard")
-    source = source.replace(old_client_fixture, new_client_fixture, 1)
 if new_collider_fixture not in source:
-    if old_collider_fixture not in source:
+    if old_collider_fixture_20 in source:
+        source = source.replace(old_collider_fixture_20, new_collider_fixture, 1)
+    elif old_collider_fixture in source:
+        source = source.replace(old_collider_fixture, new_collider_fixture, 1)
+    else:
         raise SystemExit("Phase 98 could not find production collider fixture guard")
-    source = source.replace(old_collider_fixture, new_collider_fixture, 1)
 
 required = [
     'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT',
@@ -113,7 +120,7 @@ required = [
     'getContraptionMethod.invoke(carriage)',
     'blockMap.get(nativeHit.getBlockPos())',
     'player.getMainHandItem().isEmpty()',
-    '(productionSmokeFixture && player.tickCount >= 20)',
+    '(productionSmokeFixture && player.tickCount >= 14)',
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -132,14 +139,18 @@ for forbidden in [
 client_probe.write_text(source, encoding="utf-8")
 
 server = server_probe.read_text(encoding="utf-8")
+old_server_fixture_20 = 'if ((!java.lang.Boolean.getBoolean("vs2.productionSmoke") || (java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 20)) && !fixturePlayerChecked) {'
+new_server_fixture = 'if ((!java.lang.Boolean.getBoolean("vs2.productionSmoke") || (java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 14)) && !fixturePlayerChecked) {'
 old_server_fixture = 'if ((!java.lang.Boolean.getBoolean("vs2.productionSmoke") || java.lang.Boolean.getBoolean("vs2.productionSmokeFixture")) && !fixturePlayerChecked) {'
-new_server_fixture = 'if ((!java.lang.Boolean.getBoolean("vs2.productionSmoke") || (java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 20)) && !fixturePlayerChecked) {'
 if new_server_fixture not in server:
-    if old_server_fixture not in server:
+    if old_server_fixture_20 in server:
+        server = server.replace(old_server_fixture_20, new_server_fixture, 1)
+    elif old_server_fixture in server:
+        server = server.replace(old_server_fixture, new_server_fixture, 1)
+    else:
         raise SystemExit("Phase 98 could not find production server fixture guard")
-    server = server.replace(old_server_fixture, new_server_fixture, 1)
-if 'java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 20' not in server:
-    raise SystemExit("Phase 98 lost delayed production server fixture anchor")
+if 'java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 14' not in server:
+    raise SystemExit("Phase 98 lost narrowed production server fixture anchor")
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 98: pinned native right-click readiness, profiled the exact moving-train target read-only, and retained delayed test fixture timing; no interaction dispatch or gameplay mutation")
+print("Phase 98: retained read-only native interaction profiling and narrowed the one-shot production fixture to tick 14 after startup discontinuity; no interaction dispatch or gameplay mutation")

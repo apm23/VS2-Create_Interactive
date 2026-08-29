@@ -69,18 +69,40 @@ jobs:
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check --quiet nbtlib==2.0.4
           python3 - <<'PY'
+          from pathlib import Path
           import nbtlib
           from nbtlib import Double, List
-          path = 'upstream/fabric/run/saves/train-production-smoke/level.dat'
-          level = nbtlib.load(path)
-          player = level['Data']['Player']
+
+          world = Path('upstream/fabric/run/saves/train-production-smoke')
+          playerdata = sorted((world / 'playerdata').glob('*.dat'))
+
+          if playerdata:
+              path = playerdata[0]
+              document = nbtlib.load(path)
+              player = document
+              source = f'playerdata:{path.name}'
+          else:
+              path = world / 'level.dat'
+              document = nbtlib.load(path)
+              data = document['Data']
+              if 'Player' not in data:
+                  raise SystemExit('No playerdata/*.dat and level.dat contains no Data.Player')
+              player = data['Player']
+              source = 'level.dat:Data.Player'
+
+          if 'Pos' not in player:
+              raise SystemExit(f'{source} contains no Pos tag')
+
           before = tuple(float(v) for v in player['Pos'])
-          player['Pos'] = List[Double]([Double(-70.5), Double(-53.75), Double(118.5)])
-          level.save(path, gzipped=True)
+          target = (-70.5, -53.75, 118.5)
+          player['Pos'] = List[Double]([Double(v) for v in target])
+          document.save(path, gzipped=True)
+
           check = nbtlib.load(path)
-          after = tuple(float(v) for v in check['Data']['Player']['Pos'])
-          assert after == (-70.5, -53.75, 118.5), after
-          print(f'PRODUCTION_SMOKE_OFFLINE_PLAYER_SEED before={before} after={after}')
+          check_player = check if source.startswith('playerdata:') else check['Data']['Player']
+          after = tuple(float(v) for v in check_player['Pos'])
+          assert after == target, (source, after)
+          print(f'PRODUCTION_SMOKE_OFFLINE_PLAYER_SEED source={source} before={before} after={after}')
           PY
 
       - name: Prefetch Minecraft client assets with retry

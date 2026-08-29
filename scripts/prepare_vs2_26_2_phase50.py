@@ -37,5 +37,6 @@ if not options.exists():
 # injection or any gameplay/physics modification.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase51.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase52.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase53.py")), run_name="__main__")
 
-print("Phase 50: disabled obsolete MC 1.21.11 villager-socialization MixinInteractWith on 26.2; seeded CI first-run options and chained read-only Gate D/E telemetry; core ship/train behavior remains enabled")
+print("Phase 50: disabled obsolete MC 1.21.11 villager-socialization MixinInteractWith on 26.2; seeded CI first-run options and chained read-only Gate D/E telemetry through Phase 53; core ship/train behavior remains enabled")

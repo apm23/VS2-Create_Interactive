@@ -1,0 +1,172 @@
+name: production-world-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.ci/world/r0v3.part-*'
+      - '.ci/world/r0v3.sha256'
+      - 'scripts/prepare_vs2_26_2*.py'
+      - '.github/workflows/production-world-smoke.yml'
+
+jobs:
+  real-train-production-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Prepare 26.2 production-isolated client
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          grep -q 'vs2.productionSmoke' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+
+      - name: Reconstruct verified r0v3 train save
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED='e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556'
+          mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v3.part-*' -print | sort -V)
+          test "${#parts[@]}" -eq 17
+          cat "${parts[@]}" > train-world-state-r0v3.b64
+          base64 -d train-world-state-r0v3.b64 > train-world-state-r0v3.zip
+          test "$(sha256sum train-world-state-r0v3.zip | awk '{print $1}')" = "$EXPECTED"
+          unzip -tq train-world-state-r0v3.zip
+          rm -rf world-fixture
+          mkdir world-fixture
+          unzip -q train-world-state-r0v3.zip -d world-fixture
+          test -f 'world-fixture/train build 1/level.dat'
+          test -f 'world-fixture/train build 1/data/create/tracks.dat'
+
+      - name: Install exact save into client game directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream/fabric/run/saves
+          rm -rf upstream/fabric/run/saves/train-production-smoke
+          mv 'world-fixture/train build 1' upstream/fabric/run/saves/train-production-smoke
+
+      - name: Prefetch Minecraft client assets with retry
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:downloadAssets; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+
+      - name: Load real train world in explicit production carry mode
+        working-directory: upstream
+        shell: bash
+        env:
+          JAVA_TOOL_OPTIONS: '-Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true'
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
+          ALSOFT_DRIVERS: 'null'
+        run: |
+          set -euo pipefail
+          rm -f ../production-world-smoke.log ../production-world-xvfb.log
+          rm -rf fabric/run/crash-reports
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > ../production-world-xvfb.log 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+          ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-production-smoke' > ../production-world-smoke.log 2>&1 &
+          CLIENT_PID=$!
+
+          cleanup() {
+            if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
+            if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+
+          fatal_state() {
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../production-world-smoke.log \
+              || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
+              || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
+              || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
+          }
+
+          MODE_READY=0
+          WORLD_READY=0
+          for i in $(seq 1 900); do
+            if grep -q 'VS2_CREATE_CARRY_COMPAT_MODE ci_harness=false explicit_opt_in=true' ../production-world-smoke.log; then MODE_READY=1; fi
+            if grep -Eq 'Starting integrated minecraft server|Starting integrated server' ../production-world-smoke.log \
+              && grep -Eq 'Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements' ../production-world-smoke.log \
+              && grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../production-world-smoke.log \
+              && grep -Eq '(^|[[:space:]])- railways ' ../production-world-smoke.log \
+              && grep -Eq '(^|[[:space:]])- copycats ' ../production-world-smoke.log \
+              && grep -q 'Initialized VSCore on Fabric!' ../production-world-smoke.log; then WORLD_READY=1; fi
+            if [ "$MODE_READY" -eq 1 ] && [ "$WORLD_READY" -eq 1 ]; then break; fi
+            if fatal_state; then tail -260 ../production-world-smoke.log; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -260 ../production-world-smoke.log; exit 1; fi
+            sleep 1
+          done
+          test "$MODE_READY" -eq 1
+          test "$WORLD_READY" -eq 1
+
+          # Production isolation must not perform the CI-only player normalization/gravity probes.
+          sleep 8
+          if grep -Eq 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|gravity_probe_y=-0\.08' ../production-world-smoke.log; then
+            echo 'Production world smoke unexpectedly executed CI fixture mutation.'
+            grep -E 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|gravity_probe_y=-0\.08' ../production-world-smoke.log | tail -80 || true
+            exit 1
+          fi
+
+          CARRIAGE_PRESENT=0
+          for i in $(seq 1 120); do
+            if grep -q 'GATE_D_CARRIAGE_PRESENT' ../production-world-smoke.log; then CARRIAGE_PRESENT=1; break; fi
+            if fatal_state; then exit 1; fi
+            sleep 1
+          done
+          test "$CARRIAGE_PRESENT" -eq 1
+
+          TRAIN_MOVED=0
+          for i in $(seq 1 120); do
+            if grep -q 'GATE_D_TRAIN_MOVED' ../production-world-smoke.log; then TRAIN_MOVED=1; break; fi
+            if fatal_state; then exit 1; fi
+            sleep 1
+          done
+          test "$TRAIN_MOVED" -eq 1
+
+          if grep -q 'VS2_CREATE_CARRY_COMPAT_MODE ci_harness=true' ../production-world-smoke.log; then
+            echo 'Production real-world smoke entered CI harness unexpectedly.'
+            exit 1
+          fi
+          if fatal_state; then exit 1; fi
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
+          echo 'Real train world loaded and moved with explicit production carry mode and no CI fixture mutation.'
+          grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|GATE_D_CARRIAGE_PRESENT|GATE_D_TRAIN_MOVED|Initialized VSCore|create 6\.0\.9-1|railways |copycats ' ../production-world-smoke.log | tail -160 || true
+
+      - name: Upload production real-world diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vs2-production-real-train-world-smoke-log
+          path: |
+            production-world-smoke.log
+            production-world-xvfb.log
+          if-no-files-found: warn

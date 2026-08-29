@@ -88,10 +88,15 @@ local_sync_body = '''
                     val syncLocalX = System.getProperty("vs2.productionClientFixtureLocalX")?.toDoubleOrNull()
                     val syncLocalY = System.getProperty("vs2.productionClientFixtureLocalY")?.toDoubleOrNull()
                     val syncLocalZ = System.getProperty("vs2.productionClientFixtureLocalZ")?.toDoubleOrNull()
+                    val syncToGlobal = carriage.javaClass.methods.firstOrNull { method ->
+                        method.name == "toGlobalVector" && method.parameterCount == 2
+                            && method.parameterTypes[0] == net.minecraft.world.phys.Vec3::class.java
+                            && method.parameterTypes[1] == java.lang.Float.TYPE
+                    }
                     if (syncCarriageId != null && syncLocalX != null && syncLocalY != null && syncLocalZ != null
-                            && carriage.id == syncCarriageId) {
+                            && carriage.id == syncCarriageId && syncToGlobal != null) {
                         val syncLocal = net.minecraft.world.phys.Vec3(syncLocalX, syncLocalY, syncLocalZ)
-                        val syncWorld = toGlobal.invoke(carriage, syncLocal, 0.0f) as net.minecraft.world.phys.Vec3
+                        val syncWorld = syncToGlobal.invoke(carriage, syncLocal, 0.0f) as net.minecraft.world.phys.Vec3
                         fixturePlayerChecked = true
                         player.setPos(syncWorld.x, syncWorld.y, syncWorld.z)
                         player.setDeltaMovement(net.minecraft.world.phys.Vec3(0.0, -0.08, 0.0))
@@ -112,7 +117,7 @@ required = [
     'vs2.productionClientFixtureCarriageId',
     'vs2.productionClientFixtureLocalX', 'vs2.productionClientFixtureLocalY', 'vs2.productionClientFixtureLocalZ',
     'GATE_E_PRODUCTION_FIXTURE_CLIENT_READY', 'GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT',
-    'toGlobal.invoke(carriage, syncLocal, 0.0f)',
+    'syncToGlobal.invoke(carriage, syncLocal, 0.0f)',
 ]
 combined = source + server
 missing = [token for token in required if token not in combined]

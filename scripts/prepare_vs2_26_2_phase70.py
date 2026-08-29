@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -33,3 +34,5 @@ server = server.replace(old_server, new_server, 1)
 server_probe.write_text(server, encoding="utf-8")
 
 print("Phase 70: synchronized the CI ServerPlayer to the same block-referenced simplified collision surface as LocalPlayer and applied a one-shot -0.08 Y gravity probe on both sides to verify Create surface-contact promotion under realistic downward motion; harness-only")
+
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase71.py")), run_name="__main__")

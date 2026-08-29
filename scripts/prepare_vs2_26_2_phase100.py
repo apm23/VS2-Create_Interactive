@@ -104,6 +104,12 @@ local_sync_body = '''
                             syncCarriageId, syncLocalX, syncLocalY, syncLocalZ, syncWorld.x, syncWorld.y, syncWorld.z)
                         return@register
                     }
+                    // Production smoke must never fall through to the legacy nearest-carriage
+                    // fixture while waiting for the exact client-selected carriage. Run #70
+                    // showed that fallback can teleport the ServerPlayer onto a sibling carriage,
+                    // immediately breaking the client/server support frame. Leave the fixture
+                    // unchecked and wait for the callback for the matching carriage instead.
+                    return@register
                 }
 '''
 if old_sync_body in server:
@@ -112,12 +118,32 @@ elif 'GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT' not in server:
     if server_synced not in server:
         raise SystemExit("Phase 100 lost synchronized server fixture guard")
     server = server.replace(server_synced, server_synced + local_sync_body, 1)
+elif '// Production smoke must never fall through to the legacy nearest-carriage' not in server:
+    previous_local_tail = '''                        logger.info("GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT carriage_id={} local_target={},{},{} world_target={},{},{} gravity_probe_y=-0.08",
+                            syncCarriageId, syncLocalX, syncLocalY, syncLocalZ, syncWorld.x, syncWorld.y, syncWorld.z)
+                        return@register
+                    }
+                }
+'''
+    replacement_local_tail = '''                        logger.info("GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT carriage_id={} local_target={},{},{} world_target={},{},{} gravity_probe_y=-0.08",
+                            syncCarriageId, syncLocalX, syncLocalY, syncLocalZ, syncWorld.x, syncWorld.y, syncWorld.z)
+                        return@register
+                    }
+                    // Production smoke must never fall through to the legacy nearest-carriage
+                    // fixture while waiting for the exact client-selected carriage.
+                    return@register
+                }
+'''
+    if previous_local_tail not in server:
+        raise SystemExit("Phase 100 could not harden existing local-frame sync tail")
+    server = server.replace(previous_local_tail, replacement_local_tail, 1)
 
 required = [
     'vs2.productionClientFixtureCarriageId',
     'vs2.productionClientFixtureLocalX', 'vs2.productionClientFixtureLocalY', 'vs2.productionClientFixtureLocalZ',
     'GATE_E_PRODUCTION_FIXTURE_CLIENT_READY', 'GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT',
     'syncToGlobal.invoke(carriage, syncLocal, 0.0f)',
+    'Production smoke must never fall through to the legacy nearest-carriage',
 ]
 combined = source + server
 missing = [token for token in required if token not in combined]
@@ -126,7 +152,7 @@ if missing:
 
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 100: synchronized the test-only integrated-server fixture in the exact carriage-local frame so train motion cannot stale the handoff; no production gameplay, train, or physics mutation")
+print("Phase 100: synchronized the test-only integrated-server fixture in the exact carriage-local frame and blocked sibling-carriage fallback; no production gameplay, train, or physics mutation")
 
 # Keep the native interaction experiment chained after deterministic fixture sync.
 phase101 = Path(__file__).with_name("prepare_vs2_26_2_phase101.py")

@@ -50,12 +50,29 @@ if carry_guard_count < 2:
     raise SystemExit(f"Phase 87 expected both Phase 85 production carry guards, found {carry_guard_count}")
 source = source.replace(old_carry_guard, new_carry_guard, 2)
 
+# Production-world run 3 still emitted no Phase 85 replay marker. The old Phase 81
+# support-continuity telemetry itself was also hidden behind carryBaselineCaptured,
+# so the failed run could not tell whether strict physical support, collision
+# eligibility, or broadphase overlap was the blocker. Expose at most 40 samples
+# whenever explicit production compatibility is enabled. This is read-only
+# telemetry; no position, velocity, contact lease, train control, or collision
+# response is changed.
+old_support_log = '''            if (carryBaselineCaptured && carryReplayGuardSamples <= 40) {
+                LOGGER.info('''
+new_support_log = '''            if ((carryBaselineCaptured || explicitCarryCompat) && carryReplayGuardSamples < 40) {
+                carryReplayGuardSamples++;
+                LOGGER.info('''
+if old_support_log not in source:
+    raise SystemExit("Phase 87 could not find Phase 81 support-continuity telemetry guard")
+source = source.replace(old_support_log, new_support_log, 1)
+
 production_required = [
     '(carryBaselineCaptured || explicitCarryCompat)',
     'phase81PhysicalSupport',
     'collisionEligible',
     'broadphaseOverlap',
     'GATE_E_PHASE85_CARRY_REPLAY',
+    'GATE_E_PHASE81_SUPPORT_CONTINUITY',
 ]
 production_missing = [token for token in production_required if token not in source]
 if production_missing:
@@ -86,4 +103,4 @@ if server_missing:
     raise SystemExit("Phase 87 lost server fixture isolation anchors: " + ", ".join(server_missing))
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 87: production smoke isolation plus strict physical-support carry without CI-only baseline dependency")
+print("Phase 87: production isolation plus bounded physical-support telemetry for strict carry diagnosis")

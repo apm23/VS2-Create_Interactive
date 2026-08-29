@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -80,3 +81,6 @@ source = source.replace(old_log, new_log, 1)
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 56: compared toLocalVector with Create ContraptionCollider.worldToLocalPos for every carriage candidate; read-only telemetry only")
+
+# Chain Phase 57 so the next world smoke proves how Create classifies the actual local client player.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase57.py")), run_name="__main__")

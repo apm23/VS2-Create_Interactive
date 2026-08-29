@@ -162,6 +162,43 @@ jobs:
             exit 1
           fi
 
+          # Run 109 proved that Phase 83's strict physical-support lease refresh can
+          # restore Create's own native client carry path without Phase 81 manual
+          # setPos replay. Make that proof a hard regression gate: both the refresh
+          # and a non-zero horizontal LocalPlayer setPos directly from
+          # ContraptionColliderClient#collideEntities must occur in the real save.
+          NATIVE_CARRY=0
+          for i in $(seq 1 15); do
+            if python3 - ../world-smoke.log <<'PY'
+          import re, sys
+          path = sys.argv[1]
+          try:
+              text = open(path, encoding='utf-8', errors='replace').read()
+          except OSError:
+              raise SystemExit(1)
+          if 'GATE_E_PHASE83_CONTACT_REFRESH' not in text:
+              raise SystemExit(1)
+          pattern = re.compile(
+              r'GATE_E_LOCALPLAYER_SET_POS[^\n]*delta=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)[^\n]*'
+              r'callers=[^\n]*ContraptionColliderClient#collideEntities')
+          for match in pattern.finditer(text):
+              dx, _dy, dz = map(float, match.groups())
+              if abs(dx) > 1.0e-6 or abs(dz) > 1.0e-6:
+                  raise SystemExit(0)
+          raise SystemExit(1)
+          PY
+            then NATIVE_CARRY=1; break; fi
+            if fatal_state; then exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$NATIVE_CARRY" -ne 1 ]; then
+            echo 'Phase 83 contact refresh did not produce non-zero native Create client carry.'
+            grep -E 'GATE_E_PHASE83_CONTACT_REFRESH|GATE_E_LOCALPLAYER_SET_POS|GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT' ../world-smoke.log | tail -180 || true
+            exit 1
+          fi
+          echo 'Phase 83 native Create carry hard gate passed.'
+
           PHASE54=0
           for i in $(seq 1 30); do
             if grep -q 'anchor_state=' ../world-smoke.log; then PHASE54=1; break; fi
@@ -186,7 +223,7 @@ jobs:
           if fatal_state; then echo 'Fatal state during functional Gate D.'; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
           grep -E 'GATE_D_|GATE_E_|anchor_state=|Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro' ../world-smoke.log | tail -300 || true
-          echo 'Verified real train world functional Gate D + Phase 71 carry telemetry passed.'
+          echo 'Verified real train world functional Gate D + Phase 71 + Phase 83 native carry gate passed.'
 
       - name: Summarize real-world smoke diagnostics
         if: always()
@@ -194,9 +231,10 @@ jobs:
         run: |
           set -uo pipefail
           {
-            echo '## Verified r0v3 real train world smoke + Gate D + Phase 71'
+            echo '## Verified r0v3 real train world smoke + Gate D + Phase 71 + Phase 83 native carry'
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
-            echo 'Phase 71: read-only client player-vs-carriage carry delta after genuine Create surface contact.'
+            echo 'Phase 71: client player-vs-carriage carry delta after genuine Create surface contact.'
+            echo 'Phase 83 gate: strict contact-lease refresh must lead to non-zero native ContraptionColliderClient carry.'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'GATE_D_|GATE_E_|anchor_state=|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR' world-smoke.log | tail -420 || true

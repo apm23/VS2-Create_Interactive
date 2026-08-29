@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -21,3 +22,5 @@ source = source.replace(old_log, new_log, 1)
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 66: traced Create's prebuilt simplified collider geometry around the normalized LocalPlayer to distinguish missing collider data from OBB separation failure; read-only telemetry only")
+
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase67.py")), run_name="__main__")

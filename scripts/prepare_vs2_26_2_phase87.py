@@ -97,6 +97,33 @@ production_missing = [token for token in production_required if token not in sou
 if production_missing:
     raise SystemExit("Phase 87 lost strict production carry anchors: " + ", ".join(production_missing))
 
+# Sustained production-world smoke now proves repeated Create-filtered carry. Before
+# attempting any use/place mutation on an assembled moving train, observe what the
+# vanilla client is actually targeting during those successful carry ticks. This is
+# deliberately read-only: it only records HitResult type/string and does not call
+# gameMode/useItemOn, alter inventory, place blocks, or touch contraption state.
+interaction_anchor = '''                                LOGGER.info(
+                                    "GATE_E_PHASE85_CARRY_REPLAY carriage_id={} requested={},{},{} allowed={},{},{} before={},{},{} after={},{},{}",
+                                    carriage.getId(),
+                                    contactMotion.x, contactMotion.y, contactMotion.z,
+                                    allowedMovement.x, allowedMovement.y, allowedMovement.z,
+                                    beforeX, beforeY, beforeZ,
+                                    player.getX(), player.getY(), player.getZ());'''
+interaction_replacement = interaction_anchor + '''
+                                if (productionSmoke && explicitCarryCompat && client.hitResult != null) {
+                                    LOGGER.info(
+                                        "GATE_F_INTERACTION_TARGET carriage_id={} player_tick={} hit_type={} hit={}",
+                                        carriage.getId(), player.tickCount,
+                                        client.hitResult.getType(), String.valueOf(client.hitResult));
+                                }'''
+if "GATE_F_INTERACTION_TARGET" not in source:
+    if interaction_anchor not in source:
+        raise SystemExit("Phase 87 could not find Phase 85 replay logger for interaction targeting")
+    source = source.replace(interaction_anchor, interaction_replacement, 1)
+
+if "GATE_F_INTERACTION_TARGET" not in source:
+    raise SystemExit("Phase 87 failed to install read-only interaction-target telemetry")
+
 client_probe.write_text(source, encoding="utf-8")
 
 # Server-side Gate D normalization is also test-only. Production smoke keeps the
@@ -122,4 +149,4 @@ if server_missing:
     raise SystemExit("Phase 87 lost server fixture isolation anchors: " + ", ".join(server_missing))
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 87: production isolation plus explicit test-only support fixture and bounded carry telemetry")
+print("Phase 87: production isolation plus explicit test-only support fixture, bounded carry telemetry, and read-only interaction targeting")

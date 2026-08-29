@@ -146,8 +146,22 @@ jobs:
           done
           test "$TRAIN_MOVED" -eq 1
 
-          # Phase 54 is telemetry-only. Give the render/client observer a short post-motion
-          # window so anchor-adjusted Gate E state is guaranteed to reach the artifact.
+          # Phase 71 records the client carry result from the first genuine Create
+          # surface-contact baseline. Keep the client alive briefly after server-side
+          # train motion so the player-vs-carriage displacement reaches the artifact.
+          CARRY_DELTA=0
+          for i in $(seq 1 15); do
+            if grep -q 'GATE_E_CLIENT_CARRY_DELTA' ../world-smoke.log; then CARRY_DELTA=1; break; fi
+            if fatal_state; then exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$CARRY_DELTA" -ne 1 ]; then
+            echo 'Phase 71 client carry delta telemetry did not appear after train motion.'
+            tail -260 ../world-smoke.log
+            exit 1
+          fi
+
           PHASE54=0
           for i in $(seq 1 30); do
             if grep -q 'anchor_state=' ../world-smoke.log; then PHASE54=1; break; fi
@@ -171,8 +185,8 @@ jobs:
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during functional Gate D.'; wait "$CLIENT_PID" || true; exit 1; fi
           if fatal_state; then echo 'Fatal state during functional Gate D.'; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
-          grep -E 'GATE_D_|GATE_E_|anchor_state=|Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro' ../world-smoke.log | tail -260 || true
-          echo 'Verified real train world functional Gate D + Phase 54 telemetry passed.'
+          grep -E 'GATE_D_|GATE_E_|anchor_state=|Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro' ../world-smoke.log | tail -300 || true
+          echo 'Verified real train world functional Gate D + Phase 71 carry telemetry passed.'
 
       - name: Summarize real-world smoke diagnostics
         if: always()
@@ -180,14 +194,14 @@ jobs:
         run: |
           set -uo pipefail
           {
-            echo '## Verified r0v3 real train world smoke + Gate D + Phase 54'
+            echo '## Verified r0v3 real train world smoke + Gate D + Phase 71'
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
-            echo 'Phase 54: read-only Contraption.anchor coordinate-frame telemetry; no player/train/physics mutation.'
+            echo 'Phase 71: read-only client player-vs-carriage carry delta after genuine Create surface contact.'
             if [ -f world-smoke.log ]; then
               echo '```text'
-              grep -Ein 'GATE_D_|GATE_E_|anchor_state=|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR' world-smoke.log | tail -380 || true
+              grep -Ein 'GATE_D_|GATE_E_|anchor_state=|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR' world-smoke.log | tail -420 || true
               echo '--- tail ---'
-              tail -220 world-smoke.log
+              tail -260 world-smoke.log
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

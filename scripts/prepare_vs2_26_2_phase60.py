@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
@@ -78,3 +79,8 @@ source = source.replace(old_before_drag, new_before_drag, 1)
 
 probe.write_text(source, encoding="utf-8")
 print("Phase 60: normalized the CI smoke player's saved position onto the nearest real Create carriage block top before measuring carry; test-harness-only, no production physics changes")
+
+# Server-side setPos is not guaranteed to reach LocalPlayer before the automatic train
+# starts moving. Mirror the same CI-only normalization on the client before Gate E
+# evaluates Create contact/carry.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase61.py")), run_name="__main__")

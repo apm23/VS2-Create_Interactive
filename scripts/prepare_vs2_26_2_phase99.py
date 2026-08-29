@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
+
+# Phase 99 depends on the cumulative Phase 98 native-target profile. Apply Phase 98
+# first so this script is safe to chain from Phase 54 as well as invoke standalone.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase98.py")), run_name="__main__")
 source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #46 proved the exact native target is a Copycats structural block

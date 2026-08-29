@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -40,3 +41,9 @@ if missing:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 88: aimed production smoke camera straight down during sustained carry; view-fixture telemetry only, no interaction mutation")
+
+# Phase 89 must run after Phase 88 because it distinguishes the same-callback view
+# assignment from a later carry callback where Minecraft has had a frame to refresh
+# client.hitResult. Keep this chained from the production smoke's existing script
+# sequence without widening any gameplay behavior.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase89.py")), run_name="__main__")

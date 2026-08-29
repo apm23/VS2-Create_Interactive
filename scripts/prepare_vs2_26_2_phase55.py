@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -72,3 +73,7 @@ if old not in source:
 source = source.replace(old, new, 1)
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 55: traced every nearby Create carriage candidate and local block-support distance; read-only telemetry only")
+
+# Chain Phase 56 so workflows that currently terminate preparation at Phase 54 still
+# receive the exact coordinate transform comparison used by Create's own collider.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase56.py")), run_name="__main__")

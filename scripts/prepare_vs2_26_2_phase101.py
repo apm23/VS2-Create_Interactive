@@ -59,6 +59,11 @@ settled_replacement = settled_anchor + '''
                                                     LOGGER.info(
                                                         "GATE_F_NATIVE_RIGHT_CLICK_PROBE carriage_id={} player_tick={} invoked=true handled={} hand_empty_after={} readiness_source=create_native_ray_settled",
                                                         carriage.getId(), player.tickCount, handled, player.getMainHandItem().isEmpty());
+                                                    if (Boolean.TRUE.equals(handled)) {
+                                                        LOGGER.info(
+                                                            "GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED carriage_id={} player_tick={} handled=true target_source=create_native_ray_settled",
+                                                            carriage.getId(), player.tickCount);
+                                                    }
                                                 }
                                             } catch (ReflectiveOperationException | RuntimeException exception) {
                                                 LOGGER.info(
@@ -75,11 +80,13 @@ if "readiness_source=create_native_ray_settled" not in source:
 required = [
     'nativeRightClickProbeDispatched',
     'GATE_F_NATIVE_RIGHT_CLICK_PROBE',
+    'GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED',
     'readiness_source=create_native_ray_settled',
     'boolean settledCreateNativeRayReady',
     'productionSmokeFixture',
     'java.lang.reflect.Modifier.isStatic(candidate.getModifiers())',
     'settledExactRightClickMethod.invoke(',
+    'Boolean.TRUE.equals(handled)',
     'player.getMainHandItem().isEmpty()',
 ]
 missing = [token for token in required if token not in source]
@@ -95,4 +102,4 @@ for forbidden in [
         raise SystemExit("Phase 101 found forbidden direct interaction/physics mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 101: moved the disposable-world native right-click probe to Create's proven settled native-ray seam; no normal-gameplay dispatch, train, carry, or VS2 physics path changed")
+print("Phase 101: moved the disposable-world native right-click probe to Create's proven settled native-ray seam and emits an explicit confirmation only when Create returns handled=true; no normal-gameplay dispatch, train, carry, or VS2 physics path changed")

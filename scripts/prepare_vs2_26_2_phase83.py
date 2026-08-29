@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -46,3 +47,7 @@ source = source.replace(
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 85: restored Create-computed, Create-collision-filtered horizontal carry only under strict physical support; compatibility candidate")
+
+# Phase 86 separates the verified compatibility movement from archived-save fixture
+# normalization before the client source is compiled by CI.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase86.py")), run_name="__main__")

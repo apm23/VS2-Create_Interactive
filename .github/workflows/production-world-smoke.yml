@@ -91,40 +91,60 @@ jobs:
           export DISPLAY=:98
           Xvfb :98 -screen 0 1280x720x24 -nolisten tcp > profile-probe-xvfb.log 2>&1 &
           XVFB_PID=$!
+          CLIENT_PGID=''
           cleanup_probe() {
-            if [ -n "${CLIENT_PID:-}" ] && kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
+            if [ -n "${CLIENT_PGID:-}" ]; then kill -TERM -- "-$CLIENT_PGID" 2>/dev/null || true; fi
             if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
           }
           trap cleanup_probe EXIT
           sleep 2
 
-          (
-            cd upstream
-            LIBGL_ALWAYS_SOFTWARE=true MESA_GL_VERSION_OVERRIDE=4.6 MESA_GLSL_VERSION_OVERRIDE=460 ALSOFT_DRIVERS=null \
-              ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-profile-probe'
-          ) > profile-probe.log 2>&1 &
-          CLIENT_PID=$!
+          setsid bash -c "cd upstream && exec env LIBGL_ALWAYS_SOFTWARE=true MESA_GL_VERSION_OVERRIDE=4.6 MESA_GLSL_VERSION_OVERRIDE=460 ALSOFT_DRIVERS=null ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-profile-probe'" > profile-probe.log 2>&1 &
+          CLIENT_PGID=$!
 
-          PROFILE=''
+          JOINED=0
           for i in $(seq 1 180); do
-            PROFILE="$(find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null || true)"
-            if [ -n "$PROFILE" ]; then break; fi
+            if grep -Eq ' logged in with entity id [0-9]+ at \(' profile-probe.log; then JOINED=1; break; fi
             if grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Minecraft has crashed|Game crashed' profile-probe.log; then
               tail -200 profile-probe.log
               exit 1
             fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
-              wait "$CLIENT_PID" || true
+            if ! kill -0 "$CLIENT_PGID" 2>/dev/null; then
+              wait "$CLIENT_PGID" || true
               tail -200 profile-probe.log
               exit 1
             fi
             sleep 1
           done
-          test -n "$PROFILE"
+          test "$JOINED" -eq 1
 
-          kill "$CLIENT_PID" 2>/dev/null || true
-          wait "$CLIENT_PID" 2>/dev/null || true
-          CLIENT_PID=''
+          # Run 7 proved that merely waiting for playerdata can never succeed while
+          # the integrated server remains live: the profile is persisted on a clean
+          # server shutdown. Signal the whole Gradle/client process group with INT,
+          # then wait for Minecraft's save path before inspecting the disposable copy.
+          sleep 5
+          kill -INT -- "-$CLIENT_PGID" 2>/dev/null || true
+          for i in $(seq 1 60); do
+            if grep -Eq 'Saving players|Stopping server|Saving chunks for level' profile-probe.log \
+              && find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null | grep -q .; then
+              break
+            fi
+            if ! kill -0 "$CLIENT_PGID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if kill -0 "$CLIENT_PGID" 2>/dev/null; then
+            kill -TERM -- "-$CLIENT_PGID" 2>/dev/null || true
+          fi
+          wait "$CLIENT_PGID" 2>/dev/null || true
+          CLIENT_PGID=''
+
+          PROFILE="$(find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null || true)"
+          if [ -z "$PROFILE" ]; then
+            echo 'Disposable profile probe did not persist playerdata after graceful process-group interrupt.'
+            grep -E 'logged in with entity id|Saving players|Stopping server|Saving chunks for level' profile-probe.log | tail -80 || true
+            exit 1
+          fi
+
           kill "$XVFB_PID" 2>/dev/null || true
           wait "$XVFB_PID" 2>/dev/null || true
           trap - EXIT
@@ -215,7 +235,6 @@ jobs:
           test "$MODE_READY" -eq 1
           test "$WORLD_READY" -eq 1
 
-          # Production isolation must not perform the CI-only runtime player normalization/gravity probes.
           sleep 8
           if grep -Eq 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|gravity_probe_y=-0\.08' ../production-world-smoke.log; then
             echo 'Production world smoke unexpectedly executed CI runtime fixture mutation.'
@@ -239,9 +258,6 @@ jobs:
           done
           test "$TRAIN_MOVED" -eq 1
 
-          # Hard functional production gate: runtime fixture mutation remains forbidden.
-          # A disposable copy discovers the actual dev-client player UUID, then only its
-          # playerdata file is seeded offline into the pristine production smoke copy.
           PRODUCTION_CARRY=0
           for i in $(seq 1 20); do
             if python3 - ../production-world-smoke.log <<'PY'

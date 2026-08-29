@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -33,7 +34,7 @@ public abstract class MixinLocalPlayerMoveTrace {
     @Unique private double vs2$beforeZ;
     @Unique private int vs2$currentIndex;
 
-    @Inject(method = "move", at = @At("HEAD"))
+    @Inject(method = "move", at = @At("HEAD"), require = 0)
     private void vs2$beforeMove(MoverType type, Vec3 requested, CallbackInfo ci) {
         String thread = Thread.currentThread().getName();
         if (!(thread.contains("Render") || thread.contains("Client"))) return;
@@ -50,7 +51,7 @@ public abstract class MixinLocalPlayerMoveTrace {
             vs2$beforeX, vs2$beforeY, vs2$beforeZ, self.onGround());
     }
 
-    @Inject(method = "move", at = @At("RETURN"))
+    @Inject(method = "move", at = @At("RETURN"), require = 0)
     private void vs2$afterMove(MoverType type, Vec3 requested, CallbackInfo ci) {
         int index = vs2$currentIndex;
         if (index <= 0 || index > 160) return;
@@ -74,4 +75,5 @@ if "MixinLocalPlayerMoveTrace" not in client:
     client.append("MixinLocalPlayerMoveTrace")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("Phase 72: traced LocalPlayer.move requested vs actual displacement on the client to determine whether Create ever applies carriage motion after contact; read-only telemetry only")
+print("Phase 72: attempted LocalPlayer-local move tracing with require=0; Phase 73 now instruments Entity.move, which owns the inherited implementation")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase73.py")), run_name="__main__")

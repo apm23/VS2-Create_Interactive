@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -27,3 +28,5 @@ source = source.replace(
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 67: normalized the CI LocalPlayer to Create's actual simplified collision-surface top (with epsilon-safe X/Z containment) so narrow-phase carry is tested against the real Copycats shape; harness-only")
+
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase68.py")), run_name="__main__")

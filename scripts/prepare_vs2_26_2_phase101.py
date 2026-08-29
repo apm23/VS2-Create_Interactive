@@ -5,12 +5,13 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #58 proved sustained Create-filtered carry and concrete native
-# settled-ray hits. Runs #59/#61/#62 then proved the high-level Create right-click
-# entrypoint can be invoked on a moving carriage and returns handled=true. Keep that
-# disposable-world-only probe, and after confirmation inventory the same native
-# handler's public placement/item/use/interaction-shaped methods read-only. This is
-# the next safe step before supplying an item or attempting block placement.
+# Production-world #63 proved sustained Create-filtered carry, a concrete Create-native
+# moving-carriage ray hit, and handled=true through Create's high-level right-click path.
+# Its runtime placement-surface inventory exposed only the existing-block interaction
+# entrypoint plus an unrelated dismount helper. Before attempting any block mutation,
+# inventory the actual carriage Contraption object's public mutation-shaped methods and
+# declared block/collider/storage fields read-only. This narrows the authoritative place
+# to patch without changing inventory, packets, train state, VS2 physics, or world data.
 field_anchor = '''    private static boolean fixtureClientNormalized;\n'''
 field_replacement = '''    private static boolean fixtureClientNormalized;\n    private static boolean nativeRightClickProbeDispatched;\n'''
 if "nativeRightClickProbeDispatched" not in source:
@@ -83,6 +84,61 @@ settled_replacement = settled_anchor + '''
                                                         LOGGER.info(
                                                             "GATE_F_NATIVE_PLACEMENT_SURFACE carriage_id={} player_tick={} methods={} count={} read_only=true",
                                                             carriage.getId(), player.tickCount, placementSurface, placementSurface.size());
+
+                                                        java.lang.reflect.Method getContraptionMethod = carriage.getClass().getMethod("getContraption");
+                                                        Object contraptionObject = getContraptionMethod.invoke(carriage);
+                                                        java.util.List<String> mutationMethods = new java.util.ArrayList<>();
+                                                        for (java.lang.reflect.Method candidate : contraptionObject.getClass().getMethods()) {
+                                                            String lowerName = candidate.getName().toLowerCase(java.util.Locale.ROOT);
+                                                            if (!(lowerName.contains("block")
+                                                                    || lowerName.contains("place")
+                                                                    || lowerName.contains("remove")
+                                                                    || lowerName.contains("add")
+                                                                    || lowerName.contains("collider")
+                                                                    || lowerName.contains("bound")
+                                                                    || lowerName.contains("actor")
+                                                                    || lowerName.contains("interact")
+                                                                    || lowerName.contains("storage")
+                                                                    || lowerName.contains("seat"))) {
+                                                                continue;
+                                                            }
+                                                            StringBuilder signature = new StringBuilder(candidate.getName()).append('(');
+                                                            Class<?>[] params = candidate.getParameterTypes();
+                                                            for (int index = 0; index < params.length; index++) {
+                                                                if (index > 0) signature.append(',');
+                                                                signature.append(params[index].getSimpleName());
+                                                            }
+                                                            signature.append("): ").append(candidate.getReturnType().getSimpleName());
+                                                            mutationMethods.add(signature.toString());
+                                                        }
+                                                        java.util.Collections.sort(mutationMethods);
+
+                                                        java.util.List<String> mutationFields = new java.util.ArrayList<>();
+                                                        Class<?> fieldOwner = contraptionObject.getClass();
+                                                        while (fieldOwner != null && fieldOwner != Object.class) {
+                                                            for (java.lang.reflect.Field candidate : fieldOwner.getDeclaredFields()) {
+                                                                String lowerName = candidate.getName().toLowerCase(java.util.Locale.ROOT);
+                                                                if (!(lowerName.contains("block")
+                                                                        || lowerName.contains("collider")
+                                                                        || lowerName.contains("bound")
+                                                                        || lowerName.contains("actor")
+                                                                        || lowerName.contains("interactor")
+                                                                        || lowerName.contains("storage")
+                                                                        || lowerName.contains("seat")
+                                                                        || lowerName.contains("update"))) {
+                                                                    continue;
+                                                                }
+                                                                mutationFields.add(fieldOwner.getSimpleName() + "." + candidate.getName()
+                                                                    + ":" + candidate.getType().getSimpleName()
+                                                                    + ":" + java.lang.reflect.Modifier.toString(candidate.getModifiers()));
+                                                            }
+                                                            fieldOwner = fieldOwner.getSuperclass();
+                                                        }
+                                                        java.util.Collections.sort(mutationFields);
+                                                        LOGGER.info(
+                                                            "GATE_F_CONTRAPTION_MUTATION_SURFACE carriage_id={} player_tick={} contraption_class={} methods={} method_count={} fields={} field_count={} read_only=true",
+                                                            carriage.getId(), player.tickCount, contraptionObject.getClass().getName(),
+                                                            mutationMethods, mutationMethods.size(), mutationFields, mutationFields.size());
                                                     }
                                                 }
                                             } catch (ReflectiveOperationException | RuntimeException exception) {
@@ -102,6 +158,7 @@ required = [
     'GATE_F_NATIVE_RIGHT_CLICK_PROBE',
     'GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED',
     'GATE_F_NATIVE_PLACEMENT_SURFACE',
+    'GATE_F_CONTRAPTION_MUTATION_SURFACE',
     'readiness_source=create_native_ray_settled',
     'boolean settledCreateNativeRayReady',
     'productionSmokeFixture',
@@ -110,18 +167,22 @@ required = [
     'Boolean.TRUE.equals(handled)',
     'player.getMainHandItem().isEmpty()',
     'placementSurface.add(signature.toString())',
+    'getContraptionMethod.invoke(carriage)',
+    'contraptionObject.getClass().getMethods()',
+    'fieldOwner.getDeclaredFields()',
     'read_only=true',
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 101 lost settled native interaction/placement-surface anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 101 lost settled native interaction/contraption-surface anchors: " + ", ".join(missing))
 
 for forbidden in [
     '.handlePlayerInteraction(', '.useItemOn(', '.useItem(', '.attack(', 'gameMode.use',
     'player.setPos(', 'player.setDeltaMovement(', 'player.setItemSlot(',
+    '.setAccessible(', '.put(', '.remove(',
 ]:
     if forbidden in settled_replacement:
-        raise SystemExit("Phase 101 found forbidden direct placement/physics mutation: " + forbidden)
+        raise SystemExit("Phase 101 found forbidden direct placement/physics/data mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 101: confirmed disposable-world native moving-train right click and inventories the native placement/item/use interaction surface read-only before any item or placement mutation")
+print("Phase 101: confirmed native moving-train interaction and inventories the actual carriage Contraption mutation surface read-only before any block-placement experiment")

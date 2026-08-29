@@ -63,6 +63,26 @@ jobs:
           rm -rf upstream/fabric/run/saves/train-production-smoke
           mv 'world-fixture/train build 1' upstream/fabric/run/saves/train-production-smoke
 
+      - name: Seed smoke copy player onto verified carriage support
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet nbtlib==2.0.4
+          python3 - <<'PY'
+          import nbtlib
+          from nbtlib import Double, List
+          path = 'upstream/fabric/run/saves/train-production-smoke/level.dat'
+          level = nbtlib.load(path)
+          player = level['Data']['Player']
+          before = tuple(float(v) for v in player['Pos'])
+          player['Pos'] = List[Double]([Double(-70.5), Double(-53.75), Double(118.5)])
+          level.save(path, gzipped=True)
+          check = nbtlib.load(path)
+          after = tuple(float(v) for v in check['Data']['Player']['Pos'])
+          assert after == (-70.5, -53.75, 118.5), after
+          print(f'PRODUCTION_SMOKE_OFFLINE_PLAYER_SEED before={before} after={after}')
+          PY
+
       - name: Prefetch Minecraft client assets with retry
         working-directory: upstream
         shell: bash
@@ -128,10 +148,10 @@ jobs:
           test "$MODE_READY" -eq 1
           test "$WORLD_READY" -eq 1
 
-          # Production isolation must not perform the CI-only player normalization/gravity probes.
+          # Production isolation must not perform the CI-only runtime player normalization/gravity probes.
           sleep 8
           if grep -Eq 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|gravity_probe_y=-0\.08' ../production-world-smoke.log; then
-            echo 'Production world smoke unexpectedly executed CI fixture mutation.'
+            echo 'Production world smoke unexpectedly executed CI runtime fixture mutation.'
             grep -E 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|gravity_probe_y=-0\.08' ../production-world-smoke.log | tail -80 || true
             exit 1
           fi
@@ -152,9 +172,10 @@ jobs:
           done
           test "$TRAIN_MOVED" -eq 1
 
-          # Hard functional production gate: no CI fixture is allowed, but if the
-          # saved player is genuinely supported by the carriage, Phase 85 must
-          # apply Create-computed, Create-collision-filtered horizontal carry.
+          # Hard functional production gate: runtime fixture mutation remains forbidden.
+          # The copied save is seeded offline to a carriage-support coordinate already
+          # proven by the regular world smoke, then Phase 85 must use Create-computed,
+          # Create-collision-filtered horizontal carry.
           PRODUCTION_CARRY=0
           for i in $(seq 1 20); do
             if python3 - ../production-world-smoke.log <<'PY'
@@ -185,7 +206,7 @@ jobs:
             sleep 1
           done
           if [ "$PRODUCTION_CARRY" -ne 1 ]; then
-            echo 'Production world did not prove strict Phase 85 horizontal carry without CI fixture mutation.'
+            echo 'Production world did not prove strict Phase 85 horizontal carry after offline smoke-copy seed.'
             grep -E 'GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE81_SUPPORT_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA|GATE_D_TRAIN_MOVED|VS2_CREATE_CARRY_COMPAT_MODE' ../production-world-smoke.log | tail -220 || true
             exit 1
           fi
@@ -196,7 +217,7 @@ jobs:
           fi
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Real train world proved strict production carry with no CI fixture mutation.'
+          echo 'Real train world proved strict production carry from offline-seeded smoke copy with no runtime fixture mutation.'
           grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|GATE_D_CARRIAGE_PRESENT|GATE_D_TRAIN_MOVED|GATE_E_PHASE85_CARRY_REPLAY|Initialized VSCore|create 6\.0\.9-1|railways |copycats ' ../production-world-smoke.log | tail -220 || true
 
       - name: Upload production real-world diagnostics

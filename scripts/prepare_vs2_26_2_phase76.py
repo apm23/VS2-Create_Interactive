@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -68,3 +69,4 @@ if "MixinEntityLocalPlayerSetPosTrace" not in client:
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 print("Phase 76: traced direct LocalPlayer setPos callers to distinguish missing Create carry application from later client position reset; read-only telemetry only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase77.py")), run_name="__main__")

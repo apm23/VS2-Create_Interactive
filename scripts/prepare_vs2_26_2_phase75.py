@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 trace = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderTrace.java"
@@ -53,3 +54,4 @@ if "GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT" not in source:
 
 trace.write_text(source, encoding="utf-8")
 print("Phase 75: traced Create ContraptionCollider.collide requested-vs-allowed horizontal carry for LocalPlayer; read-only telemetry only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase76.py")), run_name="__main__")

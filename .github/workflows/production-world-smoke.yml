@@ -81,6 +81,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check --quiet nbtlib==2.0.4
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xdotool >/dev/null
 
           PROD='upstream/fabric/run/saves/train-production-smoke'
           PROBE='upstream/fabric/run/saves/train-profile-probe'
@@ -118,17 +120,20 @@ jobs:
           done
           test "$JOINED" -eq 1
 
-          # Run 7 proved that merely waiting for playerdata can never succeed while
-          # the integrated server remains live: the profile is persisted on a clean
-          # server shutdown. Signal the whole Gradle/client process group with INT,
-          # then wait for Minecraft's save path before inspecting the disposable copy.
-          sleep 5
-          kill -INT -- "-$CLIENT_PGID" 2>/dev/null || true
-          for i in $(seq 1 60); do
-            if grep -Eq 'Saving players|Stopping server|Saving chunks for level' profile-probe.log \
-              && find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null | grep -q .; then
-              break
-            fi
+          # SIGINT to Gradle does not close the spawned Minecraft client reliably.
+          # Ask the X11 window to close instead so Minecraft runs its normal integrated-server
+          # shutdown/save path and persists the dev-client player profile in this disposable copy.
+          sleep 4
+          WINDOW_ID="$(xdotool search --onlyvisible --name 'Minecraft' 2>/dev/null | head -n1 || true)"
+          if [ -z "$WINDOW_ID" ]; then
+            echo 'Could not locate disposable Minecraft window for graceful close.'
+            xdotool search --onlyvisible --name '.*' getwindowname %@ 2>/dev/null | tail -50 || true
+            exit 1
+          fi
+          xdotool windowclose "$WINDOW_ID"
+
+          for i in $(seq 1 90); do
+            if find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null | grep -q .; then break; fi
             if ! kill -0 "$CLIENT_PGID" 2>/dev/null; then break; fi
             sleep 1
           done
@@ -140,8 +145,8 @@ jobs:
 
           PROFILE="$(find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null || true)"
           if [ -z "$PROFILE" ]; then
-            echo 'Disposable profile probe did not persist playerdata after graceful process-group interrupt.'
-            grep -E 'logged in with entity id|Saving players|Stopping server|Saving chunks for level' profile-probe.log | tail -80 || true
+            echo 'Disposable profile probe still did not persist playerdata after X11 window close.'
+            grep -E 'Setting user:|logged in with entity id|Saving players|Stopping server|Saving chunks for level' profile-probe.log | tail -120 || true
             exit 1
           fi
 
@@ -262,8 +267,7 @@ jobs:
           for i in $(seq 1 20); do
             if python3 - ../production-world-smoke.log <<'PY'
           import re, sys
-          path = sys.argv[1]
-          text = open(path, encoding='utf-8', errors='replace').read()
+          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
           pattern = re.compile(
               r'GATE_E_PHASE85_CARRY_REPLAY[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
               r'[^\n]*allowed=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
@@ -272,12 +276,10 @@ jobs:
           for match in pattern.finditer(text):
               v = list(map(float, match.groups()))
               req_x, _req_y, req_z, allow_x, _allow_y, allow_z, before_x, before_y, before_z, after_x, after_y, after_z = v
-              moved_x = after_x - before_x
-              moved_z = after_z - before_z
               if ((abs(req_x) > 1e-6 or abs(req_z) > 1e-6)
                       and (abs(allow_x) > 1e-6 or abs(allow_z) > 1e-6)
-                      and abs(moved_x - allow_x) <= 1e-6
-                      and abs(moved_z - allow_z) <= 1e-6
+                      and abs((after_x - before_x) - allow_x) <= 1e-6
+                      and abs((after_z - before_z) - allow_z) <= 1e-6
                       and abs(after_y - before_y) <= 1e-9):
                   raise SystemExit(0)
           raise SystemExit(1)

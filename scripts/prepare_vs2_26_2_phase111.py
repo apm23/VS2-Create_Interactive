@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 server_probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
@@ -80,3 +81,7 @@ if missing:
 
 server_probe.write_text(server, encoding="utf-8")
 print("Phase 111: placed one inert STONE block into the exact authoritative empty carriage cell only in the disposable smoke fixture and verifies map/state/source stability")
+
+# Run the direct-carry interaction bridge after every existing interaction phase has
+# already instrumented GateE, so it can reuse the complete validated read-only block.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase112.py")), run_name="__main__")

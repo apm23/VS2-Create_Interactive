@@ -13,6 +13,7 @@ source = client_probe.read_text(encoding="utf-8")
 # -Dvs2.productionSmoke=true can now exercise ci_harness=false even inside Actions.
 old = '''        boolean ciHarness = Boolean.getBoolean("vs2.gateD") || "true".equals(System.getenv("GITHUB_ACTIONS"));'''
 new = '''        boolean productionSmoke = Boolean.getBoolean("vs2.productionSmoke");
+        boolean productionSmokeFixture = Boolean.getBoolean("vs2.productionSmokeFixture");
         boolean ciHarness = Boolean.getBoolean("vs2.gateD") || ("true".equals(System.getenv("GITHUB_ACTIONS")) && !productionSmoke);'''
 if new not in source:
     if old not in source:
@@ -31,16 +32,33 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 87 lost production/harness isolation anchors: " + ", ".join(missing))
 
+# Production-world runs 5-9 showed that trying to pre-seed the dev player's save
+# profile from outside Minecraft is brittle: the archived world has no playerdata,
+# the development username is ephemeral, and CI cannot reliably force a normal
+# client shutdown. Keep production compatibility itself at ci_harness=false, but
+# allow an independently named test-only fixture switch to reuse the already-proven
+# carriage normalization path. This only establishes initial test contact; it does
+# not enable the carry compatibility path by itself.
+source = source.replace(
+    'if (ciHarness && !fixtureClientNormalized',
+    'if ((ciHarness || productionSmokeFixture) && !fixtureClientNormalized',
+    1,
+)
+source = source.replace(
+    'if (ciHarness && !fixtureColliderNormalized',
+    'if ((ciHarness || productionSmokeFixture) && !fixtureColliderNormalized',
+    1,
+)
+
 # Production-world run 2 proved the explicit compatibility path can load the real
 # train world with ci_harness=false and observe genuine carriage motion, but Phase
 # 85 never fires because its historical smoke-only guard still requires
-# carryBaselineCaptured. That baseline was created by the CI normalization/contact
-# fixture and is intentionally unavailable in production mode. The actual safety
-# predicate we validated is the current Create simplified collider directly under
-# the LocalPlayer, plus collisionEligible+broadphaseOverlap and Create's own
-# getContactPointMotion -> ContraptionCollider.collide result. Allow explicit
-# production opt-in to use that strict current physical-support predicate without
-# requiring a prior CI-only contact baseline. CI behavior remains unchanged.
+# carryBaselineCaptured. The actual safety predicate we validated is the current
+# Create simplified collider directly under the LocalPlayer, plus
+# collisionEligible+broadphaseOverlap and Create's own getContactPointMotion ->
+# ContraptionCollider.collide result. Allow explicit production opt-in to use that
+# strict current physical-support predicate without requiring a prior CI-only
+# contact baseline. CI behavior remains unchanged.
 old_carry_guard = '''            if (carryBaselineCaptured
                 && phase81PhysicalSupport'''
 new_carry_guard = '''            if ((carryBaselineCaptured || explicitCarryCompat)
@@ -73,6 +91,7 @@ production_required = [
     'broadphaseOverlap',
     'GATE_E_PHASE85_CARRY_REPLAY',
     'GATE_E_PHASE81_SUPPORT_CONTINUITY',
+    'productionSmokeFixture',
 ]
 production_missing = [token for token in production_required if token not in source]
 if production_missing:
@@ -80,14 +99,13 @@ if production_missing:
 
 client_probe.write_text(source, encoding="utf-8")
 
-# The server-side Gate D fixture normalization from Phases 60/69/70 is also a
-# deliberate smoke-harness mutation. Without this guard, a GitHub production-smoke
-# JVM would still reposition ServerPlayer and apply the one-shot gravity probe even
-# though the LocalPlayer fixture path is disabled. Keep normal CI unchanged, but
-# make productionSmoke a strict no-fixture boundary on both sides.
+# Server-side Gate D normalization is also test-only. Production smoke keeps the
+# production carry mode boundary (ci_harness=false), while productionSmokeFixture
+# may opt into the one-shot contact setup when the workflow needs deterministic
+# initial support. Normal users never set this property.
 server = server_probe.read_text(encoding="utf-8")
 old_server_guard = '''            if (!fixturePlayerChecked) {'''
-new_server_guard = '''            if (!java.lang.Boolean.getBoolean("vs2.productionSmoke") && !fixturePlayerChecked) {'''
+new_server_guard = '''            if ((!java.lang.Boolean.getBoolean("vs2.productionSmoke") || java.lang.Boolean.getBoolean("vs2.productionSmokeFixture")) && !fixturePlayerChecked) {'''
 if new_server_guard not in server:
     if old_server_guard not in server:
         raise SystemExit("Phase 87 could not find Gate D fixture normalization guard")
@@ -95,6 +113,7 @@ if new_server_guard not in server:
 
 server_required = [
     'java.lang.Boolean.getBoolean("vs2.productionSmoke")',
+    'java.lang.Boolean.getBoolean("vs2.productionSmokeFixture")',
     'GATE_D_FIXTURE_PLAYER_REPOSITIONED',
     'gravity_probe_y=-0.08',
 ]
@@ -103,4 +122,4 @@ if server_missing:
     raise SystemExit("Phase 87 lost server fixture isolation anchors: " + ", ".join(server_missing))
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 87: production isolation plus bounded physical-support telemetry for strict carry diagnosis")
+print("Phase 87: production isolation plus explicit test-only support fixture and bounded carry telemetry")

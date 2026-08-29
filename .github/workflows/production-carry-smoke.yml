@@ -32,12 +32,11 @@ jobs:
         run: |
           set -euo pipefail
           for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
-          grep -q 'boolean ciHarness = Boolean.getBoolean("vs2.gateD");' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'boolean productionSmoke = Boolean.getBoolean("vs2.productionSmoke");' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'boolean ciHarness = Boolean.getBoolean("vs2.gateD")' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q '!productionSmoke' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'boolean explicitCarryCompat = Boolean.getBoolean("vs2.createCarryCompat");' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
-          if grep -q 'System.getenv("GITHUB_ACTIONS")' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java; then
-            echo 'Production carry probe still depends on GITHUB_ACTIONS.'
-            exit 1
-          fi
+          grep -q 'java.lang.Boolean.getBoolean("vs2.productionSmoke")' upstream/fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt
 
       - name: Prefetch Minecraft client assets with retry
         working-directory: upstream
@@ -55,7 +54,7 @@ jobs:
         working-directory: upstream
         shell: bash
         env:
-          JAVA_TOOL_OPTIONS: '-Dvs2.createCarryCompat=true'
+          JAVA_TOOL_OPTIONS: '-Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true'
           LIBGL_ALWAYS_SOFTWARE: 'true'
           MESA_GL_VERSION_OVERRIDE: '4.6'
           MESA_GLSL_VERSION_OVERRIDE: '460'

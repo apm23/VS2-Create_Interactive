@@ -88,3 +88,8 @@ for forbidden in [
 
 server_probe.write_text(server, encoding="utf-8")
 print("Phase 110: constructed and field-validated the authoritative empty-cell StructureBlockInfo candidate read-only; no contraption, world, inventory, player, train, or physics mutation")
+
+# Phase 111 is the first actual placement experiment, but remains strictly confined
+# to the disposable production smoke fixture world.
+phase111 = Path(__file__).with_name("prepare_vs2_26_2_phase111.py")
+exec(compile(phase111.read_text(encoding="utf-8"), str(phase111), "exec"))

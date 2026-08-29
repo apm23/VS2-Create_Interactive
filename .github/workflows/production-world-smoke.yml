@@ -152,14 +152,52 @@ jobs:
           done
           test "$TRAIN_MOVED" -eq 1
 
+          # Hard functional production gate: no CI fixture is allowed, but if the
+          # saved player is genuinely supported by the carriage, Phase 85 must
+          # apply Create-computed, Create-collision-filtered horizontal carry.
+          PRODUCTION_CARRY=0
+          for i in $(seq 1 20); do
+            if python3 - ../production-world-smoke.log <<'PY'
+          import re, sys
+          path = sys.argv[1]
+          text = open(path, encoding='utf-8', errors='replace').read()
+          pattern = re.compile(
+              r'GATE_E_PHASE85_CARRY_REPLAY[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*allowed=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*before=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*after=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)')
+          for match in pattern.finditer(text):
+              v = list(map(float, match.groups()))
+              req_x, _req_y, req_z, allow_x, _allow_y, allow_z, before_x, before_y, before_z, after_x, after_y, after_z = v
+              moved_x = after_x - before_x
+              moved_z = after_z - before_z
+              if ((abs(req_x) > 1e-6 or abs(req_z) > 1e-6)
+                      and (abs(allow_x) > 1e-6 or abs(allow_z) > 1e-6)
+                      and abs(moved_x - allow_x) <= 1e-6
+                      and abs(moved_z - allow_z) <= 1e-6
+                      and abs(after_y - before_y) <= 1e-9):
+                  raise SystemExit(0)
+          raise SystemExit(1)
+          PY
+            then PRODUCTION_CARRY=1; break; fi
+            if fatal_state; then exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$PRODUCTION_CARRY" -ne 1 ]; then
+            echo 'Production world did not prove strict Phase 85 horizontal carry without CI fixture mutation.'
+            grep -E 'GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE81_SUPPORT_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA|GATE_D_TRAIN_MOVED|VS2_CREATE_CARRY_COMPAT_MODE' ../production-world-smoke.log | tail -220 || true
+            exit 1
+          fi
+
           if grep -q 'VS2_CREATE_CARRY_COMPAT_MODE ci_harness=true' ../production-world-smoke.log; then
             echo 'Production real-world smoke entered CI harness unexpectedly.'
             exit 1
           fi
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Real train world loaded and moved with explicit production carry mode and no CI fixture mutation.'
-          grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|GATE_D_CARRIAGE_PRESENT|GATE_D_TRAIN_MOVED|Initialized VSCore|create 6\.0\.9-1|railways |copycats ' ../production-world-smoke.log | tail -160 || true
+          echo 'Real train world proved strict production carry with no CI fixture mutation.'
+          grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|GATE_D_CARRIAGE_PRESENT|GATE_D_TRAIN_MOVED|GATE_E_PHASE85_CARRY_REPLAY|Initialized VSCore|create 6\.0\.9-1|railways |copycats ' ../production-world-smoke.log | tail -220 || true
 
       - name: Upload production real-world diagnostics
         if: always()

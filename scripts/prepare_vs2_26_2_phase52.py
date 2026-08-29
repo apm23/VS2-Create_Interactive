@@ -42,9 +42,30 @@ new_reflection = '''                Field field = null;
                 field.setAccessible(true);
                 Object value = field.get(carriage);
                 contactFieldState = "owner=" + field.getDeclaringClass().getName();'''
-if old_reflection not in probe_source:
-    raise SystemExit("Phase 52 could not find Gate E reflection block")
-probe_source = probe_source.replace(old_reflection, new_reflection, 1)
+if old_reflection in probe_source:
+    probe_source = probe_source.replace(old_reflection, new_reflection, 1)
+
+old_state = '''            LOGGER.info(
+                "GATE_E_CLIENT_STATE player_pos={},{},{} on_ground={} velocity={},{},{} carriage_pos={},{},{} carriage_box={},{},{} -> {},{},{} create_registered_contact={} contact_field={}",
+                player.getX(), player.getY(), player.getZ(), player.onGround(),
+                velocity.x, velocity.y, velocity.z,
+                carriage.getX(), carriage.getY(), carriage.getZ(),
+                box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
+                createRegisteredContact, contactFieldState);'''
+new_state = '''            var playerBox = player.getBoundingBox();
+            boolean collisionEligible = carriage.canCollideWith(player);
+            boolean broadphaseOverlap = box.inflate(2.0).expandTowards(0.0, 32.0, 0.0).intersects(playerBox);
+            LOGGER.info(
+                "GATE_E_CLIENT_STATE player_pos={},{},{} player_box={},{},{} -> {},{},{} on_ground={} velocity={},{},{} carriage_pos={},{},{} carriage_box={},{},{} -> {},{},{} can_collide={} broadphase_overlap={} player_alive={} create_registered_contact={} contact_field={}",
+                player.getX(), player.getY(), player.getZ(),
+                playerBox.minX, playerBox.minY, playerBox.minZ, playerBox.maxX, playerBox.maxY, playerBox.maxZ,
+                player.onGround(), velocity.x, velocity.y, velocity.z,
+                carriage.getX(), carriage.getY(), carriage.getZ(),
+                box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
+                collisionEligible, broadphaseOverlap, player.isAlive(), createRegisteredContact, contactFieldState);'''
+if old_state not in probe_source:
+    raise SystemExit("Phase 52 could not find Gate E state log block")
+probe_source = probe_source.replace(old_state, new_state, 1)
 client_probe.write_text(probe_source, encoding="utf-8")
 
-print("Phase 52: Gate E samples every client-ready tick and resolves Create collidingEntities through the carriage class hierarchy; telemetry remains read-only and no gameplay or physics behavior is modified")
+print("Phase 52: Gate E validates Create collision eligibility/broadphase plus resolved collidingEntities map on every client-ready tick; telemetry remains read-only and no gameplay or physics behavior is modified")

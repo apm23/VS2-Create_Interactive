@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 initializer = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/ValkyrienSkiesModFabric.kt"
 probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
+client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
+fabric_mod = ROOT / "fabric/src/main/resources/fabric.mod.json"
 
 source = initializer.read_text(encoding="utf-8")
 anchor = "        ValkyrienSkiesMod.init()\n"
@@ -156,4 +159,85 @@ object GateDProbe {
 }
 ''', encoding="utf-8")
 
-print("Phase 51: traced Create support state and VS2 drag acquisition alongside Gate E drift using read-only telemetry; no train controls, schedules, player motion, or VS2 physics are modified")
+client_probe.parent.mkdir(parents=True, exist_ok=True)
+client_probe.write_text(r'''package org.valkyrienskies.mod.fabric.client;
+
+import java.lang.reflect.Field;
+import java.util.Comparator;
+import java.util.Map;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+/** CI-only client observer. Create handles the local player collision on the client and skips ServerPlayer. */
+public final class GateEClientProbe implements ClientModInitializer {
+    private static final Logger LOGGER = LogManager.getLogger("VS2-GateE-Client");
+    private long ticks;
+
+    @Override
+    public void onInitializeClient() {
+        boolean enabled = Boolean.getBoolean("vs2.gateD") || "true".equals(System.getenv("GITHUB_ACTIONS"));
+        if (!enabled) return;
+
+        LOGGER.info("GATE_E_CLIENT_READY");
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            ticks++;
+            if (ticks % 20L != 0L || client.player == null || client.level == null) return;
+
+            var player = client.player;
+            Entity carriage = client.level.getEntitiesOfClass(
+                    Entity.class,
+                    player.getBoundingBox().inflate(64.0),
+                    entity -> "create:carriage_contraption".equals(
+                            BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString()))
+                .stream()
+                .min(Comparator.comparingDouble(entity -> entity.distanceToSqr(player)))
+                .orElse(null);
+            if (carriage == null) {
+                LOGGER.info("GATE_E_CLIENT_WAITING_CARRIAGE player_pos={},{},{} on_ground={}",
+                    player.getX(), player.getY(), player.getZ(), player.onGround());
+                return;
+            }
+
+            boolean createRegisteredContact = false;
+            String contactFieldState = "missing";
+            try {
+                Field field = carriage.getClass().getDeclaredField("collidingEntities");
+                field.setAccessible(true);
+                Object value = field.get(carriage);
+                if (value instanceof Map<?, ?> map) {
+                    createRegisteredContact = map.containsKey(player);
+                    contactFieldState = "map_size=" + map.size();
+                } else {
+                    contactFieldState = "type=" + (value == null ? "null" : value.getClass().getName());
+                }
+            } catch (ReflectiveOperationException | RuntimeException exception) {
+                contactFieldState = "error=" + exception.getClass().getSimpleName();
+            }
+
+            Vec3 velocity = player.getDeltaMovement();
+            var box = carriage.getBoundingBox();
+            LOGGER.info(
+                "GATE_E_CLIENT_STATE player_pos={},{},{} on_ground={} velocity={},{},{} carriage_pos={},{},{} carriage_box={},{},{} -> {},{},{} create_registered_contact={} contact_field={}",
+                player.getX(), player.getY(), player.getZ(), player.onGround(),
+                velocity.x, velocity.y, velocity.z,
+                carriage.getX(), carriage.getY(), carriage.getZ(),
+                box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
+                createRegisteredContact, contactFieldState);
+        });
+    }
+}
+''', encoding="utf-8")
+
+metadata = json.loads(fabric_mod.read_text(encoding="utf-8"))
+client_entrypoint = "org.valkyrienskies.mod.fabric.client.GateEClientProbe"
+client_entrypoints = metadata.setdefault("entrypoints", {}).setdefault("client", [])
+if client_entrypoint not in client_entrypoints:
+    client_entrypoints.append(client_entrypoint)
+fabric_mod.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+print("Phase 51: traced server drift/VS2 drag plus Create's client-side local-player contact path using read-only telemetry; no train controls, schedules, player motion, collision response, or VS2 physics are modified")

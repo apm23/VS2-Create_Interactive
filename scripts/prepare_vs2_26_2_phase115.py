@@ -90,3 +90,9 @@ for forbidden in ['.put(', '.remove(', '.clear(', 'setBlock(', 'setPos(', 'setDe
 server_probe.write_text(server, encoding="utf-8")
 client_probe.write_text(client, encoding="utf-8")
 print("Phase 115: instruments exact post-placement server replication surface and client pending/synced state read-only; no gameplay, train, inventory, world, or physics mutation")
+
+# Production-world #103 proved the first direct carry delta can be sampled during the
+# fixture transition and permanently close the read-only observer before later stable
+# carriage motion. Keep measuring after transient fixture-only failures.
+phase116 = Path(__file__).with_name("prepare_vs2_26_2_phase116.py")
+exec(compile(phase116.read_text(encoding="utf-8"), str(phase116), "exec"))

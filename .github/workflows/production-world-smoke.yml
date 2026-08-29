@@ -130,9 +130,6 @@ jobs:
           test "$MODE_READY" -eq 1
           test "$WORLD_READY" -eq 1
 
-          # This run deliberately allows only the separately named test fixture to
-          # establish initial carriage contact. The production carry mode itself must
-          # remain ci_harness=false and explicitly opt-in.
           FIXTURE_READY=0
           for i in $(seq 1 90); do
             if grep -Eq 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_' ../production-world-smoke.log; then FIXTURE_READY=1; break; fi
@@ -183,15 +180,51 @@ jobs:
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
             sleep 1
           done
-          if [ "$PRODUCTION_CARRY" -ne 1 ]; then
-            echo 'Production world did not prove strict Phase 85 horizontal carry after deterministic support setup.'
-            grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|GATE_D_TRAIN_MOVED|GATE_E_PHASE81_SUPPORT_CONTINUITY|GATE_E_PHASE85_CARRY_REPLAY' ../production-world-smoke.log | tail -260 || true
+          test "$PRODUCTION_CARRY" -eq 1
+
+          # A single replay only proves the seam fires once. Require multiple valid,
+          # collision-filtered horizontal carry applications after train motion so
+          # transient contact cannot masquerade as stable moving-train carry.
+          SUSTAINED_CARRY=0
+          for i in $(seq 1 40); do
+            if python3 - ../production-world-smoke.log <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+          pattern = re.compile(
+              r'GATE_E_PHASE85_CARRY_REPLAY[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*allowed=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*before=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*after=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)')
+          valid = []
+          for match in pattern.finditer(text):
+              v = list(map(float, match.groups()))
+              req_x, _req_y, req_z, allow_x, _allow_y, allow_z, before_x, before_y, before_z, after_x, after_y, after_z = v
+              if ((abs(req_x) > 1e-6 or abs(req_z) > 1e-6)
+                      and (abs(allow_x) > 1e-6 or abs(allow_z) > 1e-6)
+                      and abs((after_x - before_x) - allow_x) <= 1e-6
+                      and abs((after_z - before_z) - allow_z) <= 1e-6
+                      and abs(after_y - before_y) <= 1e-9):
+                  valid.append((allow_x, allow_z))
+          total = sum((x*x + z*z) ** 0.5 for x, z in valid)
+          if len(valid) >= 5 and total > 1e-4:
+              print(f'SUSTAINED_PRODUCTION_CARRY samples={len(valid)} cumulative_horizontal={total:.9f}')
+              raise SystemExit(0)
+          raise SystemExit(1)
+          PY
+            then SUSTAINED_CARRY=1; break; fi
+            if fatal_state; then exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$SUSTAINED_CARRY" -ne 1 ]; then
+            echo 'Production world did not prove sustained Phase 85 carry continuity.'
+            grep -E 'GATE_D_TRAIN_MOVED|GATE_E_PHASE81_SUPPORT_CONTINUITY|GATE_E_PHASE85_CARRY_REPLAY' ../production-world-smoke.log | tail -320 || true
             exit 1
           fi
 
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Production carry passed in real train world with isolated test-only initial support fixture.'
+          echo 'Sustained production carry passed in the real train world with isolated initial support fixture.'
 
       - name: Upload production real-world diagnostics
         if: always()

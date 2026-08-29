@@ -31,6 +31,36 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 87 lost production/harness isolation anchors: " + ", ".join(missing))
 
+# Production-world run 2 proved the explicit compatibility path can load the real
+# train world with ci_harness=false and observe genuine carriage motion, but Phase
+# 85 never fires because its historical smoke-only guard still requires
+# carryBaselineCaptured. That baseline was created by the CI normalization/contact
+# fixture and is intentionally unavailable in production mode. The actual safety
+# predicate we validated is the current Create simplified collider directly under
+# the LocalPlayer, plus collisionEligible+broadphaseOverlap and Create's own
+# getContactPointMotion -> ContraptionCollider.collide result. Allow explicit
+# production opt-in to use that strict current physical-support predicate without
+# requiring a prior CI-only contact baseline. CI behavior remains unchanged.
+old_carry_guard = '''            if (carryBaselineCaptured
+                && phase81PhysicalSupport'''
+new_carry_guard = '''            if ((carryBaselineCaptured || explicitCarryCompat)
+                && phase81PhysicalSupport'''
+carry_guard_count = source.count(old_carry_guard)
+if carry_guard_count < 2:
+    raise SystemExit(f"Phase 87 expected both Phase 85 production carry guards, found {carry_guard_count}")
+source = source.replace(old_carry_guard, new_carry_guard, 2)
+
+production_required = [
+    '(carryBaselineCaptured || explicitCarryCompat)',
+    'phase81PhysicalSupport',
+    'collisionEligible',
+    'broadphaseOverlap',
+    'GATE_E_PHASE85_CARRY_REPLAY',
+]
+production_missing = [token for token in production_required if token not in source]
+if production_missing:
+    raise SystemExit("Phase 87 lost strict production carry anchors: " + ", ".join(production_missing))
+
 client_probe.write_text(source, encoding="utf-8")
 
 # The server-side Gate D fixture normalization from Phases 60/69/70 is also a
@@ -56,4 +86,4 @@ if server_missing:
     raise SystemExit("Phase 87 lost server fixture isolation anchors: " + ", ".join(server_missing))
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 87: added true GitHub production-smoke isolation for both LocalPlayer and ServerPlayer fixture mutations")
+print("Phase 87: production smoke isolation plus strict physical-support carry without CI-only baseline dependency")

@@ -169,3 +169,9 @@ if client_missing:
 client_probe.write_text(client, encoding="utf-8")
 
 print("Phase 104: resolved the exact client-selected carriage by id and rebased the test-only LocalPlayer after authoritative server fixture sync; no production gameplay, train, or physics mutation")
+
+# Production-world #77 proved Create's setBlock path is server-only. Chain the exact
+# ServerLevel same-cell/same-entry canary only after Phase 104 has installed the
+# authoritative exact-carriage server fixture block.
+phase106 = Path(__file__).with_name("prepare_vs2_26_2_phase106.py")
+exec(compile(phase106.read_text(encoding="utf-8"), str(phase106), "exec"))

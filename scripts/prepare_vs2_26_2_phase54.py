@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -56,3 +57,8 @@ source = source.replace(old2, new2, 1)
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 54: resolved Create Contraption.anchor and tested anchor-adjusted local support lookup; read-only telemetry only")
+
+# World-smoke currently prepares through Phase 54. Chain the next read-only probe here so
+# every Phase-54 world run also captures all nearby carriage candidates without changing
+# any train/player behavior.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase55.py")), run_name="__main__")

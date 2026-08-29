@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -66,3 +67,7 @@ if missing:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 93: validated exact local contraption hit face and local-to-world ray roundtrip; read-only telemetry")
+
+# Phase 94 consumes the exact local hit produced here and validates the transformed
+# world-space face normal before any synthetic targeting or interaction is attempted.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase94.py")), run_name="__main__")

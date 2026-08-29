@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 # Earlier 26.2 port phases isolate legacy Create compat Java sources. Keep this
@@ -69,3 +70,8 @@ if entry not in mixins:
 fabric_mod.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 print("Phase 58: compat fix maps Create Fly LocalPlayer to PlayerType.CLIENT from non-isolated gatee mixin package; no forced movement/teleport/carry logic")
+
+# The player-type fix is now runtime-proven. Continue with read-only geometry proof
+# so we can distinguish a real collision failure from a smoke fixture whose saved
+# player is not physically standing on any carriage block.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase59.py")), run_name="__main__")

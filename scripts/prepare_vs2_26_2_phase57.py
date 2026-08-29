@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -40,3 +41,7 @@ source = source.replace(old_ready, new_ready, 1)
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 57: reflected Create ContraptionCollider.getPlayerType for the actual local client player; read-only telemetry only")
+
+# Runtime proof on Run 52 showed the real LocalPlayer is classified SERVER by Create Fly,
+# which makes ContraptionCollider skip it. Chain the minimal client-only compat correction.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase58.py")), run_name="__main__")

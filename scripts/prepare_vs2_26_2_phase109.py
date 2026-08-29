@@ -74,3 +74,6 @@ for forbidden in [
 
 server_probe.write_text(server, encoding="utf-8")
 print("Phase 109: resolved the exact Create-native occupied/empty placement cells on the authoritative ServerLevel carriage read-only; no block, inventory, player, train, or physics mutation")
+
+phase110 = Path(__file__).with_name("prepare_vs2_26_2_phase110.py")
+exec(compile(phase110.read_text(encoding="utf-8"), str(phase110), "exec"))

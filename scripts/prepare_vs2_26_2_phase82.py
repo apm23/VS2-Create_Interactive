@@ -12,6 +12,10 @@ source = client_probe.read_text(encoding="utf-8")
 # to the first *observed carriage motion* instead. This leaves the client alive for
 # two additional LocalPlayer ticks so Create can populate prevPosition and Phase 81
 # can evaluate a non-zero contact-point motion. CI observation timing only.
+#
+# Phase 71 now nests same-carriage measurements below a carriage-id continuity guard.
+# Accept either indentation shape so this cumulative preparation phase follows that
+# telemetry-only refactor instead of failing before the client can launch.
 field_anchor = '''    private static boolean carryDeltaReported;\n'''
 field_insert = '''    private static boolean carryDeltaReported;\n    private static int carryFirstMotionPlayerTick = Integer.MIN_VALUE;\n'''
 if "carryFirstMotionPlayerTick" not in source:
@@ -19,12 +23,28 @@ if "carryFirstMotionPlayerTick" not in source:
         raise SystemExit("Phase 82 could not find carry delta field anchor")
     source = source.replace(field_anchor, field_insert, 1)
 
-motion_anchor = '''                if (carriageD2 > 0.01) {\n                    double playerDx = player.getX() - carryPlayerX;'''
-motion_replacement = '''                if (carriageD2 > 0.01 && carryFirstMotionPlayerTick == Integer.MIN_VALUE) {\n                    carryFirstMotionPlayerTick = player.tickCount;\n                    LOGGER.info(\n                        "GATE_E_PHASE82_FIRST_MOTION player_tick={} carriage_delta={},{},{}",\n                        player.tickCount, carriageDx, carriageDy, carriageDz);\n                }\n                if (carriageD2 > 0.01\n                    && carryFirstMotionPlayerTick != Integer.MIN_VALUE\n                    && player.tickCount >= carryFirstMotionPlayerTick + 2) {\n                    double playerDx = player.getX() - carryPlayerX;'''
-if motion_anchor not in source:
+legacy_anchor = '''                if (carriageD2 > 0.01) {\n                    double playerDx = player.getX() - carryPlayerX;'''
+legacy_replacement = '''                if (carriageD2 > 0.01 && carryFirstMotionPlayerTick == Integer.MIN_VALUE) {\n                    carryFirstMotionPlayerTick = player.tickCount;\n                    LOGGER.info(\n                        "GATE_E_PHASE82_FIRST_MOTION player_tick={} carriage_delta={},{},{}",\n                        player.tickCount, carriageDx, carriageDy, carriageDz);\n                }\n                if (carriageD2 > 0.01\n                    && carryFirstMotionPlayerTick != Integer.MIN_VALUE\n                    && player.tickCount >= carryFirstMotionPlayerTick + 2) {\n                    double playerDx = player.getX() - carryPlayerX;'''
+
+carriage_aware_anchor = '''                    if (carriageD2 > 0.01) {\n                        double playerDx = player.getX() - carryPlayerX;'''
+carriage_aware_replacement = '''                    if (carriageD2 > 0.01 && carryFirstMotionPlayerTick == Integer.MIN_VALUE) {\n                        carryFirstMotionPlayerTick = player.tickCount;\n                        LOGGER.info(\n                            "GATE_E_PHASE82_FIRST_MOTION player_tick={} carriage_delta={},{},{}",\n                            player.tickCount, carriageDx, carriageDy, carriageDz);\n                    }\n                    if (carriageD2 > 0.01\n                        && carryFirstMotionPlayerTick != Integer.MIN_VALUE\n                        && player.tickCount >= carryFirstMotionPlayerTick + 2) {\n                        double playerDx = player.getX() - carryPlayerX;'''
+
+if legacy_anchor in source:
+    source = source.replace(legacy_anchor, legacy_replacement, 1)
+elif carriage_aware_anchor in source:
+    source = source.replace(carriage_aware_anchor, carriage_aware_replacement, 1)
+elif "GATE_E_PHASE82_FIRST_MOTION" not in source:
     raise SystemExit("Phase 82 could not find Phase 71 carry delta threshold")
-source = source.replace(motion_anchor, motion_replacement, 1)
+
+required = [
+    'carryFirstMotionPlayerTick',
+    'GATE_E_PHASE82_FIRST_MOTION',
+    'player.tickCount >= carryFirstMotionPlayerTick + 2',
+]
+missing = [token for token in required if token not in source]
+if missing:
+    raise SystemExit("Phase 82 lost delayed carry telemetry anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 82: delayed Phase 71 completion until two LocalPlayer ticks after first observed train motion; CI timing only")
+print("Phase 82: delayed Phase 71 completion until two LocalPlayer ticks after first observed train motion; compatible with carriage-aware read-only telemetry")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase83.py")), run_name="__main__")

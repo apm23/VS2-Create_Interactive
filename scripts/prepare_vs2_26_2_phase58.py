@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1] / "upstream"
+java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/compat/create/MixinContraptionColliderLocalPlayer.java"
+resources = ROOT / "fabric/src/main/resources"
+fabric_mod = resources / "fabric.mod.json"
+mixin_json = resources / "vs2-create-compat.mixins.json"
+
+java.parent.mkdir(parents=True, exist_ok=True)
+java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.compat.create;
+
+import net.minecraft.world.entity.Entity;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+
+/**
+ * Create Fly 26.2 currently classifies every Player as SERVER inside
+ * ContraptionCollider#getPlayerType, so the local client player is skipped before
+ * collision resolution. Override only the actual LocalPlayer on the client.
+ */
+@Mixin(targets = "com.zurrtum.create.content.contraptions.ContraptionCollider", remap = false)
+public abstract class MixinContraptionColliderLocalPlayer {
+    @Inject(method = "getPlayerType", at = @At("HEAD"), cancellable = true, remap = false)
+    private static void vs2$createLocalPlayerType(Entity entity, CallbackInfoReturnable<Object> cir) {
+        if (!"net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName())) return;
+        try {
+            Class<?> playerType = Class.forName(
+                "com.zurrtum.create.content.contraptions.ContraptionCollider$PlayerType",
+                false,
+                entity.getClass().getClassLoader());
+            Object[] constants = playerType.getEnumConstants();
+            if (constants == null) return;
+            for (Object constant : constants) {
+                if ("CLIENT".equals(String.valueOf(constant))) {
+                    cir.setReturnValue(constant);
+                    return;
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+            // Create absent: target mixin is client-gated and this path is never used.
+        }
+    }
+}
+''', encoding="utf-8")
+
+mixin_json.write_text(json.dumps({
+    "required": False,
+    "minVersion": "0.8",
+    "package": "org.valkyrienskies.mod.fabric.mixin.compat.create",
+    "compatibilityLevel": "JAVA_21",
+    "client": ["MixinContraptionColliderLocalPlayer"],
+    "injectors": {"defaultRequire": 1}
+}, indent=2) + "\n", encoding="utf-8")
+
+metadata = json.loads(fabric_mod.read_text(encoding="utf-8"))
+mixins = metadata.setdefault("mixins", [])
+entry = {"config": "vs2-create-compat.mixins.json", "environment": "client"}
+if entry not in mixins:
+    mixins.append(entry)
+fabric_mod.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+print("Phase 58: compat fix maps Create Fly LocalPlayer to PlayerType.CLIENT before ContraptionCollider's SERVER skip; no forced movement/teleport/carry logic")

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderTrace.java"
@@ -57,3 +58,5 @@ if "MixinContraptionColliderTrace" not in client:
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 print("Phase 62: traced Create collideEntities entry and getPotentiallyCollidedShapes results after valid fixture contact; read-only diagnostics only")
+
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase63.py")), run_name="__main__")

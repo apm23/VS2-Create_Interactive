@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -37,3 +38,4 @@ if "GATE_E_PHASE80_REPLAY_MOTION" not in source:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 80: traced Phase 79 carry replay guard state and exact saved-carriage contact motion; no additional movement behavior")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase81.py")), run_name="__main__")

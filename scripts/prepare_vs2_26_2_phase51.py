@@ -19,6 +19,7 @@ probe.write_text(r'''package org.valkyrienskies.mod.fabric.common
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.minecraft.core.registries.BuiltInRegistries
 import org.apache.logging.log4j.LogManager
+import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider
 
 /** CI-only observer for verified Create train motion and player-relative stability. */
 object GateDProbe {
@@ -64,6 +65,8 @@ object GateDProbe {
                 return@register
             }
 
+            val dragInfo = (player as? IEntityDraggingInformationProvider)?.draggingInformation
+
             if (!seenCarriage) {
                 seenCarriage = true
                 startX = carriage.getX()
@@ -88,6 +91,12 @@ object GateDProbe {
                     BuiltInRegistries.ENTITY_TYPE.getKey(carriage.getType()), startX, startY, startZ,
                     playerStartX, playerStartY, playerStartZ,
                     box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)
+
+                val velocity = player.getDeltaMovement()
+                logger.info("GATE_D_GATE_E_SUPPORT_START on_ground={} velocity={},{},{} vs_last_ship={} vs_drag_ticks={} vs_drag_active={}",
+                    player.onGround(), velocity.x, velocity.y, velocity.z,
+                    dragInfo?.lastShipStoodOn, dragInfo?.ticksSinceStoodOnShip,
+                    dragInfo?.isEntityBeingDraggedByAShip())
 
                 if (playerOnEnvelopeAtStart) {
                     logger.info("GATE_D_GATE_E_CONTACT_START top_delta={} horizontal_inside=true",
@@ -117,6 +126,12 @@ object GateDProbe {
                         player.getX(), player.getY(), player.getZ(),
                         box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ)
 
+                    val velocity = player.getDeltaMovement()
+                    logger.info("GATE_D_GATE_E_SUPPORT_AFTER on_ground={} velocity={},{},{} vs_last_ship={} vs_drag_ticks={} vs_drag_active={}",
+                        player.onGround(), velocity.x, velocity.y, velocity.z,
+                        dragInfo?.lastShipStoodOn, dragInfo?.ticksSinceStoodOnShip,
+                        dragInfo?.isEntityBeingDraggedByAShip())
+
                     if (playerOnEnvelopeAtStart) {
                         if (driftSq <= 0.5625) {
                             logger.info("GATE_D_GATE_E_PLAYER_CARRIED drift_sq={} player_delta={},{},{} carriage_delta={},{},{}",
@@ -141,4 +156,4 @@ object GateDProbe {
 }
 ''', encoding="utf-8")
 
-print("Phase 51: measured Gate E player drift against carriage motion using read-only runtime telemetry; no train controls, schedules, player motion, or VS2 physics are modified")
+print("Phase 51: traced Create support state and VS2 drag acquisition alongside Gate E drift using read-only telemetry; no train controls, schedules, player motion, or VS2 physics are modified")

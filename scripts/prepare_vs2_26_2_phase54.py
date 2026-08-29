@@ -58,12 +58,6 @@ source = source.replace(old2, new2, 1)
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 54: resolved Create Contraption.anchor and tested anchor-adjusted local support lookup; read-only telemetry only")
 
-# World-smoke currently prepares through Phase 54. Chain the next read-only probe here so
-# every Phase-54 world run also captures all nearby carriage candidates without changing
-# any train/player behavior.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase55.py")), run_name="__main__")
-
-# Phase 55 chains through the existing later probes and returns after Phase 87. Apply
-# Phase 88 last so its deterministic camera fixture can extend the final interaction
-# telemetry without changing any earlier movement/carry behavior.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase88.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase99.py")), run_name="__main__")

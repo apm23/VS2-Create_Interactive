@@ -35,9 +35,11 @@ jobs:
         run: |
           set -euo pipefail
           for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
           grep -q 'vs2.productionSmoke' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'vs2.productionSmokeFixture' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
 
       - name: Reconstruct verified r0v3 train save
         shell: bash
@@ -182,9 +184,6 @@ jobs:
           done
           test "$PRODUCTION_CARRY" -eq 1
 
-          # A single replay only proves the seam fires once. Require multiple valid,
-          # collision-filtered horizontal carry applications after train motion so
-          # transient contact cannot masquerade as stable moving-train carry.
           SUSTAINED_CARRY=0
           for i in $(seq 1 40); do
             if python3 - ../production-world-smoke.log <<'PY'
@@ -222,10 +221,6 @@ jobs:
             exit 1
           fi
 
-          # Run #40 proved Create's own client ray helper eventually acquires a real
-          # local carriage block while vanilla client.hitResult remains MISS. Make
-          # that native moving-train target a regression requirement before any
-          # future interaction-dispatch experiment is allowed.
           NATIVE_INTERACTION_TARGET=0
           for i in $(seq 1 40); do
             if grep -Eq 'GATE_F_CREATE_NATIVE_RAY_SETTLED[^\n]*hit=[^;]+;face=' ../production-world-smoke.log; then
@@ -242,9 +237,25 @@ jobs:
             exit 1
           fi
 
+          NATIVE_RIGHT_CLICK_READY=0
+          for i in $(seq 1 40); do
+            if grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT[^\n]*exact=true[^\n]*target_match_ready=true' ../production-world-smoke.log; then
+              NATIVE_RIGHT_CLICK_READY=1
+              break
+            fi
+            if fatal_state; then exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$NATIVE_RIGHT_CLICK_READY" -ne 1 ]; then
+            echo 'Create native right-click dispatch entrypoint was not proven ready on an exact moving-train target.'
+            grep -E 'GATE_F_CREATE_NATIVE_RAY|GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT' ../production-world-smoke.log | tail -160 || true
+            exit 1
+          fi
+
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Sustained production carry and Create-native moving-train ray targeting passed in the real train world.'
+          echo 'Sustained production carry, Create-native moving-train ray targeting, and native right-click readiness passed in the real train world.'
 
       - name: Upload production real-world diagnostics
         if: always()

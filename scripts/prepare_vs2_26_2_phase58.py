@@ -3,13 +3,18 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
-java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/compat/create/MixinContraptionColliderLocalPlayer.java"
+# Earlier 26.2 port phases isolate legacy Create compat Java sources. Keep this
+# tiny new mixin in its own non-isolated package so Loom actually compiles it.
+legacy_java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/compat/create/MixinContraptionColliderLocalPlayer.java"
+java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderLocalPlayer.java"
 resources = ROOT / "fabric/src/main/resources"
 fabric_mod = resources / "fabric.mod.json"
 mixin_json = resources / "vs2-create-compat.mixins.json"
 
+if legacy_java.exists():
+    legacy_java.unlink()
 java.parent.mkdir(parents=True, exist_ok=True)
-java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.compat.create;
+java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -50,8 +55,8 @@ public abstract class MixinContraptionColliderLocalPlayer {
 mixin_json.write_text(json.dumps({
     "required": False,
     "minVersion": "0.8",
-    "package": "org.valkyrienskies.mod.fabric.mixin.compat.create",
-    "compatibilityLevel": "JAVA_21",
+    "package": "org.valkyrienskies.mod.fabric.mixin.gatee",
+    "compatibilityLevel": "JAVA_25",
     "client": ["MixinContraptionColliderLocalPlayer"],
     "injectors": {"defaultRequire": 1}
 }, indent=2) + "\n", encoding="utf-8")
@@ -63,4 +68,4 @@ if entry not in mixins:
     mixins.append(entry)
 fabric_mod.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("Phase 58: compat fix maps Create Fly LocalPlayer to PlayerType.CLIENT before ContraptionCollider's SERVER skip; no forced movement/teleport/carry logic")
+print("Phase 58: compat fix maps Create Fly LocalPlayer to PlayerType.CLIENT from non-isolated gatee mixin package; no forced movement/teleport/carry logic")

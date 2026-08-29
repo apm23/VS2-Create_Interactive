@@ -61,4 +61,5 @@ print("Phase 54: resolved Create Contraption.anchor and tested anchor-adjusted l
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase55.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase88.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase99.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase101.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase102.py")), run_name="__main__")

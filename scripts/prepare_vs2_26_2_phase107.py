@@ -58,4 +58,4 @@ for forbidden in [
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 107: published the exact Create-native occupied hit and empty adjacent placement target read-only; no block, world, inventory, player, train, or physics mutation")
 
-runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase105.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase108.py")), run_name="__main__")

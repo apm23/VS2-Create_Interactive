@@ -90,4 +90,4 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 103: inventoried Create contraption block-entry value shape and first empty adjacent placement cell read-only")
-runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase105.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase107.py")), run_name="__main__")

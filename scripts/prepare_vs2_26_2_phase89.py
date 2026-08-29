@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -58,3 +59,8 @@ if missing:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 89: added settled-frame moving-train interaction target telemetry; read-only, no interaction mutation")
+
+# Phase 90 follows the settled-frame proof with a read-only eye-ray vs carriage AABB
+# comparison. It helps distinguish a vanilla world-picking MISS from the carriage
+# still being geometrically under the crosshair, without performing any interaction.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase90.py")), run_name="__main__")

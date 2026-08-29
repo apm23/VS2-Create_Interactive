@@ -30,9 +30,9 @@ jobs:
           distribution: temurin
           java-version: '25'
 
-      - name: Prepare Phase 50 train runtime baseline
+      - name: Prepare Phase 54 train runtime baseline
         run: |
-          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..50}.py; do python3 "$script"; done
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
 
       - name: Reconstruct and validate verified r0v3 train save
         shell: bash
@@ -108,31 +108,6 @@ jobs:
           }
           trap cleanup EXIT
 
-          dump_threads() {
-            {
-              echo "=== thread/process diagnostic $(date -u +%FT%TZ) ==="
-              ps -eo pid,ppid,stat,etime,%cpu,%mem,args | grep -E 'java|gradle|Xvfb' | grep -v grep || true
-              mapfile -t JVM_PIDS < <(pgrep -f 'net.fabricmc.devlaunchinjector.Main|KnotClient|TransformerRuntime|fabric:runClient' || true)
-              if [ "${#JVM_PIDS[@]}" -eq 0 ]; then mapfile -t JVM_PIDS < <(pgrep -f 'java' || true); fi
-              for pid in "${JVM_PIDS[@]}"; do
-                [ -r "/proc/$pid/cmdline" ] || continue
-                echo "--- JVM PID $pid: $(tr '\0' ' ' < /proc/$pid/cmdline) ---"
-                jcmd "$pid" Thread.print -l 2>&1 || jstack -l "$pid" 2>&1 || true
-              done
-            } >> ../world-smoke-thread-dumps.txt 2>&1
-          }
-
-          dump_diagnostics() {
-            echo '=== readiness/Gate-D/error markers ==='
-            grep -Ein 'GATE_D_|Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' ../world-smoke.log | tail -340 || true
-            echo '=== final log tail ==='
-            tail -220 ../world-smoke.log || true
-            echo '=== latest thread dump tail ==='
-            tail -220 ../world-smoke-thread-dumps.txt 2>/dev/null || true
-            echo '=== Xvfb tail ==='
-            tail -80 ../xvfb.log 2>/dev/null || true
-          }
-
           fatal_state() {
             grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../world-smoke.log \
               || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
@@ -141,82 +116,63 @@ jobs:
           }
 
           WORLD_READY=0
-          LAST_SIZE=0
-          STALE_WINDOWS=0
           for i in $(seq 1 900); do
             if grep -Eq 'Starting integrated minecraft server|Starting integrated server' ../world-smoke.log \
               && grep -Eq 'Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements' ../world-smoke.log \
               && grep -Eq '(^|[[:space:]])- create 6\.0\.9-1([[:space:]]|$)' ../world-smoke.log \
               && grep -Eq '(^|[[:space:]])- railways ' ../world-smoke.log \
               && grep -Eq '(^|[[:space:]])- copycats ' ../world-smoke.log \
-              && grep -q 'Initialized VSCore on Fabric!' ../world-smoke.log; then
-              WORLD_READY=1
-              break
-            fi
-            if fatal_state; then echo 'Fatal state while loading verified real train world.'; dump_threads; dump_diagnostics; exit 1; fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before verified real train world reached ready state.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
-            if [ $((i % 120)) -eq 0 ]; then
-              CURRENT_SIZE=$(stat -c%s ../world-smoke.log 2>/dev/null || echo 0)
-              if [ "$CURRENT_SIZE" -eq "$LAST_SIZE" ]; then STALE_WINDOWS=$((STALE_WINDOWS + 1)); else STALE_WINDOWS=0; fi
-              LAST_SIZE=$CURRENT_SIZE
-              echo "Still waiting after ${i}s; log_bytes=${CURRENT_SIZE}; stale_windows=${STALE_WINDOWS}"
-              tail -25 ../world-smoke.log || true
-              if [ "$STALE_WINDOWS" -ge 1 ]; then dump_threads; fi
-            fi
+              && grep -q 'Initialized VSCore on Fabric!' ../world-smoke.log; then WORLD_READY=1; break; fi
+            if fatal_state; then echo 'Fatal state while loading verified real train world.'; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited before world ready.'; wait "$CLIENT_PID" || true; exit 1; fi
             sleep 1
           done
-          if [ "$WORLD_READY" -ne 1 ]; then echo 'Verified real train world did not reach integrated-server ready state.'; dump_threads; dump_diagnostics; exit 1; fi
-
-          echo 'Gate D: world ready; using read-only in-process observer as authoritative telemetry.'
-          if ! grep -q 'GATE_D_INPROC_READY' ../world-smoke.log; then
-            echo 'Gate D in-process observer did not initialize.'
-            dump_diagnostics
-            exit 1
-          fi
+          test "$WORLD_READY" -eq 1
+          grep -q 'GATE_D_INPROC_READY' ../world-smoke.log
 
           CARRIAGE_PRESENT=0
           for i in $(seq 1 120); do
             if grep -q 'GATE_D_CARRIAGE_PRESENT' ../world-smoke.log; then CARRIAGE_PRESENT=1; break; fi
-            if fatal_state; then echo 'Fatal state while waiting for Create carriage.'; dump_threads; dump_diagnostics; exit 1; fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited while waiting for Create carriage.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+            if fatal_state; then exit 1; fi
             sleep 1
           done
-          if [ "$CARRIAGE_PRESENT" -ne 1 ]; then
-            echo 'Gate D did not observe a loaded Create carriage within 120 seconds.'
-            dump_diagnostics
-            exit 1
-          fi
+          test "$CARRIAGE_PRESENT" -eq 1
 
-          echo 'Gate D: carriage present; polling in-process observer up to 120 seconds for automatic train motion.'
           TRAIN_MOVED=0
           for i in $(seq 1 120); do
             if grep -q 'GATE_D_TRAIN_MOVED' ../world-smoke.log; then TRAIN_MOVED=1; break; fi
-            if fatal_state; then echo 'Fatal state while waiting for automatic train motion.'; dump_threads; dump_diagnostics; exit 1; fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited while waiting for automatic train motion.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
+            if fatal_state; then exit 1; fi
             sleep 1
           done
-          if [ "$TRAIN_MOVED" -ne 1 ]; then
-            echo 'Gate D did not observe carriage displacement greater than one block within 120 seconds.'
-            dump_diagnostics
+          test "$TRAIN_MOVED" -eq 1
+
+          # Phase 54 is telemetry-only. Give the render/client observer a short post-motion
+          # window so anchor-adjusted Gate E state is guaranteed to reach the artifact.
+          PHASE54=0
+          for i in $(seq 1 30); do
+            if grep -q 'anchor_state=' ../world-smoke.log; then PHASE54=1; break; fi
+            if fatal_state; then exit 1; fi
+            sleep 1
+          done
+          if [ "$PHASE54" -ne 1 ]; then
+            echo 'Phase 54 anchor telemetry did not appear.'
+            tail -220 ../world-smoke.log
             exit 1
           fi
 
           if grep -q 'GATE_D_PLAYER_NEAR_START' ../world-smoke.log; then
             if grep -q 'GATE_D_PLAYER_FAR_END' ../world-smoke.log || ! grep -q 'GATE_D_PLAYER_NEAR_END' ../world-smoke.log; then
               echo 'Gate D observed player near the train initially but not after carriage motion.'
-              dump_diagnostics
+              tail -220 ../world-smoke.log
               exit 1
             fi
-            echo 'Gate D player-relative proximity remained bounded during observed train motion.'
-          else
-            echo 'Gate D note: saved player was not within 12 blocks of the sampled carriage at start; player-relative check is not asserted in this fixture.'
           fi
 
-          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during functional Gate D.'; dump_threads; dump_diagnostics; wait "$CLIENT_PID" || true; exit 1; fi
-          if fatal_state; then echo 'Fatal state during functional Gate D.'; dump_threads; dump_diagnostics; exit 1; fi
+          if ! kill -0 "$CLIENT_PID" 2>/dev/null; then echo 'Client exited during functional Gate D.'; wait "$CLIENT_PID" || true; exit 1; fi
+          if fatal_state; then echo 'Fatal state during functional Gate D.'; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
-          grep -E 'GATE_D_|Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro|graphics backend|graphics device' ../world-smoke.log | tail -220 || true
-          echo 'Verified real train world functional Gate D passed: in-process observer saw carriage load and motion without fatal runtime failure.'
+          grep -E 'GATE_D_|GATE_E_|anchor_state=|Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro' ../world-smoke.log | tail -260 || true
+          echo 'Verified real train world functional Gate D + Phase 54 telemetry passed.'
 
       - name: Summarize real-world smoke diagnostics
         if: always()
@@ -224,22 +180,14 @@ jobs:
         run: |
           set -uo pipefail
           {
-            echo '## Verified r0v3 real train world smoke + functional Gate D'
-            if [ -f fixture-parts.txt ]; then echo "Fixture parts: $(tr '\n' ' ' < fixture-parts.txt)"; fi
+            echo '## Verified r0v3 real train world smoke + Gate D + Phase 54'
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
-            echo 'Fixture gate: exactly 17 parts + 116120 Base64 bytes + 87090 ZIP bytes + exact SHA256 + ZIP CRC + level.dat + compressed tracks.dat + Hayajiro marker'
-            echo 'Functional gate: read-only in-process observer; no chat commands, marker entities, train controls, schedules, player motion, or VS2 physics are modified.'
+            echo 'Phase 54: read-only Contraption.anchor coordinate-frame telemetry; no player/train/physics mutation.'
             if [ -f world-smoke.log ]; then
               echo '```text'
-              grep -Ein 'GATE_D_|Starting integrated|Preparing level|Preparing spawn area|Time elapsed|Loaded [0-9]+ advancements|Done \(|Initialized VSCore|create 6\.0\.9|railways|copycats|Hayajiro|graphics backend|graphics device|Reloading ResourceManager|Created: 8192x8192|Loaded 81 shader sources|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR|WARN' world-smoke.log | tail -340 || true
+              grep -Ein 'GATE_D_|GATE_E_|anchor_state=|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR' world-smoke.log | tail -380 || true
               echo '--- tail ---'
               tail -220 world-smoke.log
-              echo '```'
-            fi
-            if [ -f world-smoke-thread-dumps.txt ]; then
-              echo '### Thread dump tail'
-              echo '```text'
-              tail -260 world-smoke-thread-dumps.txt
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"

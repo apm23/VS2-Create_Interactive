@@ -21,8 +21,6 @@ old_early_ready = '''fixtureClientNormalized = true;
 if old_early_ready in source:
     source = source.replace(old_early_ready, 'fixtureClientNormalized = true;', 1)
 
-# Remove the previous world-coordinate publication if this cumulative script is applied
-# after an older Phase 100 variant in a workflow preparation chain.
 old_world_publish = '''fixtureColliderNormalized = true;
                                 if (productionSmokeFixture) {
                                     System.setProperty("vs2.productionClientFixtureX", Double.toString(worldTarget.x));
@@ -157,3 +155,8 @@ print("Phase 100: synchronized the test-only integrated-server fixture in the ex
 # Keep the native interaction experiment chained after deterministic fixture sync.
 phase101 = Path(__file__).with_name("prepare_vs2_26_2_phase101.py")
 exec(compile(phase101.read_text(encoding="utf-8"), str(phase101), "exec"))
+
+# Resolve the exact client-published carriage entity after Phase 100 has installed its
+# local-frame fixture block. Phase 104 is production-smoke-fixture-only.
+phase104 = Path(__file__).with_name("prepare_vs2_26_2_phase104.py")
+exec(compile(phase104.read_text(encoding="utf-8"), str(phase104), "exec"))

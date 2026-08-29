@@ -7,13 +7,12 @@ server_probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/comm
 
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #53 proved that a boolean-only barrier is still nondeterministic:
-# the client completed its real simplified-collider fixture, then the integrated-server
-# fixture independently selected a different carriage surface and its authoritative
-# reposition invalidated physical support after the first carry sample. Publish the
-# exact client collider target through test-only JVM properties and make the server use
-# that same target. This only runs with productionSmokeFixture and never changes normal
-# gameplay, train controls, VS2 physics, or the production carry algorithm.
+# Production-world #55 proved that publishing a world-space fixture target is still
+# racy: the train can advance between LocalPlayer normalization and the integrated
+# server consuming the coordinates, so the authoritative server teleport lands on
+# stale world coordinates. Publish the exact carriage-local target and carriage id
+# instead. The server transforms that local point through its current carriage frame,
+# preserving the same physical surface even if the train moved in the meantime.
 old_early_ready = '''fixtureClientNormalized = true;
                                 if (productionSmokeFixture) {
                                     System.setProperty("vs2.productionClientFixtureReady", "true");
@@ -22,8 +21,9 @@ old_early_ready = '''fixtureClientNormalized = true;
 if old_early_ready in source:
     source = source.replace(old_early_ready, 'fixtureClientNormalized = true;', 1)
 
-client_anchor = 'fixtureColliderNormalized = true;'
-client_replacement = '''fixtureColliderNormalized = true;
+# Remove the previous world-coordinate publication if this cumulative script is applied
+# after an older Phase 100 variant in a workflow preparation chain.
+old_world_publish = '''fixtureColliderNormalized = true;
                                 if (productionSmokeFixture) {
                                     System.setProperty("vs2.productionClientFixtureX", Double.toString(worldTarget.x));
                                     System.setProperty("vs2.productionClientFixtureY", Double.toString(worldTarget.y));
@@ -32,10 +32,24 @@ client_replacement = '''fixtureColliderNormalized = true;
                                     LOGGER.info("GATE_E_PRODUCTION_FIXTURE_CLIENT_READY player_tick={} target={},{},{}",
                                         player.tickCount, worldTarget.x, worldTarget.y, worldTarget.z);
                                 }'''
-if 'vs2.productionClientFixtureX' not in source:
+local_publish = '''fixtureColliderNormalized = true;
+                                if (productionSmokeFixture) {
+                                    System.setProperty("vs2.productionClientFixtureCarriageId", Integer.toString(carriage.getId()));
+                                    System.setProperty("vs2.productionClientFixtureLocalX", Double.toString(localTarget.x));
+                                    System.setProperty("vs2.productionClientFixtureLocalY", Double.toString(localTarget.y));
+                                    System.setProperty("vs2.productionClientFixtureLocalZ", Double.toString(localTarget.z));
+                                    System.setProperty("vs2.productionClientFixtureReady", "true");
+                                    LOGGER.info("GATE_E_PRODUCTION_FIXTURE_CLIENT_READY player_tick={} carriage_id={} local_target={},{},{} world_target={},{},{}",
+                                        player.tickCount, carriage.getId(), localTarget.x, localTarget.y, localTarget.z,
+                                        worldTarget.x, worldTarget.y, worldTarget.z);
+                                }'''
+if old_world_publish in source:
+    source = source.replace(old_world_publish, local_publish, 1)
+elif 'vs2.productionClientFixtureLocalX' not in source:
+    client_anchor = 'fixtureColliderNormalized = true;'
     if client_anchor not in source:
         raise SystemExit("Phase 100 could not find final client collider fixture anchor")
-    source = source.replace(client_anchor, client_replacement, 1)
+    source = source.replace(client_anchor, local_publish, 1)
 
 client_probe.write_text(source, encoding="utf-8")
 
@@ -54,7 +68,7 @@ if server_synced not in server:
     else:
         raise SystemExit("Phase 100 could not find production server fixture guard")
 
-sync_body = '''
+old_sync_body = '''
                 if (java.lang.Boolean.getBoolean("vs2.productionSmoke") && java.lang.Boolean.getBoolean("vs2.productionSmokeFixture")) {
                     val syncX = System.getProperty("vs2.productionClientFixtureX")?.toDoubleOrNull()
                     val syncY = System.getProperty("vs2.productionClientFixtureY")?.toDoubleOrNull()
@@ -68,23 +82,46 @@ sync_body = '''
                     }
                 }
 '''
-if 'GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT' not in server:
+local_sync_body = '''
+                if (java.lang.Boolean.getBoolean("vs2.productionSmoke") && java.lang.Boolean.getBoolean("vs2.productionSmokeFixture")) {
+                    val syncCarriageId = System.getProperty("vs2.productionClientFixtureCarriageId")?.toIntOrNull()
+                    val syncLocalX = System.getProperty("vs2.productionClientFixtureLocalX")?.toDoubleOrNull()
+                    val syncLocalY = System.getProperty("vs2.productionClientFixtureLocalY")?.toDoubleOrNull()
+                    val syncLocalZ = System.getProperty("vs2.productionClientFixtureLocalZ")?.toDoubleOrNull()
+                    if (syncCarriageId != null && syncLocalX != null && syncLocalY != null && syncLocalZ != null
+                            && carriage.id == syncCarriageId) {
+                        val syncLocal = net.minecraft.world.phys.Vec3(syncLocalX, syncLocalY, syncLocalZ)
+                        val syncWorld = toGlobal.invoke(carriage, syncLocal, 0.0f) as net.minecraft.world.phys.Vec3
+                        fixturePlayerChecked = true
+                        player.setPos(syncWorld.x, syncWorld.y, syncWorld.z)
+                        player.setDeltaMovement(net.minecraft.world.phys.Vec3(0.0, -0.08, 0.0))
+                        logger.info("GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT carriage_id={} local_target={},{},{} world_target={},{},{} gravity_probe_y=-0.08",
+                            syncCarriageId, syncLocalX, syncLocalY, syncLocalZ, syncWorld.x, syncWorld.y, syncWorld.z)
+                        return@register
+                    }
+                }
+'''
+if old_sync_body in server:
+    server = server.replace(old_sync_body, local_sync_body, 1)
+elif 'GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT' not in server:
     if server_synced not in server:
         raise SystemExit("Phase 100 lost synchronized server fixture guard")
-    server = server.replace(server_synced, server_synced + sync_body, 1)
+    server = server.replace(server_synced, server_synced + local_sync_body, 1)
 
 required = [
-    'vs2.productionClientFixtureX', 'vs2.productionClientFixtureY', 'vs2.productionClientFixtureZ',
+    'vs2.productionClientFixtureCarriageId',
+    'vs2.productionClientFixtureLocalX', 'vs2.productionClientFixtureLocalY', 'vs2.productionClientFixtureLocalZ',
     'GATE_E_PRODUCTION_FIXTURE_CLIENT_READY', 'GATE_D_PRODUCTION_FIXTURE_SYNCED_TO_CLIENT',
+    'toGlobal.invoke(carriage, syncLocal, 0.0f)',
 ]
 combined = source + server
 missing = [token for token in required if token not in combined]
 if missing:
-    raise SystemExit("Phase 100 lost coordinate synchronization anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 100 lost local-frame synchronization anchors: " + ", ".join(missing))
 
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 100: synchronized the test-only integrated-server fixture to the exact LocalPlayer collider target; no production gameplay, train, or physics mutation")
+print("Phase 100: synchronized the test-only integrated-server fixture in the exact carriage-local frame so train motion cannot stale the handoff; no production gameplay, train, or physics mutation")
 
 # Keep the native interaction experiment chained after deterministic fixture sync.
 phase101 = Path(__file__).with_name("prepare_vs2_26_2_phase101.py")

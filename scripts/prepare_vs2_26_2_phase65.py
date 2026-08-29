@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -70,3 +71,4 @@ if "MixinContinuousOBBColliderTrace" not in client:
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 print("Phase 65: traced ContinuousOBBCollider.collideMany return fields via runtime reflection so the diagnostic compiles without Create on VS2's source classpath; read-only only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase66.py")), run_name="__main__")

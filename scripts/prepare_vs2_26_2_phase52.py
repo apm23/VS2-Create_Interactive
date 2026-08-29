@@ -25,6 +25,26 @@ else:
     if previous not in probe_source:
         raise SystemExit("Phase 52 could not find GateEClientProbe client tick registration")
     probe_source = probe_source.replace(previous, replacement, 1)
+
+old_reflection = '''                Field field = carriage.getClass().getDeclaredField("collidingEntities");
+                field.setAccessible(true);
+                Object value = field.get(carriage);'''
+new_reflection = '''                Field field = null;
+                Class<?> owner = carriage.getClass();
+                while (owner != null && field == null) {
+                    try {
+                        field = owner.getDeclaredField("collidingEntities");
+                    } catch (NoSuchFieldException ignored) {
+                        owner = owner.getSuperclass();
+                    }
+                }
+                if (field == null) throw new NoSuchFieldException("collidingEntities");
+                field.setAccessible(true);
+                Object value = field.get(carriage);
+                contactFieldState = "owner=" + field.getDeclaringClass().getName();'''
+if old_reflection not in probe_source:
+    raise SystemExit("Phase 52 could not find Gate E reflection block")
+probe_source = probe_source.replace(old_reflection, new_reflection, 1)
 client_probe.write_text(probe_source, encoding="utf-8")
 
-print("Phase 52: Gate E now samples immediately on every client-ready tick, preserving heartbeat/wait telemetry while avoiding smoke-harness timing gaps; no gameplay or physics behavior is modified")
+print("Phase 52: Gate E samples every client-ready tick and resolves Create collidingEntities through the carriage class hierarchy; telemetry remains read-only and no gameplay or physics behavior is modified")

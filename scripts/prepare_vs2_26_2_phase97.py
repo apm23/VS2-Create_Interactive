@@ -5,10 +5,12 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Phase 97 must remain cumulative because Phase 96 chains directly into it from a
-# pristine prepared source. First restore the proven runtime interaction inventory,
-# then extend it with Create's own read-only contraption ray helper. No interaction
-# dispatch, packet, placement, or gameplay mutation is allowed here.
+# Phase 97 remains cumulative. Production-world #38 proved the cumulative harness is
+# healthy, but the independently-derived exact/synthetic hit branch was not reached:
+# the settled down-ray crossed the carriage envelope while occupied_count stayed zero.
+# Sample Create's own rayTraceContraption at the earlier settled-ray seam as well, so
+# native hit/miss evidence is no longer hidden behind our synthetic-hit prerequisite.
+# This is read-only reflection: no use, packet, placement, world, train, or physics mutation.
 assign_anchor = '''                                                            LOGGER.info(
                                                                 "GATE_F_SYNTHETIC_HIT_EPHEMERAL_ASSIGN carriage_id={} player_tick={} assigned_identity={} restored_identity={} original_type={} synthetic_type={}",
                                                                 carriage.getId(), player.tickCount, assignedIdentity, restoredIdentity,
@@ -66,6 +68,53 @@ if "GATE_F_CONTRAPTION_INTERACTION_API" not in source:
 elif "GATE_F_INTERACTION_DISPATCH_CANDIDATE" not in source:
     raise SystemExit("Phase 97 found incomplete interaction API telemetry")
 
+settled_anchor = '''                                        LOGGER.info(
+                                            "GATE_F_INTERACTION_TARGET_SETTLED carriage_id={} player_tick={} hit_type={} hit_location={},{},{} detail={}",
+                                            carriage.getId(), player.tickCount, interactionHit.getType(),
+                                            settledHitLocation.x, settledHitLocation.y, settledHitLocation.z, settledDetail);'''
+settled_native_block = settled_anchor + '''
+                                        String settledNativeRayState = "unresolved";
+                                        try {
+                                            Class<?> settledHandlerClass = Class.forName("com.zurrtum.create.client.content.contraptions.ContraptionHandlerClient");
+                                            java.lang.reflect.Method settledRayMethod = null;
+                                            for (java.lang.reflect.Method candidate : settledHandlerClass.getMethods()) {
+                                                if (!candidate.getName().equals("rayTraceContraption")) continue;
+                                                Class<?>[] rayParams = candidate.getParameterTypes();
+                                                if (rayParams.length == 3
+                                                        && rayParams[0].getSimpleName().equals("Vec3")
+                                                        && rayParams[1].getSimpleName().equals("Vec3")
+                                                        && rayParams[2].getSimpleName().equals("AbstractContraptionEntity")) {
+                                                    settledRayMethod = candidate;
+                                                    break;
+                                                }
+                                            }
+                                            if (settledRayMethod == null) {
+                                                settledNativeRayState = "method_missing";
+                                            } else {
+                                                net.minecraft.world.phys.Vec3 settledNativeOrigin = player.getEyePosition();
+                                                double settledNativeReach = player.blockInteractionRange();
+                                                net.minecraft.world.phys.Vec3 settledNativeTarget = settledNativeOrigin.add(player.getViewVector(1.0F).scale(settledNativeReach));
+                                                Object settledNativeResult = settledRayMethod.invoke(null, settledNativeOrigin, settledNativeTarget, carriage);
+                                                if (settledNativeResult instanceof net.minecraft.world.phys.BlockHitResult settledNativeHit) {
+                                                    settledNativeRayState = "hit=" + settledNativeHit.getBlockPos().toShortString()
+                                                        + ";face=" + settledNativeHit.getDirection()
+                                                        + ";location=" + settledNativeHit.getLocation();
+                                                } else {
+                                                    settledNativeRayState = "miss";
+                                                }
+                                            }
+                                        } catch (ReflectiveOperationException | RuntimeException exception) {
+                                            settledNativeRayState = "error=" + exception.getClass().getSimpleName();
+                                        }
+                                        LOGGER.info(
+                                            "GATE_F_CREATE_NATIVE_RAY_SETTLED carriage_id={} player_tick={} {}",
+                                            carriage.getId(), player.tickCount, settledNativeRayState);'''
+
+if "GATE_F_CREATE_NATIVE_RAY_SETTLED" not in source:
+    if settled_anchor not in source:
+        raise SystemExit("Phase 97 could not find settled interaction-target anchor")
+    source = source.replace(settled_anchor, settled_native_block, 1)
+
 dispatch_anchor = '''                                                                LOGGER.info(
                                                                     "GATE_F_INTERACTION_DISPATCH_CANDIDATE carriage_id={} player_tick={} exact_handle_player_interaction={} target_block={} target_face={} hand=MAIN_HAND",
                                                                     carriage.getId(), player.tickCount, exactHandlePlayerInteraction,
@@ -117,9 +166,10 @@ if "GATE_F_CREATE_NATIVE_RAY" not in source:
 required = [
     'GATE_F_CONTRAPTION_INTERACTION_API',
     'GATE_F_INTERACTION_DISPATCH_CANDIDATE',
+    'GATE_F_CREATE_NATIVE_RAY_SETTLED',
     'GATE_F_CREATE_NATIVE_RAY',
     'method.getName().equals("handlePlayerInteraction")',
-    'candidate.getName().equals("rayTraceContraption")',
+    'settledRayMethod.invoke(null, settledNativeOrigin, settledNativeTarget, carriage)',
     'rayMethod.invoke(null, nativeOrigin, nativeTarget, carriage)',
     'target_match=',
     'face_match=',
@@ -137,4 +187,4 @@ for forbidden in [
         raise SystemExit("Phase 97 found forbidden interaction dispatch/mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 97: restored cumulative interaction API inventory and added Create native ray validation; read-only, no dispatch or mutation")
+print("Phase 97: sampled Create native contraption ray at settled seam before synthetic gate and retained cumulative interaction validation; read-only only")

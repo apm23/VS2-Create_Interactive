@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -118,3 +119,4 @@ if "MixinCreateContactLeaseTrace" not in client:
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 print("Phase 78: traced Create LocalPlayer collidingEntities lease age and expiry around AbstractContraptionEntity.tick; read-only telemetry only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase79.py")), run_name="__main__")

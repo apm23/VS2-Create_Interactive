@@ -96,3 +96,9 @@ print("Phase 115: instruments exact post-placement server replication surface an
 # carriage motion. Keep measuring after transient fixture-only failures.
 phase116 = Path(__file__).with_name("prepare_vs2_26_2_phase116.py")
 exec(compile(phase116.read_text(encoding="utf-8"), str(phase116), "exec"))
+
+# Production-world #105 exposed Create's public syncCarriage():void on the exact server
+# carriage after verified setBlock mutation. Exercise that Create-owned replication path
+# only in the disposable production smoke fixture.
+phase117 = Path(__file__).with_name("prepare_vs2_26_2_phase117.py")
+exec(compile(phase117.read_text(encoding="utf-8"), str(phase117), "exec"))

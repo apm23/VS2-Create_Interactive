@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -55,3 +56,8 @@ if missing:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 90: compared settled vanilla MISS against carriage world-space ray envelope; read-only geometry telemetry")
+
+# Phase 91 refines the broad carriage-envelope result into exact contraption-local
+# block occupancy along the same eye ray. Keep it chained here so every workflow that
+# already reaches Phase 90 receives the stronger read-only interaction evidence.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase91.py")), run_name="__main__")

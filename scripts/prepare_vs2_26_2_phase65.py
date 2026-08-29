@@ -10,10 +10,6 @@ mixin_json = resources / "vs2-create-compat.mixins.json"
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
-import com.zurrtum.create.foundation.collision.CollisionList;
-import com.zurrtum.create.foundation.collision.ContinuousOBBCollider;
-import com.zurrtum.create.foundation.collision.OrientedBB;
-import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
@@ -21,52 +17,48 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-/** CI-only observation of the actual OBB result Create uses before registering a
- * surface contact. It never changes the returned collision response. */
-@Mixin(value = ContinuousOBBCollider.class, remap = false)
+/** CI-only observation of Create Fly's OBB collision result. The integration
+ * source set intentionally does not compile against Create classes, so this
+ * diagnostic targets the runtime class by name and reflects only the returned
+ * response fields. No collision value is modified. */
+@Mixin(targets = "com.zurrtum.create.foundation.collision.ContinuousOBBCollider", remap = false)
 public abstract class MixinContinuousOBBColliderTrace {
     private static final Logger LOGGER = LogManager.getLogger("VS2-GateE-OBB");
     private static int renderCalls;
 
     @Inject(method = "collideMany", at = @At("RETURN"), remap = false, require = 0)
-    private static void vs2$traceCollideMany(
-        CollisionList collidableBBs,
-        CollisionList denseViableColliders,
-        OrientedBB obb,
-        Vec3 motion,
-        float entityMaxStep,
-        boolean doHorizontalPass,
-        CallbackInfoReturnable<ContinuousOBBCollider.CollisionResponse> cir
-    ) {
+    private static void vs2$traceCollideMany(CallbackInfoReturnable<Object> cir) {
         String thread = Thread.currentThread().getName();
         if (!(thread.contains("Render") || thread.contains("Client"))) return;
         int index = ++renderCalls;
-        if (index > 48) return;
+        if (index > 64) return;
 
-        ContinuousOBBCollider.CollisionResponse response = cir.getReturnValue();
+        Object response = cir.getReturnValue();
         if (response == null) {
-            LOGGER.info("GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} response=null motion={},{},{}", index, thread, motion.x, motion.y, motion.z);
+            LOGGER.info("GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} response=null", index, thread);
             return;
         }
 
-        int collidableSize = -1;
-        int denseSize = -1;
         try {
-            java.lang.reflect.Field size = CollisionList.class.getDeclaredField("size");
-            size.setAccessible(true);
-            collidableSize = size.getInt(collidableBBs);
-            denseSize = size.getInt(denseViableColliders);
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            Class<?> type = response.getClass();
+            java.lang.reflect.Field surfaceField = type.getField("surfaceCollision");
+            java.lang.reflect.Field temporalField = type.getField("temporalResponse");
+            java.lang.reflect.Field responseField = type.getField("collisionResponse");
+            java.lang.reflect.Field normalField = type.getField("normal");
+            java.lang.reflect.Field locationField = type.getField("location");
+            Object collisionResponse = responseField.get(response);
+            Object normal = normalField.get(response);
+            Object location = locationField.get(response);
+            LOGGER.info(
+                "GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} surface={} temporal={} response={} normal={} location={}",
+                index, thread,
+                surfaceField.getBoolean(response), temporalField.getDouble(response),
+                String.valueOf(collisionResponse), String.valueOf(normal), String.valueOf(location));
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            LOGGER.info(
+                "GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} reflection_error={} response_type={}",
+                index, thread, exception.getClass().getSimpleName(), response.getClass().getName());
         }
-
-        LOGGER.info(
-            "GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} collidable_size={} dense_size={} surface={} temporal={} response={},{},{} normal={},{},{} location={},{},{} motion={},{},{} max_step={} horizontal_pass={}",
-            index, thread, collidableSize, denseSize,
-            response.surfaceCollision, response.temporalResponse,
-            response.collisionResponse.x, response.collisionResponse.y, response.collisionResponse.z,
-            response.normal.x, response.normal.y, response.normal.z,
-            response.location.x, response.location.y, response.location.z,
-            motion.x, motion.y, motion.z, entityMaxStep, doHorizontalPass);
     }
 }
 ''', encoding="utf-8")
@@ -77,4 +69,4 @@ if "MixinContinuousOBBColliderTrace" not in client:
     client.append("MixinContinuousOBBColliderTrace")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("Phase 65: traced ContinuousOBBCollider.collideMany return values on the Render thread, including surfaceCollision/temporalResponse and viable-collider counts; read-only diagnostics only")
+print("Phase 65: traced ContinuousOBBCollider.collideMany return fields via runtime reflection so the diagnostic compiles without Create on VS2's source classpath; read-only only")

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -86,3 +87,7 @@ source = source.replace(old_log, new_log, 1)
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 59: mapped each nearest local Create block top back to world space to prove whether the saved smoke player is physically on carriage geometry; read-only telemetry only")
+
+# The save's stored player is not actually on carriage geometry. Normalize only
+# the CI fixture before measuring carry/contact in the next smoke run.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase60.py")), run_name="__main__")

@@ -22,7 +22,7 @@ probe = '''                        System.setProperty("vs2.productionServerFixtu
                             val canaryGetBlocks = canaryContraption?.javaClass?.methods?.firstOrNull { method ->
                                 method.name == "getBlocks" && method.parameterCount == 0
                             }
-                            val canaryBlocks = canaryGetBlocks?.invoke(canaryContraption) as? java.util.Map<*, *>
+                            val canaryBlocks = canaryGetBlocks?.invoke(canaryContraption) as? Map<*, *>
                             var canaryPos: net.minecraft.core.BlockPos? = null
                             var canaryEntry: Any? = null
                             var canaryDistance = Double.POSITIVE_INFINITY
@@ -77,14 +77,14 @@ probe = '''                        System.setProperty("vs2.productionServerFixtu
                                 val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
                                 while (root.cause != null && seen.add(root)) root = root.cause!!
                                 rootType = root.javaClass.name
-                                rootMessage = String.valueOf(root.message).replace('\\n', ' ').replace('\\r', ' ')
+                                rootMessage = root.message?.replace('\\n', ' ')?.replace('\\r', ' ') ?: "null"
                             } catch (canaryException: RuntimeException) {
                                 errorType = canaryException.javaClass.simpleName
                                 var root: Throwable = canaryException
                                 val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
                                 while (root.cause != null && seen.add(root)) root = root.cause!!
                                 rootType = root.javaClass.name
-                                rootMessage = String.valueOf(root.message).replace('\\n', ' ').replace('\\r', ' ')
+                                rootMessage = root.message?.replace('\\n', ' ')?.replace('\\r', ' ') ?: "null"
                             }
                             val safe = invoked && sizeStable && stateStable
                             System.setProperty("vs2.productionServerNoopSetBlockProbed", "true")
@@ -106,6 +106,7 @@ required = [
     'method.name == "setBlock"',
     'canarySetBlock.invoke(syncCarriage, canaryPos!!.immutable(), canaryEntry)',
     'vs2.productionServerNoopSetBlockProbed',
+    'val canaryBlocks = canaryGetBlocks?.invoke(canaryContraption) as? Map<*, *>',
     'val safe = invoked && sizeStable && stateStable',
     'fixture_only=true',
 ]

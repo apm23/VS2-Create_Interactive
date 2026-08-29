@@ -11,17 +11,19 @@ source = client_probe.read_text(encoding="utf-8")
 # concerns: production may explicitly opt into carry compatibility while every
 # fixture reposition/gravity probe remains strictly CI-harness-only.
 old_enable = '''        boolean enabled = Boolean.getBoolean("vs2.gateD") || "true".equals(System.getenv("GITHUB_ACTIONS"));
-        if (!enabled) return;
+        if (!enabled || installed) return;
+        installed = true;
 '''
 new_enable = '''        boolean ciHarness = Boolean.getBoolean("vs2.gateD") || "true".equals(System.getenv("GITHUB_ACTIONS"));
         boolean explicitCarryCompat = Boolean.getBoolean("vs2.createCarryCompat");
         boolean enabled = ciHarness || explicitCarryCompat;
-        if (!enabled) return;
+        if (!enabled || installed) return;
+        installed = true;
         LOGGER.info("VS2_CREATE_CARRY_COMPAT_MODE ci_harness={} explicit_opt_in={}", ciHarness, explicitCarryCompat);
 '''
 if "VS2_CREATE_CARRY_COMPAT_MODE" not in source:
     if old_enable not in source:
-        raise SystemExit("Phase 86 could not find Gate E enable guard")
+        raise SystemExit("Phase 86 could not find static Gate E install guard")
     source = source.replace(old_enable, new_enable, 1)
 
 # Phase 61: archived-save LocalPlayer block-top normalization.

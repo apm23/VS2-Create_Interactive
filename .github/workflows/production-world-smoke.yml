@@ -222,9 +222,29 @@ jobs:
             exit 1
           fi
 
+          # Run #40 proved Create's own client ray helper eventually acquires a real
+          # local carriage block while vanilla client.hitResult remains MISS. Make
+          # that native moving-train target a regression requirement before any
+          # future interaction-dispatch experiment is allowed.
+          NATIVE_INTERACTION_TARGET=0
+          for i in $(seq 1 40); do
+            if grep -Eq 'GATE_F_CREATE_NATIVE_RAY_SETTLED[^\n]*hit=[^;]+;face=' ../production-world-smoke.log; then
+              NATIVE_INTERACTION_TARGET=1
+              break
+            fi
+            if fatal_state; then exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$NATIVE_INTERACTION_TARGET" -ne 1 ]; then
+            echo 'Create native contraption ray never acquired a moving-train block target.'
+            grep -E 'GATE_F_INTERACTION_TARGET_SETTLED|GATE_F_CREATE_NATIVE_RAY_SETTLED' ../production-world-smoke.log | tail -160 || true
+            exit 1
+          fi
+
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Sustained production carry passed in the real train world with isolated initial support fixture.'
+          echo 'Sustained production carry and Create-native moving-train ray targeting passed in the real train world.'
 
       - name: Upload production real-world diagnostics
         if: always()

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 server_probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
@@ -48,3 +49,8 @@ if missing:
 
 server_probe.write_text(server, encoding="utf-8")
 print("Phase 117: invokes Create public syncCarriage only after verified fixture-only moving-carriage placement; no player, inventory, train control, collision, or physics mutation")
+
+# Production-world #107 proved syncCarriage() is invoked, but the prior observer could be
+# skipped when the surrounding support loop was on a sibling carriage. Resolve the exact
+# published client entity by id instead of depending on loop-carriage identity.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase118.py")), run_name="__main__")

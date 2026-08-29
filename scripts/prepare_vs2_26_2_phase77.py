@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -27,3 +28,4 @@ if "client_carriage_frame=" not in source:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 77: traced Create client carriage current-vs-prev frame motion beside LocalPlayer contact state after Run 94 proved carry setPos stops after initial contact; read-only telemetry only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase78.py")), run_name="__main__")

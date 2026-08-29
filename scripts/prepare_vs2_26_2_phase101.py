@@ -5,15 +5,12 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #58 proved sustained Create-filtered carry (14 valid replay samples)
-# and repeatedly produced concrete Create-native settled-ray hits, while the older
-# Phase 101 probe emitted no entrypoint marker at all. The reason is structural: that
-# probe was attached to the deeper synthetic-hit branch, which is not guaranteed to run
-# even when Create's own earlier settled ray already has a valid moving-carriage target.
-# Attach the disposable-world-only native right-click readiness/probe to that settled
-# native-ray seam instead. No normal gameplay path can enter because productionSmokeFixture
-# is false there; no packet, direct block use, train control, VS2 physics, or carry code is
-# changed here.
+# Production-world #58 proved sustained Create-filtered carry and concrete native
+# settled-ray hits. Runs #59/#61/#62 then proved the high-level Create right-click
+# entrypoint can be invoked on a moving carriage and returns handled=true. Keep that
+# disposable-world-only probe, and after confirmation inventory the same native
+# handler's public placement/item/use/interaction-shaped methods read-only. This is
+# the next safe step before supplying an item or attempting block placement.
 field_anchor = '''    private static boolean fixtureClientNormalized;\n'''
 field_replacement = '''    private static boolean fixtureClientNormalized;\n    private static boolean nativeRightClickProbeDispatched;\n'''
 if "nativeRightClickProbeDispatched" not in source:
@@ -63,6 +60,29 @@ settled_replacement = settled_anchor + '''
                                                         LOGGER.info(
                                                             "GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED carriage_id={} player_tick={} handled=true target_source=create_native_ray_settled",
                                                             carriage.getId(), player.tickCount);
+                                                        java.util.List<String> placementSurface = new java.util.ArrayList<>();
+                                                        for (java.lang.reflect.Method candidate : nativeHandlerClass.getMethods()) {
+                                                            String lowerName = candidate.getName().toLowerCase(java.util.Locale.ROOT);
+                                                            if (!(lowerName.contains("place")
+                                                                    || lowerName.contains("item")
+                                                                    || lowerName.contains("use")
+                                                                    || lowerName.contains("right")
+                                                                    || lowerName.contains("interact"))) {
+                                                                continue;
+                                                            }
+                                                            StringBuilder signature = new StringBuilder(candidate.getName()).append('(');
+                                                            Class<?>[] params = candidate.getParameterTypes();
+                                                            for (int index = 0; index < params.length; index++) {
+                                                                if (index > 0) signature.append(',');
+                                                                signature.append(params[index].getSimpleName());
+                                                            }
+                                                            signature.append("): ").append(candidate.getReturnType().getSimpleName());
+                                                            placementSurface.add(signature.toString());
+                                                        }
+                                                        java.util.Collections.sort(placementSurface);
+                                                        LOGGER.info(
+                                                            "GATE_F_NATIVE_PLACEMENT_SURFACE carriage_id={} player_tick={} methods={} count={} read_only=true",
+                                                            carriage.getId(), player.tickCount, placementSurface, placementSurface.size());
                                                     }
                                                 }
                                             } catch (ReflectiveOperationException | RuntimeException exception) {
@@ -81,6 +101,7 @@ required = [
     'nativeRightClickProbeDispatched',
     'GATE_F_NATIVE_RIGHT_CLICK_PROBE',
     'GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED',
+    'GATE_F_NATIVE_PLACEMENT_SURFACE',
     'readiness_source=create_native_ray_settled',
     'boolean settledCreateNativeRayReady',
     'productionSmokeFixture',
@@ -88,18 +109,19 @@ required = [
     'settledExactRightClickMethod.invoke(',
     'Boolean.TRUE.equals(handled)',
     'player.getMainHandItem().isEmpty()',
+    'placementSurface.add(signature.toString())',
+    'read_only=true',
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 101 lost settled native interaction probe anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 101 lost settled native interaction/placement-surface anchors: " + ", ".join(missing))
 
 for forbidden in [
-    'ContraptionInteractionPacket', '.handlePlayerInteraction(',
-    '.useItemOn(', '.useItem(', '.attack(', 'gameMode.use',
-    'player.setPos(', 'player.setDeltaMovement(',
+    '.handlePlayerInteraction(', '.useItemOn(', '.useItem(', '.attack(', 'gameMode.use',
+    'player.setPos(', 'player.setDeltaMovement(', 'player.setItemSlot(',
 ]:
     if forbidden in settled_replacement:
-        raise SystemExit("Phase 101 found forbidden direct interaction/physics mutation: " + forbidden)
+        raise SystemExit("Phase 101 found forbidden direct placement/physics mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 101: moved the disposable-world native right-click probe to Create's proven settled native-ray seam and emits an explicit confirmation only when Create returns handled=true; no normal-gameplay dispatch, train, carry, or VS2 physics path changed")
+print("Phase 101: confirmed disposable-world native moving-train right click and inventories the native placement/item/use interaction surface read-only before any item or placement mutation")

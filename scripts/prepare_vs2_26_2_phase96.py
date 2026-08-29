@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -63,3 +64,8 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 96: assigned synthetic contraption hitResult only ephemerally and restored original identity in the same callback; no interaction dispatch")
+
+# After the assign/restore seam is proven, inspect Create's public interaction-looking
+# API surface without invoking anything. This keeps the next interaction bridge based
+# on actual runtime capabilities rather than guessing a vanilla world-coordinate path.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase97.py")), run_name="__main__")

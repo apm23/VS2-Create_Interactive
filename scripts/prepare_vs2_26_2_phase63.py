@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 trace = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderTrace.java"
@@ -34,3 +35,4 @@ probe = probe.replace(old_ready, new_ready, 1)
 client_probe.write_text(probe, encoding="utf-8")
 
 print("Phase 63: separated client/server collideEntities traces and enumerated the runtime Create collider API so silent require=0 misses can be diagnosed without changing collision behavior")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase64.py")), run_name="__main__")

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -66,3 +67,8 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 95: constructed and field-validated synthetic moving-contraption BlockHitResult; no assignment or interaction dispatch")
+
+# Phase 96 runs only after the construct-only guard above has passed. It briefly assigns
+# the validated synthetic object to client.hitResult under the dedicated smoke fixture,
+# verifies identity, and restores the exact original reference in the same callback.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase96.py")), run_name="__main__")

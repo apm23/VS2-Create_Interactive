@@ -83,3 +83,8 @@ print("Phase 113: observes authoritative empty-cell STONE replication on the exa
 # server fixture callback has already completed. Chain a fixture-only recurring server
 # retry so the placement cannot be skipped by that ordering race.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase114.py")), run_name="__main__")
+
+# Production-world #101 proved the retry mutation succeeds server-side but the client
+# observation was absent. Add read-only replication-gap and networking-surface telemetry
+# after both the mutation retry and client replication observer have been installed.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase115.py")), run_name="__main__")

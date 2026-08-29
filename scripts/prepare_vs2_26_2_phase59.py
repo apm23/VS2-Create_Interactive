@@ -5,17 +5,18 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-old_decl = '''                double colliderNearestTopDistanceSq = Double.POSITIVE_INFINITY;
-                Vec3 colliderLocalFeet = null;
-                int blockCount = -1;'''
-new_decl = '''                double colliderNearestTopDistanceSq = Double.POSITIVE_INFINITY;
-                Vec3 colliderLocalFeet = null;
+# Phase 55 declares blockCount before localFeetState; Phase 56 then inserts the
+# collider fields immediately before the try. Anchor only on the stable Phase 56
+# tail so this remains compatible with the chained generated source.
+old_decl = '''                Vec3 colliderLocalFeet = null;
+                try {'''
+new_decl = '''                Vec3 colliderLocalFeet = null;
                 net.minecraft.core.BlockPos nearestLocalTopBlock = null;
                 String nearestWorldTopState = "unresolved";
                 double nearestWorldTopDistanceSq = Double.POSITIVE_INFINITY;
-                int blockCount = -1;'''
+                try {'''
 if old_decl not in source:
-    raise SystemExit("Phase 59 could not find Gate E candidate distance declaration anchor")
+    raise SystemExit("Phase 59 could not find Gate E Phase 56 collider declaration anchor")
 source = source.replace(old_decl, new_decl, 1)
 
 old_distance = '''                                double candidateDistanceSq = cdx * cdx + cdy * cdy + cdz * cdz;

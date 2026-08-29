@@ -62,48 +62,7 @@ jobs:
           mkdir -p upstream/fabric/run/saves
           rm -rf upstream/fabric/run/saves/train-production-smoke
           mv 'world-fixture/train build 1' upstream/fabric/run/saves/train-production-smoke
-
-      - name: Seed smoke copy player onto verified carriage support
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --quiet nbtlib==2.0.4
-          python3 - <<'PY'
-          from pathlib import Path
-          import nbtlib
-          from nbtlib import Double, List
-
-          world = Path('upstream/fabric/run/saves/train-production-smoke')
-          playerdata = sorted((world / 'playerdata').glob('*.dat'))
-
-          if playerdata:
-              path = playerdata[0]
-              document = nbtlib.load(path)
-              player = document
-              source = f'playerdata:{path.name}'
-          else:
-              path = world / 'level.dat'
-              document = nbtlib.load(path)
-              data = document['Data']
-              if 'Player' not in data:
-                  raise SystemExit('No playerdata/*.dat and level.dat contains no Data.Player')
-              player = data['Player']
-              source = 'level.dat:Data.Player'
-
-          if 'Pos' not in player:
-              raise SystemExit(f'{source} contains no Pos tag')
-
-          before = tuple(float(v) for v in player['Pos'])
-          target = (-70.5, -53.75, 118.5)
-          player['Pos'] = List[Double]([Double(v) for v in target])
-          document.save(path, gzipped=True)
-
-          check = nbtlib.load(path)
-          check_player = check if source.startswith('playerdata:') else check['Data']['Player']
-          after = tuple(float(v) for v in check_player['Pos'])
-          assert after == target, (source, after)
-          print(f'PRODUCTION_SMOKE_OFFLINE_PLAYER_SEED source={source} before={before} after={after}')
-          PY
+          test -f upstream/fabric/run/saves/train-production-smoke/data/create/tracks.dat
 
       - name: Prefetch Minecraft client assets with retry
         working-directory: upstream
@@ -116,6 +75,92 @@ jobs:
             if [ "$attempt" -eq 3 ]; then exit 1; fi
             sleep $((attempt * 10))
           done
+
+      - name: Seed production playerdata via disposable profile probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet nbtlib==2.0.4
+
+          PROD='upstream/fabric/run/saves/train-production-smoke'
+          PROBE='upstream/fabric/run/saves/train-profile-probe'
+          rm -rf "$PROBE"
+          cp -a "$PROD" "$PROBE"
+
+          rm -f profile-probe.log profile-probe-xvfb.log
+          export DISPLAY=:98
+          Xvfb :98 -screen 0 1280x720x24 -nolisten tcp > profile-probe-xvfb.log 2>&1 &
+          XVFB_PID=$!
+          cleanup_probe() {
+            if [ -n "${CLIENT_PID:-}" ] && kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
+            if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
+          }
+          trap cleanup_probe EXIT
+          sleep 2
+
+          (
+            cd upstream
+            LIBGL_ALWAYS_SOFTWARE=true MESA_GL_VERSION_OVERRIDE=4.6 MESA_GLSL_VERSION_OVERRIDE=460 ALSOFT_DRIVERS=null \
+              ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-profile-probe'
+          ) > profile-probe.log 2>&1 &
+          CLIENT_PID=$!
+
+          PROFILE=''
+          for i in $(seq 1 180); do
+            PROFILE="$(find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null || true)"
+            if [ -n "$PROFILE" ]; then break; fi
+            if grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Minecraft has crashed|Game crashed' profile-probe.log; then
+              tail -200 profile-probe.log
+              exit 1
+            fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+              wait "$CLIENT_PID" || true
+              tail -200 profile-probe.log
+              exit 1
+            fi
+            sleep 1
+          done
+          test -n "$PROFILE"
+
+          kill "$CLIENT_PID" 2>/dev/null || true
+          wait "$CLIENT_PID" 2>/dev/null || true
+          CLIENT_PID=''
+          kill "$XVFB_PID" 2>/dev/null || true
+          wait "$XVFB_PID" 2>/dev/null || true
+          trap - EXIT
+
+          python3 - "$PROFILE" "$PROD" <<'PY'
+          from pathlib import Path
+          import shutil, sys
+          import nbtlib
+          from nbtlib import Double, Float, List
+
+          source = Path(sys.argv[1])
+          prod = Path(sys.argv[2])
+          player = nbtlib.load(source)
+          if 'Pos' not in player:
+              raise SystemExit(f'{source} contains no Pos tag')
+          before = tuple(float(v) for v in player['Pos'])
+          target = (-70.5, -53.75, 118.5)
+          player['Pos'] = List[Double]([Double(v) for v in target])
+          if 'Motion' in player:
+              player['Motion'] = List[Double]([Double(0.0), Double(0.0), Double(0.0)])
+          if 'FallDistance' in player:
+              player['FallDistance'] = Float(0.0)
+          player.save(source, gzipped=True)
+
+          dest_dir = prod / 'playerdata'
+          dest_dir.mkdir(parents=True, exist_ok=True)
+          dest = dest_dir / source.name
+          shutil.copy2(source, dest)
+          check = nbtlib.load(dest)
+          after = tuple(float(v) for v in check['Pos'])
+          assert after == target, after
+          print(f'PRODUCTION_SMOKE_OFFLINE_PLAYER_SEED source={source.name} before={before} after={after}')
+          PY
+
+          rm -rf "$PROBE"
+          test "$(find "$PROD/playerdata" -maxdepth 1 -type f -name '*.dat' | wc -l)" -ge 1
 
       - name: Load real train world in explicit production carry mode
         working-directory: upstream
@@ -195,9 +240,8 @@ jobs:
           test "$TRAIN_MOVED" -eq 1
 
           # Hard functional production gate: runtime fixture mutation remains forbidden.
-          # The copied save is seeded offline to a carriage-support coordinate already
-          # proven by the regular world smoke, then Phase 85 must use Create-computed,
-          # Create-collision-filtered horizontal carry.
+          # A disposable copy discovers the actual dev-client player UUID, then only its
+          # playerdata file is seeded offline into the pristine production smoke copy.
           PRODUCTION_CARRY=0
           for i in $(seq 1 20); do
             if python3 - ../production-world-smoke.log <<'PY'
@@ -228,7 +272,7 @@ jobs:
             sleep 1
           done
           if [ "$PRODUCTION_CARRY" -ne 1 ]; then
-            echo 'Production world did not prove strict Phase 85 horizontal carry after offline smoke-copy seed.'
+            echo 'Production world did not prove strict Phase 85 horizontal carry after offline playerdata seed.'
             grep -E 'GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE81_SUPPORT_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA|GATE_D_TRAIN_MOVED|VS2_CREATE_CARRY_COMPAT_MODE' ../production-world-smoke.log | tail -220 || true
             exit 1
           fi
@@ -239,7 +283,7 @@ jobs:
           fi
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Real train world proved strict production carry from offline-seeded smoke copy with no runtime fixture mutation.'
+          echo 'Real train world proved strict production carry from offline-seeded playerdata with no runtime fixture mutation.'
           grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|GATE_D_CARRIAGE_PRESENT|GATE_D_TRAIN_MOVED|GATE_E_PHASE85_CARRY_REPLAY|Initialized VSCore|create 6\.0\.9-1|railways |copycats ' ../production-world-smoke.log | tail -220 || true
 
       - name: Upload production real-world diagnostics
@@ -250,4 +294,6 @@ jobs:
           path: |
             production-world-smoke.log
             production-world-xvfb.log
+            profile-probe.log
+            profile-probe-xvfb.log
           if-no-files-found: warn

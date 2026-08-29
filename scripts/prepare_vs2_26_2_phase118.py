@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -90,3 +91,8 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 118: resolves the exact published client carriage id for post-sync STONE observation; read-only replication telemetry only")
+
+# Run the production-smoke-only collider recovery after all earlier fixture transforms
+# have been installed, so it patches the final generated Gate E source without changing
+# normal production gameplay or the existing CI harness path.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase119.py")), run_name="__main__")

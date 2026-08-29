@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 server_probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
@@ -75,5 +74,3 @@ for forbidden in [
 
 server_probe.write_text(server, encoding="utf-8")
 print("Phase 109: resolved the exact Create-native occupied/empty placement cells on the authoritative ServerLevel carriage read-only; no block, inventory, player, train, or physics mutation")
-
-runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase105.py")), run_name="__main__")

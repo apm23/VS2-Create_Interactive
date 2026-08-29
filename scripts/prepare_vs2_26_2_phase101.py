@@ -5,12 +5,13 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #51 proved sustained Create-filtered carry (12 samples / 76.85 blocks),
-# a stable Create-native ray target, an empty main hand, and the exact native Create
-# right-click entrypoint on Copycats carriage structure. The next safe functional step is
-# a single invocation in the disposable production-smoke world only. It is impossible in
-# normal gameplay because productionSmokeFixture is false there. We do not synthesize
-# packets or call block.use directly: Create remains the owner of interaction dispatch.
+# Production-world #54 proved sustained Create-filtered carry and a stable Create-native
+# moving-carriage hit, but the older synthetic scanner selected a different local block.
+# The high-level Create entrypoint performs its own native raycast, so synthetic equality
+# must not gate this disposable-world-only functional probe. Require an exact method,
+# a concrete Create-native hit+face, and an empty main hand; never synthesize packets or
+# call block.use directly. Normal gameplay cannot enter this path because the fixture
+# property is false there.
 field_anchor = '''    private static boolean fixtureClientNormalized;\n'''
 field_replacement = '''    private static boolean fixtureClientNormalized;\n    private static boolean nativeRightClickProbeDispatched;\n'''
 if "nativeRightClickProbeDispatched" not in source:
@@ -23,9 +24,18 @@ anchor = '''                                                                LOGG
                                                                     carriage.getId(), player.tickCount, exactNativeRightClickEntrypoint,
                                                                     nativeRayState.contains("target_match=true;face_match=true"));'''
 replacement = anchor + '''
+                                                                boolean createNativeRayReady = nativeRayState.contains("hit=")
+                                                                    && nativeRayState.contains("face=")
+                                                                    && !nativeRayState.contains("miss");
+                                                                if (exactNativeRightClickEntrypoint && createNativeRayReady) {
+                                                                    LOGGER.info(
+                                                                        "GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT carriage_id={} player_tick={} exact=true target_match_ready=true readiness_source=create_native_ray synthetic_match={}",
+                                                                        carriage.getId(), player.tickCount,
+                                                                        nativeRayState.contains("target_match=true;face_match=true"));
+                                                                }
                                                                 if (productionSmokeFixture
                                                                         && exactNativeRightClickEntrypoint
-                                                                        && nativeRayState.contains("target_match=true;face_match=true")
+                                                                        && createNativeRayReady
                                                                         && player.getMainHandItem().isEmpty()
                                                                         && !nativeRightClickProbeDispatched) {
                                                                     nativeRightClickProbeDispatched = true;
@@ -49,7 +59,7 @@ replacement = anchor + '''
                                                                                 carriage.getId(), player.tickCount);
                                                                         } else {
                                                                             Object handled = exactMethod.invoke(null, client, net.minecraft.world.InteractionHand.MAIN_HAND);
-                                                                            LOGGER.info("GATE_F_NATIVE_RIGHT_CLICK_PROBE carriage_id={} player_tick={} invoked=true handled={} hand_empty_after={}",
+                                                                            LOGGER.info("GATE_F_NATIVE_RIGHT_CLICK_PROBE carriage_id={} player_tick={} invoked=true handled={} hand_empty_after={} readiness_source=create_native_ray",
                                                                                 carriage.getId(), player.tickCount, handled, player.getMainHandItem().isEmpty());
                                                                         }
                                                                     } catch (ReflectiveOperationException | RuntimeException exception) {
@@ -66,6 +76,8 @@ if "GATE_F_NATIVE_RIGHT_CLICK_PROBE" not in source:
 required = [
     'nativeRightClickProbeDispatched',
     'GATE_F_NATIVE_RIGHT_CLICK_PROBE',
+    'readiness_source=create_native_ray',
+    'boolean createNativeRayReady',
     'productionSmokeFixture',
     'java.lang.reflect.Modifier.isStatic(candidate.getModifiers())',
     'exactMethod.invoke(null, client, net.minecraft.world.InteractionHand.MAIN_HAND)',
@@ -83,10 +95,8 @@ for forbidden in [
     '.useItemOn(', '.useItem(', '.attack(', 'gameMode.use',
     'player.setPos(', 'player.setDeltaMovement(',
 ]:
-    # Existing cumulative fixture code legitimately contains player setPos/delta movement,
-    # so only reject direct gameplay mutation if it appears in the newly inserted probe body.
     if forbidden in replacement:
         raise SystemExit("Phase 101 found forbidden direct interaction/physics mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 101: invoked Create's native moving-contraption right-click entrypoint once in the disposable production-smoke fixture only; no normal-gameplay dispatch path changed")
+print("Phase 101: gated one disposable-world Create native right-click probe on Create's own concrete moving-carriage ray target, independent of the synthetic scanner; no normal-gameplay dispatch path changed")

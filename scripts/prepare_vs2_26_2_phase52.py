@@ -16,10 +16,15 @@ if "GateEClientProbe.install()" not in source:
 
 probe_source = client_probe.read_text(encoding="utf-8")
 old_decl = "public final class GateEClientProbe implements ClientModInitializer {\n    private static final Logger LOGGER = LogManager.getLogger(\"VS2-GateE-Client\");\n    private long ticks;\n\n    @Override\n    public void onInitializeClient() {\n        boolean enabled = Boolean.getBoolean(\"vs2.gateD\") || \"true\".equals(System.getenv(\"GITHUB_ACTIONS\"));\n        if (!enabled) return;\n\n        LOGGER.info(\"GATE_E_CLIENT_READY\");\n        ClientTickEvents.END_CLIENT_TICK.register(client -> {\n            ticks++;\n            if (ticks % 20L != 0L || client.player == null || client.level == null) return;"
-new_decl = "public final class GateEClientProbe implements ClientModInitializer {\n    private static final Logger LOGGER = LogManager.getLogger(\"VS2-GateE-Client\");\n    private static boolean installed;\n    private static long ticks;\n\n    @Override\n    public void onInitializeClient() {\n        install();\n    }\n\n    public static synchronized void install() {\n        boolean enabled = Boolean.getBoolean(\"vs2.gateD\") || \"true\".equals(System.getenv(\"GITHUB_ACTIONS\"));\n        if (!enabled || installed) return;\n        installed = true;\n\n        LOGGER.info(\"GATE_D_CLIENT_OBSERVER_READY transport=main_initializer\");\n        ClientTickEvents.END_CLIENT_TICK.register(client -> {\n            ticks++;\n            if (ticks % 20L != 0L || client.player == null || client.level == null) return;"
-if old_decl not in probe_source:
-    raise SystemExit("Phase 52 could not find GateEClientProbe initializer block")
-probe_source = probe_source.replace(old_decl, new_decl, 1)
+new_decl = "public final class GateEClientProbe implements ClientModInitializer {\n    private static final Logger LOGGER = LogManager.getLogger(\"VS2-GateE-Client\");\n    private static boolean installed;\n    private static long ticks;\n\n    @Override\n    public void onInitializeClient() {\n        install();\n    }\n\n    public static synchronized void install() {\n        boolean enabled = Boolean.getBoolean(\"vs2.gateD\") || \"true\".equals(System.getenv(\"GITHUB_ACTIONS\"));\n        if (!enabled || installed) return;\n        installed = true;\n\n        LOGGER.info(\"GATE_D_CLIENT_OBSERVER_READY transport=main_initializer\");\n        ClientTickEvents.START_CLIENT_TICK.register(client -> {\n            ticks++;\n            if (ticks == 1L) {\n                LOGGER.info(\"GATE_D_CLIENT_TICK_CALLBACK event=start_client_tick\");\n            }\n            if (ticks % 20L != 0L || client.player == null || client.level == null) return;"
+if old_decl in probe_source:
+    probe_source = probe_source.replace(old_decl, new_decl, 1)
+else:
+    previous = "LOGGER.info(\"GATE_D_CLIENT_OBSERVER_READY transport=main_initializer\");\n        ClientTickEvents.END_CLIENT_TICK.register(client -> {\n            ticks++;\n            if (ticks % 20L != 0L || client.player == null || client.level == null) return;"
+    replacement = "LOGGER.info(\"GATE_D_CLIENT_OBSERVER_READY transport=main_initializer\");\n        ClientTickEvents.START_CLIENT_TICK.register(client -> {\n            ticks++;\n            if (ticks == 1L) {\n                LOGGER.info(\"GATE_D_CLIENT_TICK_CALLBACK event=start_client_tick\");\n            }\n            if (ticks % 20L != 0L || client.player == null || client.level == null) return;"
+    if previous not in probe_source:
+        raise SystemExit("Phase 52 could not find GateEClientProbe client tick registration")
+    probe_source = probe_source.replace(previous, replacement, 1)
 client_probe.write_text(probe_source, encoding="utf-8")
 
-print("Phase 52: bootstrapped read-only Gate E client observer from the Fabric main initializer on CLIENT, with an idempotent explicit readiness marker; no gameplay or physics behavior is modified")
+print("Phase 52: bootstrapped read-only Gate E client observer from the Fabric main initializer and proved START_CLIENT_TICK callback delivery before contact sampling; no gameplay or physics behavior is modified")

@@ -175,3 +175,9 @@ print("Phase 104: resolved the exact client-selected carriage by id and rebased 
 # authoritative exact-carriage server fixture block.
 phase106 = Path(__file__).with_name("prepare_vs2_26_2_phase106.py")
 exec(compile(phase106.read_text(encoding="utf-8"), str(phase106), "exec"))
+
+# The exact native placement target can only be resolved after Phase 104 created the
+# authoritative ServerLevel entity resolver and Phase 106 installed its same-cell
+# server canary. Keep this read-only probe ordered after both prerequisites.
+phase109 = Path(__file__).with_name("prepare_vs2_26_2_phase109.py")
+exec(compile(phase109.read_text(encoding="utf-8"), str(phase109), "exec"))

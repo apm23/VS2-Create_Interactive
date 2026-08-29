@@ -158,7 +158,9 @@ native_block = dispatch_anchor + '''
                                                                     "GATE_F_CREATE_NATIVE_RAY carriage_id={} player_tick={} {}",
                                                                     carriage.getId(), player.tickCount, nativeRayState);'''
 
-if "GATE_F_CREATE_NATIVE_RAY" not in source:
+# The settled marker is a prefix of the deep marker name. Check for the complete
+# deep log literal so the settled probe cannot accidentally suppress this insertion.
+if '"GATE_F_CREATE_NATIVE_RAY carriage_id=' not in source:
     if dispatch_anchor not in source:
         raise SystemExit("Phase 97 could not find restored dispatch-candidate anchor")
     source = source.replace(dispatch_anchor, native_block, 1)
@@ -167,7 +169,7 @@ required = [
     'GATE_F_CONTRAPTION_INTERACTION_API',
     'GATE_F_INTERACTION_DISPATCH_CANDIDATE',
     'GATE_F_CREATE_NATIVE_RAY_SETTLED',
-    'GATE_F_CREATE_NATIVE_RAY',
+    '"GATE_F_CREATE_NATIVE_RAY carriage_id=',
     'method.getName().equals("handlePlayerInteraction")',
     'settledRayMethod.invoke(null, settledNativeOrigin, settledNativeTarget, carriage)',
     'rayMethod.invoke(null, nativeOrigin, nativeTarget, carriage)',

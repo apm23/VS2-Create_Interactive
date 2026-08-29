@@ -146,9 +146,6 @@ jobs:
           done
           test "$TRAIN_MOVED" -eq 1
 
-          # Phase 71 records the client carry result from the first genuine Create
-          # surface-contact baseline. Keep the client alive briefly after server-side
-          # train motion so the player-vs-carriage displacement reaches the artifact.
           CARRY_DELTA=0
           for i in $(seq 1 15); do
             if grep -q 'GATE_E_CLIENT_CARRY_DELTA' ../world-smoke.log; then CARRY_DELTA=1; break; fi
@@ -162,12 +159,13 @@ jobs:
             exit 1
           fi
 
-          # Run 109 proved that Phase 83's strict physical-support lease refresh can
-          # restore Create's own native client carry path without Phase 81 manual
-          # setPos replay. Make that proof a hard regression gate: both the refresh
-          # and a non-zero horizontal LocalPlayer setPos directly from
-          # ContraptionColliderClient#collideEntities must occur in the real save.
-          NATIVE_CARRY=0
+          # Run 111 falsified lease-refresh-only native carry: the strict Create
+          # lease survives onGround=false, yet Create 6.0.9 emits no horizontal
+          # ContraptionColliderClient carry and LocalPlayer falls away. Phase 85
+          # therefore requires the narrow compatibility path that uses Create's
+          # own getContactPointMotion plus ContraptionCollider.collide result,
+          # under strict physical support/collision/broadphase guards.
+          PHASE85_CARRY=0
           for i in $(seq 1 15); do
             if python3 - ../world-smoke.log <<'PY'
           import re, sys
@@ -179,25 +177,34 @@ jobs:
           if 'GATE_E_PHASE83_CONTACT_REFRESH' not in text:
               raise SystemExit(1)
           pattern = re.compile(
-              r'GATE_E_LOCALPLAYER_SET_POS[^\n]*delta=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)[^\n]*'
-              r'callers=[^\n]*ContraptionColliderClient#collideEntities')
+              r'GATE_E_PHASE85_CARRY_REPLAY[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*allowed=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*before=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
+              r'[^\n]*after=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)')
           for match in pattern.finditer(text):
-              dx, _dy, dz = map(float, match.groups())
-              if abs(dx) > 1.0e-6 or abs(dz) > 1.0e-6:
+              values = list(map(float, match.groups()))
+              req_x, _req_y, req_z, allow_x, _allow_y, allow_z, before_x, before_y, before_z, after_x, after_y, after_z = values
+              moved_x = after_x - before_x
+              moved_z = after_z - before_z
+              if ((abs(req_x) > 1.0e-6 or abs(req_z) > 1.0e-6)
+                      and (abs(allow_x) > 1.0e-6 or abs(allow_z) > 1.0e-6)
+                      and abs(moved_x - allow_x) <= 1.0e-6
+                      and abs(moved_z - allow_z) <= 1.0e-6
+                      and abs(after_y - before_y) <= 1.0e-9):
                   raise SystemExit(0)
           raise SystemExit(1)
           PY
-            then NATIVE_CARRY=1; break; fi
+            then PHASE85_CARRY=1; break; fi
             if fatal_state; then exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
             sleep 1
           done
-          if [ "$NATIVE_CARRY" -ne 1 ]; then
-            echo 'Phase 83 contact refresh did not produce non-zero native Create client carry.'
-            grep -E 'GATE_E_PHASE83_CONTACT_REFRESH|GATE_E_LOCALPLAYER_SET_POS|GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT' ../world-smoke.log | tail -180 || true
+          if [ "$PHASE85_CARRY" -ne 1 ]; then
+            echo 'Phase 85 strict Create-filtered horizontal carry did not occur.'
+            grep -E 'GATE_E_PHASE83_CONTACT_REFRESH|GATE_E_PHASE85_CARRY_REPLAY|GATE_E_LOCALPLAYER_SET_POS|GATE_E_PHASE81_SUPPORT_CONTINUITY' ../world-smoke.log | tail -220 || true
             exit 1
           fi
-          echo 'Phase 83 native Create carry hard gate passed.'
+          echo 'Phase 85 strict Create-filtered carry hard gate passed.'
 
           PHASE54=0
           for i in $(seq 1 30); do
@@ -223,7 +230,7 @@ jobs:
           if fatal_state; then echo 'Fatal state during functional Gate D.'; exit 1; fi
           test -f fabric/run/saves/train-smoke/data/create/tracks.dat
           grep -E 'GATE_D_|GATE_E_|anchor_state=|Starting integrated|Preparing level|Done \(|create 6\.0\.9-1|railways |copycats |Initialized VSCore|Train|train|Hayajiro' ../world-smoke.log | tail -300 || true
-          echo 'Verified real train world functional Gate D + Phase 71 + Phase 83 native carry gate passed.'
+          echo 'Verified real train world functional Gate D + Phase 71 + Phase 85 strict Create-filtered carry gate passed.'
 
       - name: Summarize real-world smoke diagnostics
         if: always()
@@ -231,10 +238,10 @@ jobs:
         run: |
           set -uo pipefail
           {
-            echo '## Verified r0v3 real train world smoke + Gate D + Phase 71 + Phase 83 native carry'
+            echo '## Verified r0v3 real train world smoke + Gate D + Phase 71 + Phase 85 strict Create-filtered carry'
             if [ -f fixture-sha256.txt ]; then echo "Fixture ZIP SHA256: $(cut -d' ' -f1 fixture-sha256.txt)"; fi
             echo 'Phase 71: client player-vs-carriage carry delta after genuine Create surface contact.'
-            echo 'Phase 83 gate: strict contact-lease refresh must lead to non-zero native ContraptionColliderClient carry.'
+            echo 'Phase 85 gate: strict physical support must apply Create-computed, Create-collision-filtered horizontal carry.'
             if [ -f world-smoke.log ]; then
               echo '```text'
               grep -Ein 'GATE_D_|GATE_E_|anchor_state=|Could not execute entrypoint|Mixin|Exception|Caused by:|NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError|Minecraft has crashed|Game crashed|ERROR' world-smoke.log | tail -420 || true

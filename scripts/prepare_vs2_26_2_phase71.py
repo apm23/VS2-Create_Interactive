@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -26,3 +27,5 @@ if "GATE_E_CLIENT_CARRY_DELTA" not in source:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 71: captured the first real Create LocalPlayer contact baseline and logged client player-vs-carriage displacement after train motion to directly verify carry; read-only telemetry only")
+
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase72.py")), run_name="__main__")

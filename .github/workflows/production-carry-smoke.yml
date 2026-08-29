@@ -1,0 +1,139 @@
+name: production-carry-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/prepare_vs2_26_2*.py'
+      - '.github/workflows/production-carry-smoke.yml'
+
+jobs:
+  production-carry-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Prepare 26.2 client through production isolation phase
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          grep -q 'boolean ciHarness = Boolean.getBoolean("vs2.gateD");' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'boolean explicitCarryCompat = Boolean.getBoolean("vs2.createCarryCompat");' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          if grep -q 'System.getenv("GITHUB_ACTIONS")' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java; then
+            echo 'Production carry probe still depends on GITHUB_ACTIONS.'
+            exit 1
+          fi
+
+      - name: Prefetch Minecraft client assets with retry
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:downloadAssets; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+
+      - name: Boot explicit production carry mode without CI fixture harness
+        working-directory: upstream
+        shell: bash
+        env:
+          JAVA_TOOL_OPTIONS: '-Dvs2.createCarryCompat=true'
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
+          ALSOFT_DRIVERS: 'null'
+        run: |
+          set -euo pipefail
+          rm -f ../production-carry-smoke.log ../production-xvfb.log
+          rm -rf fabric/run/crash-reports
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > ../production-xvfb.log 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+          ./gradlew --no-daemon :fabric:runClient > ../production-carry-smoke.log 2>&1 &
+          CLIENT_PID=$!
+
+          cleanup() {
+            if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
+            if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+
+          fatal_state() {
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' ../production-carry-smoke.log \
+              || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
+              || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
+              || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
+          }
+
+          MODE_READY=0
+          for i in $(seq 1 240); do
+            if grep -q 'VS2_CREATE_CARRY_COMPAT_MODE ci_harness=false explicit_opt_in=true' ../production-carry-smoke.log; then
+              MODE_READY=1
+              break
+            fi
+            if fatal_state; then
+              tail -220 ../production-carry-smoke.log
+              exit 1
+            fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+              echo 'Client exited before production carry mode initialized.'
+              wait "$CLIENT_PID" || true
+              tail -220 ../production-carry-smoke.log
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$MODE_READY" -eq 1
+
+          if grep -q 'VS2_CREATE_CARRY_COMPAT_MODE ci_harness=true' ../production-carry-smoke.log; then
+            echo 'Production smoke unexpectedly entered CI fixture harness.'
+            exit 1
+          fi
+
+          # Hold briefly after initialization to catch delayed client/mixin failures.
+          for i in $(seq 1 20); do
+            if fatal_state; then
+              tail -220 ../production-carry-smoke.log
+              exit 1
+            fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+              echo 'Client exited during production carry stability hold.'
+              wait "$CLIENT_PID" || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo 'Explicit production carry mode initialized with ci_harness=false and remained stable.'
+          grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|Initialized VSCore|create 6\.0\.9-1|railways |copycats ' ../production-carry-smoke.log | tail -120 || true
+
+      - name: Upload production carry diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vs2-production-carry-smoke-log
+          path: |
+            production-carry-smoke.log
+            production-xvfb.log
+          if-no-files-found: warn

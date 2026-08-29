@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -81,3 +82,7 @@ if "MixinEntityLocalPlayerMoveTrace" not in client:
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 print("Phase 73: traced the actual inherited Entity.move path for LocalPlayer so carriage-motion application can be observed directly after the confirmed Run 84 carry drift; read-only telemetry only")
+
+# Create applies surface carry with direct setPos based on getContactPointMotion,
+# so measure that exact intended vector before attempting any compatibility fix.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase74.py")), run_name="__main__")

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.java"
@@ -68,3 +69,4 @@ source = source.replace(old, new, 1)
 trace.write_text(source, encoding="utf-8")
 
 print("Phase 64: traced the actual client-only ContraptionColliderClient path and corrected the common shape hook to its runtime void signature; read-only diagnostics only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase65.py")), run_name="__main__")

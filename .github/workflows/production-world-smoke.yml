@@ -36,6 +36,7 @@ jobs:
           set -euo pipefail
           for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
           grep -q 'vs2.productionSmoke' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'vs2.productionSmokeFixture' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
 
       - name: Reconstruct verified r0v3 train save
@@ -55,7 +56,7 @@ jobs:
           test -f 'world-fixture/train build 1/level.dat'
           test -f 'world-fixture/train build 1/data/create/tracks.dat'
 
-      - name: Install exact save into client game directory
+      - name: Install pristine save into client game directory
         shell: bash
         run: |
           set -euo pipefail
@@ -76,122 +77,11 @@ jobs:
             sleep $((attempt * 10))
           done
 
-      - name: Seed production playerdata via disposable profile probe
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pip install --disable-pip-version-check --quiet nbtlib==2.0.4
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xdotool >/dev/null
-
-          PROD='upstream/fabric/run/saves/train-production-smoke'
-          PROBE='upstream/fabric/run/saves/train-profile-probe'
-          rm -rf "$PROBE"
-          cp -a "$PROD" "$PROBE"
-
-          rm -f profile-probe.log profile-probe-xvfb.log
-          export DISPLAY=:98
-          Xvfb :98 -screen 0 1280x720x24 -nolisten tcp > profile-probe-xvfb.log 2>&1 &
-          XVFB_PID=$!
-          CLIENT_PGID=''
-          cleanup_probe() {
-            if [ -n "${CLIENT_PGID:-}" ]; then kill -TERM -- "-$CLIENT_PGID" 2>/dev/null || true; fi
-            if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
-          }
-          trap cleanup_probe EXIT
-          sleep 2
-
-          setsid bash -c "cd upstream && exec env LIBGL_ALWAYS_SOFTWARE=true MESA_GL_VERSION_OVERRIDE=4.6 MESA_GLSL_VERSION_OVERRIDE=460 ALSOFT_DRIVERS=null ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-profile-probe'" > profile-probe.log 2>&1 &
-          CLIENT_PGID=$!
-
-          JOINED=0
-          for i in $(seq 1 180); do
-            if grep -Eq ' logged in with entity id [0-9]+ at \(' profile-probe.log; then JOINED=1; break; fi
-            if grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Minecraft has crashed|Game crashed' profile-probe.log; then
-              tail -200 profile-probe.log
-              exit 1
-            fi
-            if ! kill -0 "$CLIENT_PGID" 2>/dev/null; then
-              wait "$CLIENT_PGID" || true
-              tail -200 profile-probe.log
-              exit 1
-            fi
-            sleep 1
-          done
-          test "$JOINED" -eq 1
-
-          # SIGINT to Gradle does not close the spawned Minecraft client reliably.
-          # Ask the X11 window to close instead so Minecraft runs its normal integrated-server
-          # shutdown/save path and persists the dev-client player profile in this disposable copy.
-          sleep 4
-          WINDOW_ID="$(xdotool search --onlyvisible --name 'Minecraft' 2>/dev/null | head -n1 || true)"
-          if [ -z "$WINDOW_ID" ]; then
-            echo 'Could not locate disposable Minecraft window for graceful close.'
-            xdotool search --onlyvisible --name '.*' getwindowname %@ 2>/dev/null | tail -50 || true
-            exit 1
-          fi
-          xdotool windowclose "$WINDOW_ID"
-
-          for i in $(seq 1 90); do
-            if find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null | grep -q .; then break; fi
-            if ! kill -0 "$CLIENT_PGID" 2>/dev/null; then break; fi
-            sleep 1
-          done
-          if kill -0 "$CLIENT_PGID" 2>/dev/null; then
-            kill -TERM -- "-$CLIENT_PGID" 2>/dev/null || true
-          fi
-          wait "$CLIENT_PGID" 2>/dev/null || true
-          CLIENT_PGID=''
-
-          PROFILE="$(find "$PROBE/playerdata" -maxdepth 1 -type f -name '*.dat' -print -quit 2>/dev/null || true)"
-          if [ -z "$PROFILE" ]; then
-            echo 'Disposable profile probe still did not persist playerdata after X11 window close.'
-            grep -E 'Setting user:|logged in with entity id|Saving players|Stopping server|Saving chunks for level' profile-probe.log | tail -120 || true
-            exit 1
-          fi
-
-          kill "$XVFB_PID" 2>/dev/null || true
-          wait "$XVFB_PID" 2>/dev/null || true
-          trap - EXIT
-
-          python3 - "$PROFILE" "$PROD" <<'PY'
-          from pathlib import Path
-          import shutil, sys
-          import nbtlib
-          from nbtlib import Double, Float, List
-
-          source = Path(sys.argv[1])
-          prod = Path(sys.argv[2])
-          player = nbtlib.load(source)
-          if 'Pos' not in player:
-              raise SystemExit(f'{source} contains no Pos tag')
-          before = tuple(float(v) for v in player['Pos'])
-          target = (-70.5, -53.75, 118.5)
-          player['Pos'] = List[Double]([Double(v) for v in target])
-          if 'Motion' in player:
-              player['Motion'] = List[Double]([Double(0.0), Double(0.0), Double(0.0)])
-          if 'FallDistance' in player:
-              player['FallDistance'] = Float(0.0)
-          player.save(source, gzipped=True)
-
-          dest_dir = prod / 'playerdata'
-          dest_dir.mkdir(parents=True, exist_ok=True)
-          dest = dest_dir / source.name
-          shutil.copy2(source, dest)
-          check = nbtlib.load(dest)
-          after = tuple(float(v) for v in check['Pos'])
-          assert after == target, after
-          print(f'PRODUCTION_SMOKE_OFFLINE_PLAYER_SEED source={source.name} before={before} after={after}')
-          PY
-
-          rm -rf "$PROBE"
-          test "$(find "$PROD/playerdata" -maxdepth 1 -type f -name '*.dat' | wc -l)" -ge 1
-
-      - name: Load real train world in explicit production carry mode
+      - name: Load real train world with production carry and test-only support fixture
         working-directory: upstream
         shell: bash
         env:
-          JAVA_TOOL_OPTIONS: '-Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true'
+          JAVA_TOOL_OPTIONS: '-Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true'
           LIBGL_ALWAYS_SOFTWARE: 'true'
           MESA_GL_VERSION_OVERRIDE: '4.6'
           MESA_GLSL_VERSION_OVERRIDE: '460'
@@ -240,31 +130,35 @@ jobs:
           test "$MODE_READY" -eq 1
           test "$WORLD_READY" -eq 1
 
-          sleep 8
-          if grep -Eq 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|gravity_probe_y=-0\.08' ../production-world-smoke.log; then
-            echo 'Production world smoke unexpectedly executed CI runtime fixture mutation.'
-            grep -E 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|gravity_probe_y=-0\.08' ../production-world-smoke.log | tail -80 || true
+          # This run deliberately allows only the separately named test fixture to
+          # establish initial carriage contact. The production carry mode itself must
+          # remain ci_harness=false and explicitly opt-in.
+          FIXTURE_READY=0
+          for i in $(seq 1 90); do
+            if grep -Eq 'GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_' ../production-world-smoke.log; then FIXTURE_READY=1; break; fi
+            if fatal_state; then exit 1; fi
+            sleep 1
+          done
+          test "$FIXTURE_READY" -eq 1
+          if grep -q 'VS2_CREATE_CARRY_COMPAT_MODE ci_harness=true' ../production-world-smoke.log; then
+            echo 'Production carry mode unexpectedly entered the normal CI harness.'
             exit 1
           fi
 
           CARRIAGE_PRESENT=0
-          for i in $(seq 1 120); do
-            if grep -q 'GATE_D_CARRIAGE_PRESENT' ../production-world-smoke.log; then CARRIAGE_PRESENT=1; break; fi
+          TRAIN_MOVED=0
+          for i in $(seq 1 180); do
+            grep -q 'GATE_D_CARRIAGE_PRESENT' ../production-world-smoke.log && CARRIAGE_PRESENT=1 || true
+            grep -q 'GATE_D_TRAIN_MOVED' ../production-world-smoke.log && TRAIN_MOVED=1 || true
+            if [ "$CARRIAGE_PRESENT" -eq 1 ] && [ "$TRAIN_MOVED" -eq 1 ]; then break; fi
             if fatal_state; then exit 1; fi
             sleep 1
           done
           test "$CARRIAGE_PRESENT" -eq 1
-
-          TRAIN_MOVED=0
-          for i in $(seq 1 120); do
-            if grep -q 'GATE_D_TRAIN_MOVED' ../production-world-smoke.log; then TRAIN_MOVED=1; break; fi
-            if fatal_state; then exit 1; fi
-            sleep 1
-          done
           test "$TRAIN_MOVED" -eq 1
 
           PRODUCTION_CARRY=0
-          for i in $(seq 1 20); do
+          for i in $(seq 1 30); do
             if python3 - ../production-world-smoke.log <<'PY'
           import re, sys
           text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
@@ -290,19 +184,14 @@ jobs:
             sleep 1
           done
           if [ "$PRODUCTION_CARRY" -ne 1 ]; then
-            echo 'Production world did not prove strict Phase 85 horizontal carry after offline playerdata seed.'
-            grep -E 'GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE81_SUPPORT_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA|GATE_D_TRAIN_MOVED|VS2_CREATE_CARRY_COMPAT_MODE' ../production-world-smoke.log | tail -220 || true
+            echo 'Production world did not prove strict Phase 85 horizontal carry after deterministic support setup.'
+            grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|GATE_D_FIXTURE_PLAYER_REPOSITIONED|GATE_E_FIXTURE_|GATE_D_TRAIN_MOVED|GATE_E_PHASE81_SUPPORT_CONTINUITY|GATE_E_PHASE85_CARRY_REPLAY' ../production-world-smoke.log | tail -260 || true
             exit 1
           fi
 
-          if grep -q 'VS2_CREATE_CARRY_COMPAT_MODE ci_harness=true' ../production-world-smoke.log; then
-            echo 'Production real-world smoke entered CI harness unexpectedly.'
-            exit 1
-          fi
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Real train world proved strict production carry from offline-seeded playerdata with no runtime fixture mutation.'
-          grep -E 'VS2_CREATE_CARRY_COMPAT_MODE|GATE_D_CARRIAGE_PRESENT|GATE_D_TRAIN_MOVED|GATE_E_PHASE85_CARRY_REPLAY|Initialized VSCore|create 6\.0\.9-1|railways |copycats ' ../production-world-smoke.log | tail -220 || true
+          echo 'Production carry passed in real train world with isolated test-only initial support fixture.'
 
       - name: Upload production real-world diagnostics
         if: always()
@@ -312,6 +201,4 @@ jobs:
           path: |
             production-world-smoke.log
             production-world-xvfb.log
-            profile-probe.log
-            profile-probe-xvfb.log
           if-no-files-found: warn

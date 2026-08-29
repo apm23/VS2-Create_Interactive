@@ -46,3 +46,11 @@ if 'java.lang.Boolean.getBoolean("vs2.productionClientFixtureReady")' not in ser
 server_probe.write_text(server, encoding="utf-8")
 
 print("Phase 100: synchronized the test-only integrated-server production fixture behind LocalPlayer fixture completion; no production gameplay or interaction mutation")
+
+# Production-world #51 is green through sustained moving-train carry and exact native
+# interaction targeting. Chain the next disposable-world-only native interaction probe
+# after this synchronization barrier so production-world's final explicit Phase 98 pass
+# actually installs it. Normal gameplay remains untouched because Phase 101 is guarded
+# by vs2.productionSmokeFixture at runtime.
+phase101 = Path(__file__).with_name("prepare_vs2_26_2_phase101.py")
+exec(compile(phase101.read_text(encoding="utf-8"), str(phase101), "exec"))

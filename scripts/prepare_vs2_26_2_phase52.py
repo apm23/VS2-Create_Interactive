@@ -55,17 +55,53 @@ old_state = '''            LOGGER.info(
 new_state = '''            var playerBox = player.getBoundingBox();
             boolean collisionEligible = carriage.canCollideWith(player);
             boolean broadphaseOverlap = box.inflate(2.0).expandTowards(0.0, 32.0, 0.0).intersects(playerBox);
+            String localSupportState = "unresolved";
+            try {
+                java.lang.reflect.Method toLocal = carriage.getClass().getMethod("toLocalVector", Vec3.class, float.class);
+                Vec3 localFeet = (Vec3) toLocal.invoke(carriage, player.position(), 0.0f);
+                java.lang.reflect.Method getContraption = carriage.getClass().getMethod("getContraption");
+                Object contraption = getContraption.invoke(carriage);
+                if (contraption != null) {
+                    java.lang.reflect.Method getBlocks = contraption.getClass().getMethod("getBlocks");
+                    Object blocksObject = getBlocks.invoke(contraption);
+                    if (blocksObject instanceof Map<?, ?> blocks) {
+                        net.minecraft.core.BlockPos supportPos = net.minecraft.core.BlockPos.containing(
+                            localFeet.x, localFeet.y - 0.05, localFeet.z);
+                        Object supportInfo = blocks.get(supportPos);
+                        String supportValue = "none";
+                        if (supportInfo != null) {
+                            try {
+                                Object state = supportInfo.getClass().getMethod("state").invoke(supportInfo);
+                                supportValue = String.valueOf(state);
+                            } catch (ReflectiveOperationException ignored) {
+                                supportValue = supportInfo.getClass().getName();
+                            }
+                        }
+                        localSupportState = "local_feet=" + localFeet.x + "," + localFeet.y + "," + localFeet.z
+                            + ";support_pos=" + supportPos.toShortString()
+                            + ";support_present=" + (supportInfo != null)
+                            + ";support=" + supportValue
+                            + ";block_count=" + blocks.size();
+                    } else {
+                        localSupportState = "blocks_type=" + (blocksObject == null ? "null" : blocksObject.getClass().getName());
+                    }
+                } else {
+                    localSupportState = "contraption=null";
+                }
+            } catch (ReflectiveOperationException | RuntimeException exception) {
+                localSupportState = "error=" + exception.getClass().getSimpleName();
+            }
             LOGGER.info(
-                "GATE_E_CLIENT_STATE player_pos={},{},{} player_box={},{},{} -> {},{},{} on_ground={} velocity={},{},{} carriage_pos={},{},{} carriage_box={},{},{} -> {},{},{} can_collide={} broadphase_overlap={} player_alive={} create_registered_contact={} contact_field={}",
+                "GATE_E_CLIENT_STATE player_pos={},{},{} player_box={},{},{} -> {},{},{} on_ground={} velocity={},{},{} carriage_pos={},{},{} carriage_box={},{},{} -> {},{},{} can_collide={} broadphase_overlap={} player_alive={} create_registered_contact={} contact_field={} local_support={}",
                 player.getX(), player.getY(), player.getZ(),
                 playerBox.minX, playerBox.minY, playerBox.minZ, playerBox.maxX, playerBox.maxY, playerBox.maxZ,
                 player.onGround(), velocity.x, velocity.y, velocity.z,
                 carriage.getX(), carriage.getY(), carriage.getZ(),
                 box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
-                collisionEligible, broadphaseOverlap, player.isAlive(), createRegisteredContact, contactFieldState);'''
+                collisionEligible, broadphaseOverlap, player.isAlive(), createRegisteredContact, contactFieldState, localSupportState);'''
 if old_state not in probe_source:
     raise SystemExit("Phase 52 could not find Gate E state log block")
 probe_source = probe_source.replace(old_state, new_state, 1)
 client_probe.write_text(probe_source, encoding="utf-8")
 
-print("Phase 52: Gate E validates Create collision eligibility/broadphase plus resolved collidingEntities map on every client-ready tick; telemetry remains read-only and no gameplay or physics behavior is modified")
+print("Phase 52: Gate E validates Create collision eligibility/broadphase/contact map and traces the exact local contraption support block beneath the client player; telemetry remains read-only and no gameplay or physics behavior is modified")

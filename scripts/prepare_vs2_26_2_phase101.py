@@ -47,16 +47,24 @@ settled_replacement = settled_anchor + '''
                                                     LOGGER.info("GATE_F_SERVER_HELD_BLOCK_ARM_REQUEST carriage_id={} player_tick={} requested=true fixture_only=true",
                                                         carriage.getId(), player.tickCount);
                                                 }
+                                                boolean settledServerHeldBlockArmed = Boolean.getBoolean("vs2.productionHeldBlockServerArmed");
+                                                if (productionSmokeFixture && player.tickCount >= 30
+                                                        && settledExactNativeRightClickEntrypoint
+                                                        && !settledServerHeldBlockArmed) {
+                                                    LOGGER.info("GATE_F_SERVER_HELD_BLOCK_ARM_WAIT carriage_id={} player_tick={} armed=false fixture_only=true",
+                                                        carriage.getId(), player.tickCount);
+                                                }
                                                 if (productionSmokeFixture
                                                         && player.tickCount >= 30
                                                         && settledExactNativeRightClickEntrypoint
+                                                        && settledServerHeldBlockArmed
                                                         && player.getMainHandItem().isEmpty()
                                                         && !nativeRightClickProbeDispatched) {
                                                     nativeRightClickProbeDispatched = true;
                                                     Object handled = settledExactRightClickMethod.invoke(
                                                         null, client, net.minecraft.world.InteractionHand.MAIN_HAND);
                                                     LOGGER.info(
-                                                        "GATE_F_NATIVE_RIGHT_CLICK_PROBE carriage_id={} player_tick={} invoked=true handled={} hand_empty_after={} readiness_source=create_native_ray_settled",
+                                                        "GATE_F_NATIVE_RIGHT_CLICK_PROBE carriage_id={} player_tick={} invoked=true handled={} hand_empty_after={} readiness_source=create_native_ray_settled server_held_block_armed=true",
                                                         carriage.getId(), player.tickCount, handled, player.getMainHandItem().isEmpty());
                                                     if (Boolean.TRUE.equals(handled)) {
                                                         LOGGER.info(
@@ -129,9 +137,41 @@ elif "vs2.productionHeldBlockServerArmRequested" not in source:
         raise SystemExit("Phase 101 could not find deferred native interaction anchor")
     source = source.replace(request_anchor, request_insert, 1)
 
-required = ['nativeRightClickProbeDispatched','GATE_F_NATIVE_RIGHT_CLICK_PROBE','GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED','readiness_source=create_native_ray_settled','player.tickCount >= 30','vs2.productionHeldBlockServerArmRequested','GATE_F_SERVER_HELD_BLOCK_ARM_REQUEST']
+# Production-world #209 proved the arm request and native dispatch happened on the same
+# client tick, while the integrated server only armed its authoritative ServerPlayer later.
+# Gate the one-shot dispatch on the server-armed handshake so the held-block interaction is
+# observed with matching client/server inventory state. This is fixture synchronization only.
+if "GATE_F_SERVER_HELD_BLOCK_ARM_WAIT" not in source:
+    old_dispatch_guard = '''                                                if (productionSmokeFixture
+                                                        && player.tickCount >= 30
+                                                        && settledExactNativeRightClickEntrypoint
+                                                        && player.getMainHandItem().isEmpty()
+                                                        && !nativeRightClickProbeDispatched) {'''
+    new_dispatch_guard = '''                                                boolean settledServerHeldBlockArmed = Boolean.getBoolean("vs2.productionHeldBlockServerArmed");
+                                                if (productionSmokeFixture && player.tickCount >= 30
+                                                        && settledExactNativeRightClickEntrypoint
+                                                        && !settledServerHeldBlockArmed) {
+                                                    LOGGER.info("GATE_F_SERVER_HELD_BLOCK_ARM_WAIT carriage_id={} player_tick={} armed=false fixture_only=true",
+                                                        carriage.getId(), player.tickCount);
+                                                }
+                                                if (productionSmokeFixture
+                                                        && player.tickCount >= 30
+                                                        && settledExactNativeRightClickEntrypoint
+                                                        && settledServerHeldBlockArmed
+                                                        && player.getMainHandItem().isEmpty()
+                                                        && !nativeRightClickProbeDispatched) {'''
+    if old_dispatch_guard not in source:
+        raise SystemExit("Phase 101 could not find native dispatch guard for server-arm handshake")
+    source = source.replace(old_dispatch_guard, new_dispatch_guard, 1)
+    source = source.replace(
+        'hand_empty_after={} readiness_source=create_native_ray_settled",',
+        'hand_empty_after={} readiness_source=create_native_ray_settled server_held_block_armed=true",',
+        1,
+    )
+
+required = ['nativeRightClickProbeDispatched','GATE_F_NATIVE_RIGHT_CLICK_PROBE','GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED','readiness_source=create_native_ray_settled','player.tickCount >= 30','vs2.productionHeldBlockServerArmRequested','GATE_F_SERVER_HELD_BLOCK_ARM_REQUEST','vs2.productionHeldBlockServerArmed','GATE_F_SERVER_HELD_BLOCK_ARM_WAIT','settledServerHeldBlockArmed']
 missing = [token for token in required if token not in source]
 if missing: raise SystemExit("Phase 101 lost interaction anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 101: defers native interaction until tick 30 and requests server held-block arming only when the client interaction phase is actually ready")
+print("Phase 101: waits for authoritative server held-block arming before native moving-train dispatch")

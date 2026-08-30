@@ -64,14 +64,15 @@ client_probe.write_text(source, encoding="utf-8")
 
 # production-world-smoke invokes Phase 98 once more after the Phase-54 cumulative chain.
 # #49 proved the fixed client/server tick gate is flaky under render-thread slowdown.
-# Arrange for that final explicit Phase 98 invocation to apply Phase 100 *after* its
-# normal cumulative edits. This only mutates the checked-out CI preparation script in
-# the runner workspace; repository/game/world data are untouched.
+# Arrange for that final explicit Phase 98 invocation to apply Phase 100 only while the
+# cumulative chain has not already reached Phase 130. Once Phase 130 exists, Phase 100's
+# barrier is already installed and reapplying it is both redundant and structurally stale.
+# This only mutates the checked-out CI preparation script in the runner workspace.
 phase98_script = Path(__file__).with_name("prepare_vs2_26_2_phase98.py")
 phase98_runtime = phase98_script.read_text(encoding="utf-8")
 phase100_marker = 'prepare_vs2_26_2_phase100.py'
 if phase100_marker not in phase98_runtime:
-    phase98_runtime += '''\n\n# Runtime-chained by Phase 99 so production-world's final explicit Phase 98 pass\n# installs the cross-thread fixture barrier after all fixed-tick guards are prepared.\nexec(compile(Path(__file__).with_name("prepare_vs2_26_2_phase100.py").read_text(encoding="utf-8"),\n             str(Path(__file__).with_name("prepare_vs2_26_2_phase100.py")), "exec"))\n'''
+    phase98_runtime += '''\n\n# Runtime-chained by Phase 99 for production-world's historical explicit Phase 98 pass.\n# Do not re-run Phase 100 once the cumulative chain has already installed Phase 130.\n_phase98_probe = (Path(__file__).resolve().parents[1] / "upstream" / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java")\nif "GATE_E_PHASE130_REPLAY_GUARD" not in _phase98_probe.read_text(encoding="utf-8"):\n    exec(compile(Path(__file__).with_name("prepare_vs2_26_2_phase100.py").read_text(encoding="utf-8"),\n                 str(Path(__file__).with_name("prepare_vs2_26_2_phase100.py")), "exec"))\n'''
     phase98_script.write_text(phase98_runtime, encoding="utf-8")
 
-print("Phase 99: inventoried the exact moving-train target interaction surface read-only and chained the post-Phase98 production fixture barrier; no interaction dispatch or gameplay mutation")
+print("Phase 99: inventoried the exact moving-train target interaction surface read-only and guarded the historical post-Phase98 fixture barrier against redundant post-Phase130 replay; no interaction dispatch or gameplay mutation")

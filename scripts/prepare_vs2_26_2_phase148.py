@@ -15,7 +15,7 @@ anchor = '''                                                    LOGGER.info("GAT
                                                         carriage.getId(), player.tickCount, handled, phase146ClientMirrorInjected, player.getMainHandItem());'''
 probe = anchor + '''
                                                     if (!java.lang.Boolean.getBoolean("vs2.productionPhase148NetworkSurfaceProbed")) {
-                                                        java.lang.Boolean.setProperty("vs2.productionPhase148NetworkSurfaceProbed", "true");
+                                                        java.lang.System.setProperty("vs2.productionPhase148NetworkSurfaceProbed", "true");
                                                         Object packetListener = client.getConnection();
                                                         Object connection = null;
                                                         try {

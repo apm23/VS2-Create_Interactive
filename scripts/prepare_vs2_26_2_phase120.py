@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 server_probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
@@ -32,3 +33,8 @@ if retry_index - mutation_index > 5000:
     raise SystemExit("Phase 120 retry placement synchronization is not structurally local to the mutation")
 
 print("Phase 120: verified Phase 117 already synchronizes the exact fixture carriage after retry setBlock; no duplicate sync or gameplay mutation")
+
+# Production-world #114 still observes the authoritative server mutation but no block in
+# the exact client carriage. Scan sibling client contraptions read-only before touching
+# Create networking, so a wrong-entity observer can be separated from missing replication.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase121.py")), run_name="__main__")

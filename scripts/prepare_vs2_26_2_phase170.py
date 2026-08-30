@@ -4,21 +4,46 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
+contact_trace = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinAbstractContraptionEntityContactTrace.java"
 source = client_probe.read_text(encoding="utf-8")
+contact_source = contact_trace.read_text(encoding="utf-8")
 
-# Production-world #319 finally exercised the movement-first walk. Tick 23 applied the existing
-# Create-computed/collision-filtered recovery and preserved carriage-local position. From tick 24
-# onward LocalPlayer world X stayed fixed while the same carriage moved ~3.55 blocks/tick; the
-# read-only Phase167 contact motion was exactly the opposite of the measured local drift. The
-# current recovery selector is tied to a currently-held movement key / one-tick native-loss grace,
-# but Phase165 intentionally releases the key immediately after its pulse. Test only the concrete
-# hypothesis that recovery must remain eligible for the bounded fixture walk while native carry is
-# absent. This is fixture-only: production behavior is unchanged, and Phase85 remains the sole
-# source of the Create-computed, Create-collision-filtered carry vector.
+# Production-world #323 reached the real train and isolated a duplicate-carry edge. At walk tick 20
+# Create produced native contact motion from sibling carriage 7 (~8.913 blocks) and the fixture's
+# Phase170-expanded Phase85 recovery also replayed carriage 5 motion (~5.805 blocks); their sum is
+# the observed 14.718-block carriage-local discontinuity. Do not alter either carry vector. Instead,
+# distinguish a real Create ContraptionColliderClient caller from GateE's diagnostic contact-motion
+# calls and suppress only the fixture recovery when native Create contact was already applied in the
+# same LocalPlayer tick. Production behavior remains unchanged outside productionSmokeFixture.
+
+contact_anchor = '''        Vec3 motion = cir.getReturnValue();
+        LOGGER.info(
+'''
+contact_insert = '''        Vec3 motion = cir.getReturnValue();
+        boolean phase170NativeClientColliderCall = java.lang.StackWalker.getInstance().walk(
+            frames -> frames.anyMatch(frame -> frame.getClassName().contains("ContraptionColliderClient")));
+        net.minecraft.client.player.LocalPlayer phase170Player = net.minecraft.client.Minecraft.getInstance().player;
+        if (phase170NativeClientColliderCall && phase170Player != null && motion.lengthSqr() > 1.0E-8) {
+            System.setProperty("vs2.phase170NativeContactApplicationTick", Integer.toString(phase170Player.tickCount));
+            System.setProperty("vs2.phase170NativeContactApplicationCarriageId", Integer.toString(self.getId()));
+            LOGGER.info(
+                "GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION player_tick={} carriage_id={} motion={} application_call=true source=ContraptionColliderClient read_only=true fixture_accounting=true",
+                phase170Player.tickCount, self.getId(), motion);
+        }
+        LOGGER.info(
+'''
+if "GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION" not in contact_source:
+    if contact_source.count(contact_anchor) != 1:
+        raise SystemExit("Phase 170 expected exactly one Phase168 contact-motion log anchor")
+    contact_source = contact_source.replace(contact_anchor, contact_insert, 1)
 
 old_decl = "boolean phase161SupportedLocomotionNativeLoss = productionSmoke && explicitCarryCompat"
-new_decl = '''boolean phase170FixtureWalkRecoveryWindow = productionSmokeFixture
+new_decl = '''boolean phase170FixtureWalkActive = productionSmokeFixture
             && phase154WalkStarted && !phase154WalkFinished;
+        boolean phase170NativeContactAppliedThisTick = Integer.toString(player.tickCount).equals(
+            System.getProperty("vs2.phase170NativeContactApplicationTick"));
+        boolean phase170FixtureWalkRecoveryWindow = phase170FixtureWalkActive
+            && !phase170NativeContactAppliedThisTick;
         boolean phase161SupportedLocomotionNativeLoss = productionSmoke && explicitCarryCompat'''
 if "phase170FixtureWalkRecoveryWindow" not in source:
     if source.count(old_decl) != 1:
@@ -74,6 +99,11 @@ if "GATE_E_PHASE170_FIXTURE_WALK_NATIVE_LOSS_RECOVERY" not in source:
     line_start = source.rfind("\n", 0, if_pos) + 1
     indent = source[line_start:if_pos]
     log_insert = (
+        f'{indent}if (phase170FixtureWalkActive && phase170NativeContactAppliedThisTick) {{\n'
+        f'{indent}    LOGGER.info(\n'
+        f'{indent}        "GATE_E_PHASE170_NATIVE_CONTACT_SUPPRESSES_RECOVERY player_tick={{}} active_carriage_id={{}} native_contact_carriage_id={{}} same_tick_native_contact=true fixture_only=true read_only_accounting=true",\n'
+        f'{indent}        player.tickCount, carriage.getId(), System.getProperty("vs2.phase170NativeContactApplicationCarriageId", "unknown"));\n'
+        f'{indent}}}\n'
         f'{indent}if (phase161SupportedLocomotionNativeLoss && phase170FixtureWalkRecoveryWindow) {{\n'
         f'{indent}    LOGGER.info(\n'
         f'{indent}        "GATE_E_PHASE170_FIXTURE_WALK_NATIVE_LOSS_RECOVERY carriage_id={{}} player_tick={{}} current_measurement={{}} measured_undercarry={{}} strict_support=true existing_create_filtered_replay=true fixture_only=true",\n'
@@ -83,24 +113,36 @@ if "GATE_E_PHASE170_FIXTURE_WALK_NATIVE_LOSS_RECOVERY" not in source:
     source = source[:line_start] + log_insert + source[line_start:]
 
 required = [
+    "phase170FixtureWalkActive",
+    "phase170NativeContactAppliedThisTick",
     "phase170FixtureWalkRecoveryWindow",
-    "productionSmokeFixture",
-    "phase154WalkStarted && !phase154WalkFinished",
+    "vs2.phase170NativeContactApplicationTick",
     "phase170FixtureWalkRecoveryWindow || client.options.keyUp.isDown()",
     "phase170FixtureWalkRecoveryWindow || Integer.toString(player.tickCount - 1)",
-    "phase161MeasuredUndercarry",
+    "GATE_E_PHASE170_NATIVE_CONTACT_SUPPRESSES_RECOVERY",
     "GATE_E_PHASE170_FIXTURE_WALK_NATIVE_LOSS_RECOVERY",
     "GATE_E_PHASE85_CARRY_REPLAY",
-    "existing_create_filtered_replay=true",
     "fixture_only=true",
 ]
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 170 lost fixture-only recovery anchors: " + ", ".join(missing))
 
-# Phase170 changes eligibility/accounting only. The actual carry remains Phase85's existing
-# Create-computed, Create-collision-filtered vector; do not introduce direct movement mutations.
-phase170_inserted = new_decl + "phase170FixtureWalkRecoveryWindow" + "GATE_E_PHASE170_FIXTURE_WALK_NATIVE_LOSS_RECOVERY"
+contact_required = [
+    "GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION",
+    "ContraptionColliderClient",
+    "vs2.phase170NativeContactApplicationTick",
+    "vs2.phase170NativeContactApplicationCarriageId",
+    "java.lang.StackWalker",
+    "read_only=true",
+]
+contact_missing = [token for token in contact_required if token not in contact_source]
+if contact_missing:
+    raise SystemExit("Phase 170 lost native contact application anchors: " + ", ".join(contact_missing))
+
+# Phase170 adds call-site accounting and recovery suppression only. It must not add a movement,
+# collision, train, world, inventory, or VS2 physics mutation.
+phase170_inserted = new_decl + contact_insert + "GATE_E_PHASE170_NATIVE_CONTACT_SUPPRESSES_RECOVERY"
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
@@ -108,5 +150,6 @@ for forbidden in [
     if forbidden in phase170_inserted:
         raise SystemExit("Phase 170 introduced direct gameplay mutation: " + forbidden)
 
+contact_trace.write_text(contact_source, encoding="utf-8")
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 170: fixture-only sustained Create-filtered recovery hypothesis during bounded walk native-loss window")
+print("Phase 170: suppresses fixture recovery when Create native sibling contact already applied this tick")

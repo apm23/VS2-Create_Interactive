@@ -83,39 +83,6 @@ if "player.tickCount - carryBaselineRebaseTick >= 2" not in source:
         raise SystemExit("Phase 158 expected exactly one active-baseline carry replay predicate")
     source = source.replace(replay_guard_old, replay_guard_new, 1)
 
-# Production-world #283 starts the bounded walk with exact native carry on carriage 2 and stays
-# exact through ticks 36-38. At tick 39 the same Create carriage frame moves -13.180 blocks,
-# the LocalPlayer remains grounded and broadphase-overlapping, but strict simplified support is
-# lost before Phase85 can replay because Phase133's one-tick grace is keyed only to a previous
-# compatibility replay. The previous tick nevertheless has an authoritative healthy native-carry
-# sample. Treat exactly that first support-loss tick as the existing bounded replay grace. This
-# does not invent or clamp a vector: Phase85 still uses Create's own contact motion passed through
-# Create collision filtering. The grace cannot repeat because the healthy-sample tick must equal
-# player.tickCount - 1, and the existing grace-consumption/rebase guards remain intact.
-native_loss_grace_old = '''boolean phase133ReplayGrace = productionSmoke && explicitCarryCompat
-            && carryBaselineCaptured && carryBaselineCarriageId == carriage.getId()
-            && !phase81PhysicalSupport && player.onGround()
-            && carryReplayPlayerTick == player.tickCount - 1
-            && phase133LastGraceReplayTick != carryReplayPlayerTick;'''
-native_loss_grace_new = '''boolean phase159PreviousNativeHealthy = Boolean.parseBoolean(System.getProperty(
-            "vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
-            && Integer.toString(player.tickCount - 1).equals(System.getProperty(
-                "vs2.phase134NativeCarryHealthyTick." + carriage.getId()));
-        boolean phase133ReplayGrace = productionSmoke && explicitCarryCompat
-            && carryBaselineCaptured && carryBaselineCarriageId == carriage.getId()
-            && !phase81PhysicalSupport && player.onGround() && broadphaseOverlap
-            && (carryReplayPlayerTick == player.tickCount - 1 || phase159PreviousNativeHealthy)
-            && phase133LastGraceReplayTick != player.tickCount;
-        if (phase159PreviousNativeHealthy && phase133ReplayGrace) {
-            LOGGER.info(
-                "GATE_E_PHASE159_NATIVE_LOSS_REPLAY_GRACE carriage_id={} player_tick={} previous_native_tick={} strict_support=false broadphase=true grounded=true bounded_one_tick=true existing_create_filtered_replay=true",
-                carriage.getId(), player.tickCount, player.tickCount - 1);
-        }'''
-if "GATE_E_PHASE159_NATIVE_LOSS_REPLAY_GRACE" not in source:
-    if source.count(native_loss_grace_old) != 1:
-        raise SystemExit("Phase 158 expected exactly one Phase133 replay-grace declaration")
-    source = source.replace(native_loss_grace_old, native_loss_grace_new, 1)
-
 required = [
     "phase150SupportReacquired",
     "GATE_E_PHASE85_CARRY_REPLAY",
@@ -133,10 +100,6 @@ required = [
     "compatibility_recovery_allowed=true",
     "carryBaselineRebaseTick == Integer.MIN_VALUE",
     "player.tickCount - carryBaselineRebaseTick >= 2",
-    "phase159PreviousNativeHealthy",
-    "GATE_E_PHASE159_NATIVE_LOSS_REPLAY_GRACE",
-    "broadphaseOverlap",
-    "existing_create_filtered_replay=true",
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -149,9 +112,8 @@ for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
 ]:
-    if (forbidden in health_new or forbidden in walk_start_new or forbidden in replay_guard_new
-            or forbidden in native_loss_grace_new):
+    if forbidden in health_new or forbidden in walk_start_new or forbidden in replay_guard_new:
         raise SystemExit("Phase 158 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 158: starts walk after fresh native carry, blocks duplicate handoff replay, and permits one Create-filtered replay on the first native-support loss tick")
+print("Phase 158: starts walk only after fresh native carry, bounds locomotion recovery, and suppresses duplicate replay for one full tick after sibling handoff")

@@ -15,6 +15,8 @@ mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 # previously-missing, non-air cell that arrived in Create's own block-change packet.
 # Also report when Create's native handler already populated the exact cell, so world smoke
 # can distinguish native replication from the compatibility fallback without mutating state.
+# Phase 149 additionally emits the exact published target proof at this authoritative packet
+# handler, avoiding the older reflective observer race while preserving the same semantics.
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
@@ -24,6 +26,7 @@ import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 import org.spongepowered.asm.mixin.Mixin;
@@ -41,6 +44,27 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(targets = "com.zurrtum.create.client.AllHandle", remap = false)
 public abstract class MixinCreateNewContraptionCellReplication {
+    private void vs2$reportExactPublishedTarget(int entityId, BlockPos localPos, BlockState newState, String path) {
+        String carriageText = System.getProperty("vs2.productionNativePlacementCarriageId");
+        String xText = System.getProperty("vs2.productionNativePlacementEmptyX");
+        String yText = System.getProperty("vs2.productionNativePlacementEmptyY");
+        String zText = System.getProperty("vs2.productionNativePlacementEmptyZ");
+        if (carriageText == null || xText == null || yText == null || zText == null) return;
+        try {
+            int expectedCarriage = Integer.parseInt(carriageText);
+            BlockPos expectedPos = new BlockPos(Integer.parseInt(xText), Integer.parseInt(yText), Integer.parseInt(zText));
+            if (entityId == expectedCarriage && expectedPos.equals(localPos) && newState.is(Blocks.STONE)) {
+                System.setProperty("vs2.productionNativePlacementClientObserved", "true");
+                System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");
+                System.out.println("GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id=" + entityId
+                    + " empty_local=" + localPos + " state=" + newState
+                    + " synced=true packet_authoritative=true source=" + path);
+            }
+        } catch (RuntimeException ignored) {
+            // Telemetry is fail-open and never changes packet handling or gameplay state.
+        }
+    }
+
     @Inject(method = "onContraptionBlockChanged", at = @At("RETURN"), remap = false)
     private void vs2$replicateMissingCell(@Coerce Object packet, CallbackInfo ci) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -71,6 +95,9 @@ public abstract class MixinCreateNewContraptionCellReplication {
                     + " local_pos=" + localPos + " state=" + newState
                     + " path=create_native entry_present=true state_match=" + stateMatch
                     + " packet_authoritative=true");
+                if (stateMatch) {
+                    vs2$reportExactPublishedTarget(entityId, localPos, newState, "create_native");
+                }
                 return;
             }
 
@@ -102,6 +129,7 @@ public abstract class MixinCreateNewContraptionCellReplication {
                 + " local_pos=" + localPos + " state=" + newState
                 + " path=vs2_new_cell_fallback entry_present=true state_match=true"
                 + " packet_authoritative=true");
+            vs2$reportExactPublishedTarget(entityId, localPos, newState, "vs2_new_cell_fallback");
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // Compatibility is intentionally fail-open: never crash Create/VS2 for an optional seam.
         }
@@ -127,6 +155,8 @@ required = [
     'VS2_CREATE_NEW_CELL_REPLICATION',
     'VS2_CREATE_NEW_CELL_REPLICATION_PROVEN',
     'VS2_CREATE_CELL_REPLICATION_CONFIRMED',
+    'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC',
+    'vs2$reportExactPublishedTarget',
     'path=vs2_new_cell_fallback',
     'packet_authoritative=true',
 ]
@@ -139,6 +169,6 @@ for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', '.useIt
     if forbidden in text:
         raise SystemExit("Phase 128 found forbidden player/train mutation: " + forbidden)
 
-print("Phase 128: production compat fills Create Fly client new-cell replication gap and distinguishes native vs fallback authoritative packet replication")
+print("Phase 128/149: production compat fills Create Fly client new-cell replication gap and proves exact published target at the authoritative packet handler")
 
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase129.py")), run_name="__main__")

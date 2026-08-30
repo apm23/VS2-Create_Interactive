@@ -68,17 +68,21 @@ source = source.replace(
 # Production-world #138 still lost carry immediately after the bounded fixture window.
 # Do not alter movement yet: trace every predicate that can suppress the already-validated
 # Create-computed/filtered Phase85 replay, including sibling-carriage rebase settling.
-# This is read-only and exists only in the disposable production smoke fixture.
+# Anchor from the unique replay-tick term backwards to the nearest carryBaseline guard;
+# later phases are allowed to add predicates/indentation without breaking preparation.
 if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
-    replay_pattern = re.compile(
-        r'(?P<indent>\s*)if \(carryBaselineCaptured\s*\n'
-        r'(?P=indent)    && phase81PhysicalSupport[\s\S]{0,700}?'
-        r'carryReplayPlayerTick != player\.tickCount'
-    )
-    replay_match = replay_pattern.search(source)
-    if replay_match is None:
-        raise SystemExit("Phase 129 could not locate final Phase85 replay guard for telemetry")
-    replay_indent = replay_match.group("indent")
+    replay_tick_token = "carryReplayPlayerTick != player.tickCount"
+    replay_tick_pos = source.find(replay_tick_token)
+    if replay_tick_pos < 0:
+        raise SystemExit("Phase 129 could not locate Phase85 replay tick predicate")
+    search_start = max(0, replay_tick_pos - 2500)
+    replay_if_pos = source.rfind("if (carryBaselineCaptured", search_start, replay_tick_pos)
+    if replay_if_pos < 0:
+        raise SystemExit("Phase 129 could not locate enclosing Phase85 carryBaseline guard")
+    line_start = source.rfind("\n", 0, replay_if_pos) + 1
+    replay_indent = source[line_start:replay_if_pos]
+    if replay_indent.strip():
+        raise SystemExit("Phase 129 found malformed Phase85 replay indentation")
     replay_probe = (
         f'{replay_indent}if (productionSmokeFixture && fixtureContactAcquireTicks >= 12 '
         f'&& player.tickCount >= 14 && player.tickCount <= 40) {{\n'
@@ -90,7 +94,7 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
         f'{replay_indent}        carryReplayPlayerTick);\n'
         f'{replay_indent}}}\n\n'
     )
-    source = source[:replay_match.start()] + replay_probe + source[replay_match.start():]
+    source = source[:line_start] + replay_probe + source[line_start:]
 
 required = [
     'fixtureContactAcquireTicks < 12',

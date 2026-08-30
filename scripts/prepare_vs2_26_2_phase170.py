@@ -15,6 +15,12 @@ contact_source = contact_trace.read_text(encoding="utf-8")
 # distinguish a real Create ContraptionColliderClient caller from GateE's diagnostic contact-motion
 # calls and suppress only the fixture recovery when native Create contact was already applied in the
 # same LocalPlayer tick. Production behavior remains unchanged outside productionSmokeFixture.
+#
+# Production-world #354 then exposed a preparation-order compatibility bug after Phase161 replaced
+# its historical inline four-key predicate with phase161LocomotionWindow so the bounded one-pulse
+# observation window remains eligible after key release. Phase170 now consumes that abstraction
+# directly instead of pattern-matching the retired inline key clause. This is harness/recovery
+# accounting only; Phase85 remains the sole producer of the existing Create-filtered carry vector.
 
 contact_anchor = '''        net.minecraft.world.phys.Vec3 motion = cir.getReturnValue();
         LOGGER.info(
@@ -44,15 +50,18 @@ new_decl = '''boolean phase170FixtureWalkActive = productionSmokeFixture
             System.getProperty("vs2.phase170NativeContactApplicationTick"));
         boolean phase170FixtureWalkRecoveryWindow = phase170FixtureWalkActive
             && !phase170NativeContactAppliedThisTick;
+        boolean phase170RecoveryLocomotionWindow = phase170FixtureWalkRecoveryWindow
+            || (!phase170FixtureWalkActive && phase161LocomotionWindow);
         boolean phase161SupportedLocomotionNativeLoss = productionSmoke && explicitCarryCompat'''
 if "phase170FixtureWalkRecoveryWindow" not in source:
     if source.count(old_decl) != 1:
         raise SystemExit("Phase 170 expected exactly one Phase161 recovery declaration")
     source = source.replace(old_decl, new_decl, 1)
 
-# Patch only the Phase161 declaration body. Cumulative phases have changed indentation several
-# times, so match Java whitespace rather than depending on a historical formatting snapshot.
-if "phase170FixtureWalkRecoveryWindow || client.options.keyUp.isDown()" not in source:
+# Patch only the Phase161 declaration body. Older cumulative sources used an inline four-key
+# expression here; current Phase161 publishes phase161LocomotionWindow. Prefer the abstraction,
+# while retaining the historical fallback so this phase remains deterministic on older snapshots.
+if "&& phase170RecoveryLocomotionWindow" not in source:
     decl_pos = source.find("boolean phase161SupportedLocomotionNativeLoss =")
     if decl_pos < 0:
         raise SystemExit("Phase 170 could not locate Phase161 supported-loss declaration")
@@ -61,18 +70,21 @@ if "phase170FixtureWalkRecoveryWindow || client.options.keyUp.isDown()" not in s
         raise SystemExit("Phase 170 could not bound Phase161 supported-loss declaration")
     predicate = source[decl_pos:decl_end + 1]
 
-    key_pattern = re.compile(
-        r"\(\s*client\.options\.keyUp\.isDown\(\)\s*\|\|\s*client\.options\.keyDown\.isDown\(\)\s*"
-        r"\|\|\s*client\.options\.keyLeft\.isDown\(\)\s*\|\|\s*client\.options\.keyRight\.isDown\(\)\s*\)"
-    )
-    predicate, key_count = key_pattern.subn(
-        "(phase170FixtureWalkRecoveryWindow || client.options.keyUp.isDown() || client.options.keyDown.isDown()\n"
-        "                || client.options.keyLeft.isDown() || client.options.keyRight.isDown())",
-        predicate,
-        count=1,
-    )
-    if key_count != 1:
-        raise SystemExit("Phase 170 expected exactly one key-state clause inside Phase161 predicate")
+    locomotion_token = "&& phase161LocomotionWindow"
+    if predicate.count(locomotion_token) == 1:
+        predicate = predicate.replace(locomotion_token, "&& phase170RecoveryLocomotionWindow", 1)
+    else:
+        key_pattern = re.compile(
+            r"\(\s*client\.options\.keyUp\.isDown\(\)\s*\|\|\s*client\.options\.keyDown\.isDown\(\)\s*"
+            r"\|\|\s*client\.options\.keyLeft\.isDown\(\)\s*\|\|\s*client\.options\.keyRight\.isDown\(\)\s*\)"
+        )
+        predicate, key_count = key_pattern.subn(
+            "phase170RecoveryLocomotionWindow",
+            predicate,
+            count=1,
+        )
+        if key_count != 1:
+            raise SystemExit("Phase 170 expected exactly one locomotion-window or historical key-state clause inside Phase161 predicate")
 
     previous_native_pattern = re.compile(
         r"Integer\.toString\(player\.tickCount\s*-\s*1\)\.equals\(System\.getProperty\(\s*"
@@ -116,8 +128,10 @@ required = [
     "phase170FixtureWalkActive",
     "phase170NativeContactAppliedThisTick",
     "phase170FixtureWalkRecoveryWindow",
+    "phase170RecoveryLocomotionWindow",
+    "phase161LocomotionWindow",
     "vs2.phase170NativeContactApplicationTick",
-    "phase170FixtureWalkRecoveryWindow || client.options.keyUp.isDown()",
+    "&& phase170RecoveryLocomotionWindow",
     "phase170FixtureWalkRecoveryWindow || Integer.toString(player.tickCount - 1)",
     "GATE_E_PHASE170_NATIVE_CONTACT_SUPPRESSES_RECOVERY",
     "GATE_E_PHASE170_FIXTURE_WALK_NATIVE_LOSS_RECOVERY",
@@ -153,4 +167,4 @@ for forbidden in [
 
 contact_trace.write_text(contact_source, encoding="utf-8")
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 170: suppresses fixture recovery when Create native sibling contact already applied this tick")
+print("Phase 170: consumes Phase161 locomotion-window abstraction and suppresses fixture recovery when Create native sibling contact already applied this tick")

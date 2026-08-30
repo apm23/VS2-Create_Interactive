@@ -10,9 +10,14 @@ source = client_probe.read_text(encoding="utf-8")
 # referring directly to Phase137 native-balance locals, which are scoped to an earlier
 # block. Publish the already-computed balance as read-only System properties at the
 # measurement site, then consume only the same-tick measurement at the replay site.
-# This changes replay eligibility accounting only: Phase85 remains the sole producer of
-# Create-computed/collision-filtered carry and no player/train/world/VS2 physics mutation
-# is introduced here.
+# Production-world #353 then proved the single-pulse walk fixture can lose native carry
+# after the key has already been released: tick 23 retained strict support and material
+# under-carry while key_up=false, so the old key-down-only locomotion predicate prevented
+# the existing Create-filtered recovery from running. Treat the bounded fixture walk
+# observation window as locomotion eligibility even after pulse release; all support,
+# under-carry, native-health and de-dup guards remain authoritative. This changes recovery
+# eligibility accounting only: Phase85 remains the sole producer of Create-computed/
+# collision-filtered carry and no player/train/world/VS2 physics mutation is introduced.
 
 measurement_marker = '''double phase134DriftZ = phase134NativePlayerDz - phase134CarriageDz;\n'''
 measurement_publish = ""
@@ -54,11 +59,15 @@ if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
         f'{replay_indent}    && Double.isFinite(phase161CarriageMotionSq) && Double.isFinite(phase161NativeCarryProjection)\n'
         f'{replay_indent}    && phase161CarriageMotionSq > 1.0E-8\n'
         f'{replay_indent}    && phase161NativeCarryProjection < phase161CarriageMotionSq - 0.01;\n'
+        f'{replay_indent}boolean phase161FixtureWalkWindow = productionSmokeFixture\n'
+        f'{replay_indent}    && phase154WalkStarted && !phase154WalkFinished;\n'
+        f'{replay_indent}boolean phase161LocomotionWindow = phase161FixtureWalkWindow\n'
+        f'{replay_indent}    || client.options.keyUp.isDown() || client.options.keyDown.isDown()\n'
+        f'{replay_indent}    || client.options.keyLeft.isDown() || client.options.keyRight.isDown();\n'
         f'{replay_indent}boolean phase161SupportedLocomotionNativeLoss = productionSmoke && explicitCarryCompat\n'
         f'{replay_indent}    && carryBaselineCaptured && carryBaselineCarriageId == carriage.getId()\n'
         f'{replay_indent}    && phase81PhysicalSupport && collisionEligible && broadphaseOverlap && player.onGround()\n'
-        f'{replay_indent}    && (client.options.keyUp.isDown() || client.options.keyDown.isDown()\n'
-        f'{replay_indent}        || client.options.keyLeft.isDown() || client.options.keyRight.isDown())\n'
+        f'{replay_indent}    && phase161LocomotionWindow\n'
         f'{replay_indent}    && !Boolean.parseBoolean(System.getProperty(\n'
         f'{replay_indent}        "vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))\n'
         f'{replay_indent}    && Integer.toString(player.tickCount - 1).equals(System.getProperty(\n'
@@ -67,18 +76,17 @@ if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
         f'{replay_indent}if (productionSmoke && explicitCarryCompat\n'
         f'{replay_indent}        && carryBaselineCaptured && carryBaselineCarriageId == carriage.getId()\n'
         f'{replay_indent}        && phase81PhysicalSupport && collisionEligible && broadphaseOverlap && player.onGround()\n'
-        f'{replay_indent}        && (client.options.keyUp.isDown() || client.options.keyDown.isDown()\n'
-        f'{replay_indent}            || client.options.keyLeft.isDown() || client.options.keyRight.isDown())\n'
+        f'{replay_indent}        && phase161LocomotionWindow\n'
         f'{replay_indent}        && !Boolean.parseBoolean(System.getProperty(\n'
         f'{replay_indent}            "vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
-        f'{replay_indent}        "GATE_E_PHASE161_LOCOMOTION_NATIVE_LOSS_CLASSIFICATION carriage_id={{}} player_tick={{}} carriage_motion_sq={{}} native_projection={{}} current_measurement={{}} measured_undercarry={{}} read_only_accounting=true",\n'
-        f'{replay_indent}        carriage.getId(), player.tickCount, phase161CarriageMotionSq, phase161NativeCarryProjection, phase161CurrentMeasurement, phase161MeasuredUndercarry);\n'
+        f'{replay_indent}        "GATE_E_PHASE161_LOCOMOTION_NATIVE_LOSS_CLASSIFICATION carriage_id={{}} player_tick={{}} carriage_motion_sq={{}} native_projection={{}} current_measurement={{}} measured_undercarry={{}} locomotion_window=true fixture_walk_window={{}} read_only_accounting=true",\n'
+        f'{replay_indent}        carriage.getId(), player.tickCount, phase161CarriageMotionSq, phase161NativeCarryProjection, phase161CurrentMeasurement, phase161MeasuredUndercarry, phase161FixtureWalkWindow);\n'
         f'{replay_indent}}}\n'
         f'{replay_indent}if (phase161SupportedLocomotionNativeLoss) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
-        f'{replay_indent}        "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY carriage_id={{}} player_tick={{}} previous_native_tick={{}} physical_support=true collision_eligible=true broadphase=true grounded=true locomoting=true measured_undercarry=true existing_create_filtered_replay=true bounded_same_tick=true",\n'
-        f'{replay_indent}        carriage.getId(), player.tickCount, player.tickCount - 1);\n'
+        f'{replay_indent}        "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY carriage_id={{}} player_tick={{}} previous_native_tick={{}} physical_support=true collision_eligible=true broadphase=true grounded=true locomotion_window=true fixture_walk_window={{}} measured_undercarry=true existing_create_filtered_replay=true bounded_same_tick=true",\n'
+        f'{replay_indent}        carriage.getId(), player.tickCount, player.tickCount - 1, phase161FixtureWalkWindow);\n'
         f'{replay_indent}}}\n\n'
     )
     source = source[:replay_if_pos] + selector + source[replay_if_pos:]
@@ -125,6 +133,10 @@ required = [
     "phase161CurrentMeasurement",
     "phase161NativeCarryProjection < phase161CarriageMotionSq - 0.01",
     "phase81PhysicalSupport && collisionEligible && broadphaseOverlap && player.onGround()",
+    "phase161FixtureWalkWindow",
+    "phase161LocomotionWindow",
+    "productionSmokeFixture",
+    "phase154WalkStarted && !phase154WalkFinished",
     "client.options.keyUp.isDown()",
     "client.options.keyDown.isDown()",
     "client.options.keyLeft.isDown()",
@@ -153,4 +165,4 @@ for forbidden in [
         raise SystemExit("Phase 161 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 161: publishes scoped carry balance and gates Create-filtered recovery to same-tick measured under-carry")
+print("Phase 161: keeps Create-filtered recovery eligible through the bounded fixture walk window after the one-tick input pulse ends")

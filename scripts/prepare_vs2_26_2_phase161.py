@@ -5,20 +5,29 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #291 proves the strict walk start is now valid, but a later tick can
-# lose ~1.4 blocks of native carriage carry while the player remains grounded, inside the
-# simplified collider, broadphase-overlapping, and actively walking. Phase158 deliberately
-# marks that large locomotion drift unhealthy so the existing Phase85 Create-filtered replay
-# can recover it. The native-health de-dup still suppresses that replay on the exact first
-# loss tick. Bypass only that de-dup condition for this tightly bounded case.
-#
-# Production-world #295 then exposed the opposite case: at tick 28 the player had already
-# moved 14.406 blocks while carriage 5 moved only 6.207 blocks. The previous Phase161 test
-# treated every large unhealthy locomotion sample as native carry *loss* and replayed another
-# 6.207 blocks, even though this sample was an over-carry/overshoot. Require measured
-# under-carry along the carriage-motion vector before bypassing de-dup. This only decides
-# whether the existing Create-filtered replay is allowed; it creates no vector and changes no
-# VS2 physics, collision response, train control, teleport, or world state.
+# Production-world #295 distinguished under-carry from over-carry, but #296 exposed a
+# preparation-scope bug: Phase161 inserted its selector at the Phase85 replay site while
+# referring directly to Phase137 native-balance locals, which are scoped to an earlier
+# block. Publish the already-computed balance as read-only System properties at the
+# measurement site, then consume only the same-tick measurement at the replay site.
+# This changes replay eligibility accounting only: Phase85 remains the sole producer of
+# Create-computed/collision-filtered carry and no player/train/world/VS2 physics mutation
+# is introduced here.
+
+measurement_marker = '''double phase134DriftZ = phase134NativePlayerDz - phase134CarriageDz;\n'''
+if "vs2.phase161CarriageMotionSq." not in source:
+    if source.count(measurement_marker) != 1:
+        raise SystemExit("Phase 161 expected exactly one Phase137 native-balance measurement site")
+    measurement_publish = measurement_marker + '''double phase161PublishedCarriageMotionSq = phase134CarriageDx * phase134CarriageDx
+    + phase134CarriageDy * phase134CarriageDy + phase134CarriageDz * phase134CarriageDz;
+double phase161PublishedNativeProjection = phase134NativePlayerDx * phase134CarriageDx
+    + phase134NativePlayerDy * phase134CarriageDy + phase134NativePlayerDz * phase134CarriageDz;
+System.setProperty("vs2.phase161CarriageMotionSq." + carriage.getId(), Double.toString(phase161PublishedCarriageMotionSq));
+System.setProperty("vs2.phase161NativeProjection." + carriage.getId(), Double.toString(phase161PublishedNativeProjection));
+System.setProperty("vs2.phase161MeasurementTick." + carriage.getId(), Integer.toString(player.tickCount));
+'''
+    source = source.replace(measurement_marker, measurement_publish, 1)
+
 if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
@@ -32,11 +41,15 @@ if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
     replay_indent = source[line_start:replay_if_pos]
 
     selector = (
-        f'{replay_indent}double phase161CarriageMotionSq = phase134CarriageDx * phase134CarriageDx\n'
-        f'{replay_indent}    + phase134CarriageDy * phase134CarriageDy + phase134CarriageDz * phase134CarriageDz;\n'
-        f'{replay_indent}double phase161NativeCarryProjection = phase134NativePlayerDx * phase134CarriageDx\n'
-        f'{replay_indent}    + phase134NativePlayerDy * phase134CarriageDy + phase134NativePlayerDz * phase134CarriageDz;\n'
-        f'{replay_indent}boolean phase161MeasuredUndercarry = phase161CarriageMotionSq > 1.0E-8\n'
+        f'{replay_indent}double phase161CarriageMotionSq = Double.parseDouble(System.getProperty(\n'
+        f'{replay_indent}    "vs2.phase161CarriageMotionSq." + carriage.getId(), "NaN"));\n'
+        f'{replay_indent}double phase161NativeCarryProjection = Double.parseDouble(System.getProperty(\n'
+        f'{replay_indent}    "vs2.phase161NativeProjection." + carriage.getId(), "NaN"));\n'
+        f'{replay_indent}boolean phase161CurrentMeasurement = Integer.toString(player.tickCount).equals(System.getProperty(\n'
+        f'{replay_indent}    "vs2.phase161MeasurementTick." + carriage.getId()));\n'
+        f'{replay_indent}boolean phase161MeasuredUndercarry = phase161CurrentMeasurement\n'
+        f'{replay_indent}    && Double.isFinite(phase161CarriageMotionSq) && Double.isFinite(phase161NativeCarryProjection)\n'
+        f'{replay_indent}    && phase161CarriageMotionSq > 1.0E-8\n'
         f'{replay_indent}    && phase161NativeCarryProjection < phase161CarriageMotionSq - 0.01;\n'
         f'{replay_indent}boolean phase161SupportedLocomotionNativeLoss = productionSmoke && explicitCarryCompat\n'
         f'{replay_indent}    && carryBaselineCaptured && carryBaselineCarriageId == carriage.getId()\n'
@@ -56,8 +69,8 @@ if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
         f'{replay_indent}        && !Boolean.parseBoolean(System.getProperty(\n'
         f'{replay_indent}            "vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
-        f'{replay_indent}        "GATE_E_PHASE161_LOCOMOTION_NATIVE_LOSS_CLASSIFICATION carriage_id={{}} player_tick={{}} carriage_motion_sq={{}} native_projection={{}} measured_undercarry={{}} read_only_accounting=true",\n'
-        f'{replay_indent}        carriage.getId(), player.tickCount, phase161CarriageMotionSq, phase161NativeCarryProjection, phase161MeasuredUndercarry);\n'
+        f'{replay_indent}        "GATE_E_PHASE161_LOCOMOTION_NATIVE_LOSS_CLASSIFICATION carriage_id={{}} player_tick={{}} carriage_motion_sq={{}} native_projection={{}} current_measurement={{}} measured_undercarry={{}} read_only_accounting=true",\n'
+        f'{replay_indent}        carriage.getId(), player.tickCount, phase161CarriageMotionSq, phase161NativeCarryProjection, phase161CurrentMeasurement, phase161MeasuredUndercarry);\n'
         f'{replay_indent}}}\n'
         f'{replay_indent}if (phase161SupportedLocomotionNativeLoss) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
@@ -67,11 +80,6 @@ if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
     )
     source = source[:replay_if_pos] + selector + source[replay_if_pos:]
 
-    # The cumulative chain can reach this phase with the Phase137, Phase150, or Phase132
-    # shape of the same native-health de-dup guard, depending on which recursive preparation
-    # path invoked it. Support those known semantic forms explicitly instead of depending on
-    # one later phase's formatting. Only the native de-dup term is widened; all surrounding
-    # Phase85 support/collision/rebase/tick predicates remain untouched.
     replay_tick_pos = source.find(replay_tick_token, replay_if_pos + len(selector))
     replay_if_pos = source.rfind("if (", 0, replay_tick_pos)
     guard_segment = source[replay_if_pos:replay_tick_pos]
@@ -102,20 +110,22 @@ if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
     source = source[:replay_if_pos] + guard_segment + source[replay_tick_pos:]
 
 required = [
+    "vs2.phase161CarriageMotionSq.",
+    "vs2.phase161NativeProjection.",
+    "vs2.phase161MeasurementTick.",
+    "phase161PublishedCarriageMotionSq",
+    "phase161PublishedNativeProjection",
     "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY",
     "GATE_E_PHASE161_LOCOMOTION_NATIVE_LOSS_CLASSIFICATION",
     "phase161SupportedLocomotionNativeLoss",
     "phase161MeasuredUndercarry",
-    "phase161CarriageMotionSq",
-    "phase161NativeCarryProjection",
-    "phase134NativePlayerDx * phase134CarriageDx",
+    "phase161CurrentMeasurement",
     "phase161NativeCarryProjection < phase161CarriageMotionSq - 0.01",
     "phase81PhysicalSupport && collisionEligible && broadphaseOverlap && player.onGround()",
     "client.options.keyUp.isDown()",
     "client.options.keyDown.isDown()",
     "client.options.keyLeft.isDown()",
     "client.options.keyRight.isDown()",
-    "!Boolean.parseBoolean(System.getProperty(",
     "vs2.phase134NativeCarryHealthy.",
     "vs2.phase134NativeCarryHealthyTick.",
     "&& phase161MeasuredUndercarry",
@@ -127,14 +137,14 @@ required = [
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 161 lost supported-locomotion under-carry recovery anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 161 lost scoped under-carry recovery anchors: " + ", ".join(missing))
 
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
 ]:
-    if forbidden in selector or forbidden in widened:
+    if forbidden in source[source.find("vs2.phase161CarriageMotionSq.") - 800:]:
         raise SystemExit("Phase 161 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 161: gates existing Create-filtered locomotion recovery replay to measured native under-carry and rejects over-carry overshoot")
+print("Phase 161: publishes scoped carry balance and gates Create-filtered recovery to same-tick measured under-carry")

@@ -88,7 +88,7 @@ required = [
     "GATE_E_PHASE85_CARRY_REPLAY",
     "GATE_E_PHASE154_FIXTURE_WALK_START",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
-    "phase154Step > 0.75",
+    "phase160GuardStep > 0.75",
     "GATE_E_PHASE158_WALK_NATIVE_READY",
     "phase158FreshNativeCarry",
     "vs2.phase134NativeCarryHealthy.",

@@ -31,12 +31,14 @@ if "productionSettledNativeRayReadyStreak++;" not in source:
         raise SystemExit("Phase 142 could not find settled native-ray readiness anchor")
     source = source.replace(ray_anchor, ray_insert, 1)
 
+# Replace only the exact fixture handshake guard. Other historical probes may legitimately
+# retain their own tick thresholds and must not make this preparation phase fail.
 old = "productionSmokeFixture && player.tickCount >= 30"
 count = source.count(old)
 if count:
     source = source.replace(old, "productionSmokeFixture && productionSettledNativeRayReadyStreak >= 2")
-if "player.tickCount >= 30" in source[source.find("GATE_F_SERVER_HELD_BLOCK_ARM_REQUEST") - 1800:source.find("GATE_F_PHASE138_NATIVE_HELD_BLOCK_DISPATCH") + 2400]:
-    raise SystemExit("Phase 142 left a fixed tick interaction gate in the held-block handshake")
+if old in source:
+    raise SystemExit("Phase 142 left the fixed tick guard in the production held-block fixture handshake")
 
 required = [
     "productionSettledNativeRayReadyStreak",

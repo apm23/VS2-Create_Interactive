@@ -8,6 +8,8 @@ on:
       - '.ci/world/r0v3.sha256'
       - 'scripts/prepare_vs2_26_2*.py'
       - '.github/workflows/production-world-smoke.yml'
+      - '.github/workflows/walk-gate.yml'
+      - '.github/workflows/held-block-gate.yml'
 
 jobs:
   real-train-production-isolation:
@@ -83,13 +85,14 @@ jobs:
 
       - name: Load real train world with production carry and test-only support fixture
         working-directory: upstream
-        shell: bash
+        timeout-minutes: 18
         env:
-          JAVA_TOOL_OPTIONS: '-Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true'
+          JAVA_TOOL_OPTIONS: -Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true
           LIBGL_ALWAYS_SOFTWARE: 'true'
           MESA_GL_VERSION_OVERRIDE: '4.6'
           MESA_GLSL_VERSION_OVERRIDE: '460'
           ALSOFT_DRIVERS: 'null'
+        shell: bash
         run: |
           set -euo pipefail
           rm -f ../production-world-smoke.log ../production-world-xvfb.log
@@ -398,4 +401,3 @@ jobs:
           path: |
             production-world-smoke.log
             production-world-xvfb.log
-          if-no-files-found: warn

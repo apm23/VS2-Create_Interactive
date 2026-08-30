@@ -10,11 +10,11 @@ source = client_probe.read_text(encoding="utf-8")
 # Production-world #133 showed a harness race rather than a production carry failure:
 # the one-shot simplified-collider normalization ran while the train was moving several
 # blocks per client tick, so the carriage outran the fixture before Create could promote
-# LocalPlayer to genuine contact/onGround. Use a fixed, bounded 12-tick setup window to
-# reacquire a real Create simplified collider. Crucially, do not use vanilla onGround as
-# the stop condition: production-world #137 proved onGround can remain true after Create
-# contact is already gone. After the 12 setup ticks, all fixture assistance stops and the
-# sustained carry proof must be entirely unassisted.
+# LocalPlayer to genuine contact/onGround. Production-world #178 then reached a newly
+# aligned collider on the twelfth and final attempt, but fixture assistance stopped before
+# Create had another client tick to promote that alignment into contact/baseline capture.
+# Keep setup bounded but allow four additional ticks for that promotion. After 16 setup
+# ticks, all fixture assistance stops and the sustained carry proof remains unassisted.
 field_old = '''    private static boolean fixtureColliderNormalized;\n'''
 field_new = '''    private static boolean fixtureColliderNormalized;\n    private static int fixtureContactAcquireTicks;\n'''
 if "fixtureContactAcquireTicks" not in source:
@@ -46,8 +46,8 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
 
     replacement = (
         f'{indent}if (({cond})\n'
-        f'{indent}        || (productionSmokeFixture && fixtureContactAcquireTicks < 12)) {{\n'
-        f'{indent}    if (productionSmokeFixture && fixtureContactAcquireTicks < 12) {{\n'
+        f'{indent}        || (productionSmokeFixture && fixtureContactAcquireTicks < 16)) {{\n'
+        f'{indent}    if (productionSmokeFixture && fixtureContactAcquireTicks < 16) {{\n'
         f'{indent}        fixtureContactAcquireTicks++;\n'
         f'{indent}        LOGGER.info(\n'
         f'{indent}            "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={{}} attempt={{}} bounded=true fixture_only=true",\n'
@@ -62,7 +62,7 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
 # has stopped. Extend the observation window so CI still has enough unassisted ticks.
 source = source.replace(
     '''if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 32) {''',
-    '''if (productionSmokeFixture && fixtureContactAcquireTicks >= 12 && player.tickCount >= 14 && player.tickCount <= 40) {''',
+    '''if (productionSmokeFixture && fixtureContactAcquireTicks >= 16 && player.tickCount >= 14 && player.tickCount <= 40) {''',
     1,
 )
 
@@ -95,7 +95,7 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
 
     replay_indent = replay_match.group("indent")
     replay_probe = (
-        f'{replay_indent}if (productionSmokeFixture && fixtureContactAcquireTicks >= 12 '
+        f'{replay_indent}if (productionSmokeFixture && fixtureContactAcquireTicks >= 16 '
         f'&& player.tickCount >= 14 && player.tickCount <= 40) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
         f'{replay_indent}        "GATE_E_PHASE130_REPLAY_GUARD player_tick={{}} carriage_id={{}} baseline_captured={{}} physical_support={{}} collision_eligible={{}} broadphase={{}} baseline_carriage_id={{}} rebase_tick={{}} rebase_age={{}} replay_tick={{}} read_only=true",\n'
@@ -108,8 +108,8 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
     source = source[:replay_if_pos] + replay_probe + source[replay_if_pos:]
 
 required = [
-    'fixtureContactAcquireTicks < 12',
-    'fixtureContactAcquireTicks >= 12',
+    'fixtureContactAcquireTicks < 16',
+    'fixtureContactAcquireTicks >= 16',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',
     'bounded=true fixture_only=true',
     'GATE_E_FIXTURE_COLLIDER_NEAREST_FALLBACK',

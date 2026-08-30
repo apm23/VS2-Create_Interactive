@@ -37,6 +37,37 @@ if "GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE" not in source:
                                                         System.setProperty("vs2.productionNativeRightClickCarriageId", Integer.toString(carriage.getId()));'''
     source = source.replace(anchor, replacement, 1)
 
+# Production-world #189 proved the marker above still attaches to an inactive duplicate
+# handled=true site: the artifact contains GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED but no
+# Phase132 held-block marker. Anchor a second, authoritative probe to the exact confirmation
+# LOGGER statement that executed in #189. It reuses the already-resolved Create native
+# right-click method, temporarily equips one STONE in the disposable fixture, restores the
+# original hand in finally, and emits an unambiguous marker for the workflow_run gate.
+if "GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED" not in source:
+    confirmed_anchor = '''                                                        LOGGER.info(
+                                                            "GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED carriage_id={} player_tick={} handled=true target_source=create_native_ray_settled",
+                                                            carriage.getId(), player.tickCount);'''
+    if confirmed_anchor not in source:
+        raise SystemExit("Phase 132 could not find executed native right-click confirmation log")
+    confirmed_probe = confirmed_anchor + '''
+                                                        net.minecraft.world.item.ItemStack phase135OriginalMainHand = player.getMainHandItem().copy();
+                                                        net.minecraft.world.item.ItemStack phase135ProbeStack = new net.minecraft.world.item.ItemStack(net.minecraft.world.level.block.Blocks.STONE, 1);
+                                                        Object phase135HeldBlockHandled = null;
+                                                        String phase135HeldBlockError = "none";
+                                                        try {
+                                                            player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, phase135ProbeStack);
+                                                            phase135HeldBlockHandled = settledExactRightClickMethod.invoke(
+                                                                null, client, net.minecraft.world.InteractionHand.MAIN_HAND);
+                                                        } catch (ReflectiveOperationException | RuntimeException phase135Exception) {
+                                                            phase135HeldBlockError = phase135Exception.getClass().getSimpleName();
+                                                        } finally {
+                                                            player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, phase135OriginalMainHand);
+                                                        }
+                                                        LOGGER.info(
+                                                            "GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED carriage_id={} player_tick={} invoked=true item=stone handled={} error={} confirmed_branch=true fixture_only=true",
+                                                            carriage.getId(), player.tickCount, phase135HeldBlockHandled, phase135HeldBlockError);'''
+    source = source.replace(confirmed_anchor, confirmed_probe, 1)
+
 # Production-world #185 proved the previous harness fix reached genuine Create contact
 # and an exact Create-computed/filtered replay at tick 24 (relative drift ~0), but the
 # following tick lost the simplified-collider/broadphase support predicate while Create's
@@ -120,10 +151,12 @@ if "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE" not in source:
 
 required = [
     "GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE",
+    "GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED",
     "new net.minecraft.world.item.ItemStack(net.minecraft.world.level.block.Blocks.STONE, 1)",
     "settledExactRightClickMethod.invoke(",
     "EquipmentSlot.MAINHAND",
     "phase132OriginalMainHand",
+    "phase135OriginalMainHand",
     "confirmed_branch=true",
     "fixture_only=true",
     "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE",
@@ -138,12 +171,14 @@ if missing:
     raise SystemExit("Phase 132 lost held-block/replay-grace anchors: " + ", ".join(missing))
 
 # No new carry vector, teleport, direct world mutation, or train/physics mutation is
-# introduced here. The only added carry behavior is one reuse of the already existing
-# Create-computed/collision-filtered Phase85 replay immediately after a strict-support tick.
-held_probe_slice = source[source.index("GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE") - 2500:source.index("GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE") + 1200]
-for forbidden in ["setBlock(", ".put(", ".remove(", "player.setPos(", "player.setDeltaMovement(", ".teleport"]:
-    if forbidden in held_probe_slice:
-        raise SystemExit("Phase 132 found forbidden direct mutation near native held-block probe: " + forbidden)
+# introduced here. The held-block probes only use Create's already-confirmed native handler
+# and restore the disposable client hand immediately after invocation.
+for marker in ["GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE", "GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED"]:
+    marker_pos = source.index(marker)
+    held_probe_slice = source[max(0, marker_pos - 2500):marker_pos + 1200]
+    for forbidden in ["setBlock(", ".put(", ".remove(", "player.setPos(", "player.setDeltaMovement(", ".teleport"]:
+        if forbidden in held_probe_slice:
+            raise SystemExit("Phase 132 found forbidden direct mutation near native held-block probe: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 132: binds native held-block probe to confirmed handled=true dispatch and preserves one bounded post-support Create-filtered carry replay grace")
+print("Phase 132: binds held-block probing to the executed native confirmation branch and preserves one bounded post-support Create-filtered carry replay grace")

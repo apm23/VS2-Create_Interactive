@@ -7,11 +7,12 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinCreateContraptionInteractionClientSendTrace.java"
 mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 
-# Production-world #216 proved sustained moving-train carry and reported the Create
-# right-click helper as handled, while Phase140 saw no server ContraptionInteractionPacket.
-# Trace the client network send boundary to distinguish "helper consumed the click" from
-# "handlePlayerInteraction returned true and actually emitted Create's C2S packet".
-# Read-only diagnostics only; the packet is neither replaced nor cancelled.
+# Production-world #224 proved the authoritative server-arm handshake and held-block native
+# helper invocation both complete with handled=true, yet the previous Phase141 telemetry saw
+# no ContraptionInteractionPacket. On MC 26.2/Fabric, custom payloads travel through a vanilla
+# ServerboundCustomPayloadPacket wrapper, so comparing the outer Packet class directly to
+# Create's payload class can silently miss a real send. Unwrap payload() read-only before
+# filtering. This changes telemetry only; no packet is replaced, cancelled, duplicated, or sent.
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
@@ -25,19 +26,29 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class MixinCreateContraptionInteractionClientSendTrace {
     @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;)V", at = @At("HEAD"), require = 0)
     private void vs2$traceCreateContraptionPacket(Packet<?> packet, CallbackInfo ci) {
-        if (packet == null || !packet.getClass().getName().equals(
-                "com.zurrtum.create.infrastructure.packet.c2s.ContraptionInteractionPacket")) return;
+        if (packet == null) return;
+        Object candidate = packet;
+        String wrapperClass = packet.getClass().getName();
         try {
-            Object hand = packet.getClass().getMethod("hand").invoke(packet);
-            Object target = packet.getClass().getMethod("target").invoke(packet);
-            Object localPos = packet.getClass().getMethod("localPos").invoke(packet);
-            Object face = packet.getClass().getMethod("face").invoke(packet);
-            System.out.println("GATE_F_PHASE141_CLIENT_CONTRAPTION_PACKET_SEND target=" + target
+            if (wrapperClass.endsWith("ServerboundCustomPayloadPacket")) {
+                candidate = packet.getClass().getMethod("payload").invoke(packet);
+            }
+            if (candidate == null || !candidate.getClass().getName().equals(
+                    "com.zurrtum.create.infrastructure.packet.c2s.ContraptionInteractionPacket")) return;
+            Object hand = candidate.getClass().getMethod("hand").invoke(candidate);
+            Object target = candidate.getClass().getMethod("target").invoke(candidate);
+            Object localPos = candidate.getClass().getMethod("localPos").invoke(candidate);
+            Object face = candidate.getClass().getMethod("face").invoke(candidate);
+            System.out.println("GATE_F_PHASE141_CLIENT_CONTRAPTION_PACKET_SEND wrapper=" + wrapperClass
+                + " payload=" + candidate.getClass().getName() + " target=" + target
                 + " local_pos=" + localPos + " face=" + face + " hand=" + hand
-                + " read_only=true");
+                + " unwrapped_custom_payload=true read_only=true");
         } catch (ReflectiveOperationException | RuntimeException exception) {
-            System.out.println("GATE_F_PHASE141_CLIENT_CONTRAPTION_PACKET_SEND error="
-                + exception.getClass().getSimpleName() + " read_only=true");
+            if (wrapperClass.contains("CustomPayload")) {
+                System.out.println("GATE_F_PHASE141_CLIENT_CONTRAPTION_PACKET_SEND wrapper=" + wrapperClass
+                    + " error=" + exception.getClass().getSimpleName()
+                    + " unwrap_attempted=true read_only=true");
+            }
         }
     }
 }
@@ -54,16 +65,19 @@ text = java.read_text(encoding="utf-8")
 required = [
     "ClientPacketListener.class",
     'method = "send(Lnet/minecraft/network/protocol/Packet;)V"',
+    "ServerboundCustomPayloadPacket",
+    'getMethod("payload")',
     "ContraptionInteractionPacket",
     "GATE_F_PHASE141_CLIENT_CONTRAPTION_PACKET_SEND",
+    "unwrapped_custom_payload=true",
     "read_only=true",
 ]
 missing = [token for token in required if token not in text]
 if missing:
-    raise SystemExit("Phase 141 lost client packet-send trace anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 141 lost client packet-send unwrap anchors: " + ", ".join(missing))
 for forbidden in ["setPos(", "setDeltaMovement(", ".teleport", "setBlock(", "setItemSlot(", ".send(", "cancel()", "setSchedule", "setTrain", "setVelocity"]:
     if forbidden in text:
         raise SystemExit("Phase 141 found forbidden mutation/interception: " + forbidden)
 
-print("Phase 141: traces Create ContraptionInteractionPacket at the client send boundary read-only")
+print("Phase 141: unwraps vanilla custom-payload packet and traces Create ContraptionInteractionPacket read-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase142.py")), run_name="__main__")

@@ -101,8 +101,17 @@ if "GATE_E_PHASE132_NATIVE_CARRY_ONLY" not in source:
     replay_line_indent = source[replay_line_start:replay_tick_pos]
     if "&&" not in replay_line_indent:
         raise SystemExit("Phase 130 final replay tick predicate lost conjunction shape")
-    suppression_line = replay_line_indent.replace("&& ", "&& !(productionSmoke && explicitCarryCompat)\n" + replay_line_indent + "&& ", 1)
-    source = source[:replay_line_start] + suppression_line + source[replay_tick_pos + len(replay_tick_token):]
+    suppression_prefix = replay_line_indent.replace(
+        "&& ",
+        "&& !(productionSmoke && explicitCarryCompat)\n" + replay_line_indent,
+        1,
+    )
+    source = (
+        source[:replay_line_start]
+        + suppression_prefix
+        + replay_tick_token
+        + source[replay_tick_pos + len(replay_tick_token):]
+    )
 
 # Production-world #164 now proves a real Create-native empty-hand right-click dispatch
 # (handled=true) and authoritative new-cell placement replication in the same run. Keep
@@ -134,6 +143,7 @@ required = [
     'manual_replay_suppressed=true',
     'contact_refresh_preserved=true',
     '!(productionSmoke && explicitCarryCompat)',
+    'carryReplayPlayerTick != player.tickCount',
     'simplified_state={}',
     'phase81PhysicalSupport',
     'phase81VerticalGap',
@@ -147,6 +157,8 @@ required = [
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 130 lost support/carry-dedup/correlation telemetry: " + ", ".join(missing))
+if "&& &&" in source:
+    raise SystemExit("Phase 130 emitted duplicate conjunction in final replay guard")
 
 for forbidden in ['setBlock(', 'setPos(', 'setDeltaMovement(', '.useItemOn(', '.useItem(', '.attack(']:
     if forbidden in native_only_probe if 'native_only_probe' in locals() else False:

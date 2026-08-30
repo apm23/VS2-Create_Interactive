@@ -1,0 +1,44 @@
+name: walk-gate
+
+on:
+  workflow_run:
+    workflows: ["production-world-smoke"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  moving-train-walk-stability:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require source production-world success
+        shell: bash
+        run: test '${{ github.event.workflow_run.conclusion }}' = 'success'
+
+      - name: Download production-world diagnostics
+        uses: actions/download-artifact@v5
+        with:
+          name: vs2-production-real-train-world-smoke-log
+          path: diagnostics
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Require bounded same-carriage walking stability
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=diagnostics/production-world-smoke.log
+          test -f "$LOG"
+          if ! grep -Eq 'GATE_E_PHASE154_FIXTURE_WALK_START.*on_ground=true.*broadphase=true.*fixture_only=true' "$LOG"; then
+            echo 'Production world did not start the bounded forward-key walking fixture from stable moving-carriage support.'
+            grep -E 'GATE_E_PHASE154_FIXTURE_WALK_(START|SAMPLE|CONFIRMED)|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA' "$LOG" | tail -220 || true
+            exit 1
+          fi
+          if ! grep -Eq 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED.*on_ground=true.*broadphase=true.*support_healthy=true.*confirmed=true.*fixture_only=true' "$LOG"; then
+            echo 'Production world did not prove player walking displacement while remaining supported in one moving carriage frame.'
+            grep -E 'GATE_E_PHASE154_FIXTURE_WALK_(START|SAMPLE|CONFIRMED)|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA' "$LOG" | tail -260 || true
+            exit 1
+          fi
+          echo 'PRODUCTION_WALK same_carriage_forward_key_stability_confirmed'

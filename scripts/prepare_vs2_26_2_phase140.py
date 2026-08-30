@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -64,3 +65,4 @@ for forbidden in ["setPos(", "setDeltaMovement(", ".teleport", "setBlock(", "set
         raise SystemExit("Phase 140 found forbidden mutation: " + forbidden)
 
 print("Phase 140: traces Create authoritative contraption interaction packet and server held item read-only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase141.py")), run_name="__main__")

@@ -5,52 +5,30 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 server_probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
 server = server_probe.read_text(encoding="utf-8")
 
-# Production-world #111 proved movement/carry and native interaction targeting, and its
-# fixture-only placement mutation succeeded on the authoritative moving carriage. The
-# artifact also proved the client never observed that STONE entry. Log ordering exposed
-# the concrete harness bug: Phase 117's syncCarriage() call patched an earlier mutation
-# success block, so GATE_D_NATIVE_PLACEMENT_CREATE_SYNC happened before the later
-# GATE_D_NATIVE_PLACEMENT_RETRY_MUTATION that actually added the empty-cell block.
-# Synchronize the exact carriage immediately after *that* verified retry mutation.
-# This remains disposable productionSmokeFixture-only and does not alter normal gameplay.
-old = '''                        if (success) {
-                            System.setProperty("vs2.productionNativePlacementMutationProbed", "true")
-                            System.setProperty("vs2.productionNativePlacementMutationSucceeded", "true")
-                        }
-                        logger.info("GATE_D_NATIVE_PLACEMENT_RETRY_MUTATION carriage_id={} hit_local={} empty_local={} invoked={} before_size={} after_size={} state_match={} source_identity_stable={} success={} fixture_only=true",'''
-new = '''                        if (success) {
-                            System.setProperty("vs2.productionNativePlacementMutationProbed", "true")
-                            System.setProperty("vs2.productionNativePlacementMutationSucceeded", "true")
-                            val postRetrySync = carriage?.javaClass?.methods?.firstOrNull { method ->
-                                method.name == "syncCarriage" && method.parameterCount == 0
-                                    && method.returnType == java.lang.Void.TYPE
-                            }
-                            var postRetrySyncInvoked = false
-                            if (postRetrySync != null && carriage != null) {
-                                postRetrySync.invoke(carriage)
-                                postRetrySyncInvoked = true
-                            }
-                            System.setProperty("vs2.productionNativePlacementPostRetrySyncInvoked", java.lang.Boolean.toString(postRetrySyncInvoked))
-                            logger.info("GATE_D_NATIVE_PLACEMENT_POST_RETRY_SYNC carriage_id={} method_found={} invoked={} after_verified_mutation=true fixture_only=true",
-                                carriageId, postRetrySync != null, postRetrySyncInvoked)
-                        }
-                        logger.info("GATE_D_NATIVE_PLACEMENT_RETRY_MUTATION carriage_id={} hit_local={} empty_local={} invoked={} before_size={} after_size={} state_match={} source_identity_stable={} success={} fixture_only=true",'''
+# Phase 117 runs after Phase 114 and patches the first verified placement-success block.
+# In the final generated Gate D source that first block is the retry mutation itself.
+# Production-world #111 confirmed the ordering: setBlock succeeded, then
+# GATE_D_NATIVE_PLACEMENT_CREATE_SYNC logged, then the retry-mutation summary logged.
+# The previous Phase 120 incorrectly assumed that log ordering meant sync happened before
+# the mutation and searched for an unsynchronized copy of the success block, aborting the
+# prepare step. Validate the already-installed Create-owned sync instead of duplicating it.
+retry_marker = 'GATE_D_NATIVE_PLACEMENT_RETRY_MUTATION'
+sync_marker = 'GATE_D_NATIVE_PLACEMENT_CREATE_SYNC'
+mutation_call = 'setBlock.invoke(carriage, emptyPos.immutable(), candidate)'
+sync_call = 'syncCarriage.invoke(carriage)'
 
-if "GATE_D_NATIVE_PLACEMENT_POST_RETRY_SYNC" not in server:
-    if old not in server:
-        raise SystemExit("Phase 120 could not find the unsynchronized retry-mutation success block")
-    server = server.replace(old, new, 1)
+retry_index = server.find(retry_marker)
+sync_index = server.rfind(sync_marker, 0, retry_index) if retry_index >= 0 else -1
+mutation_index = server.rfind(mutation_call, 0, retry_index) if retry_index >= 0 else -1
+sync_call_index = server.rfind(sync_call, 0, retry_index) if retry_index >= 0 else -1
 
-required = [
-    'GATE_D_NATIVE_PLACEMENT_POST_RETRY_SYNC',
-    'vs2.productionNativePlacementPostRetrySyncInvoked',
-    'postRetrySync.invoke(carriage)',
-    'after_verified_mutation=true',
-    'GATE_D_NATIVE_PLACEMENT_RETRY_MUTATION',
-]
-missing = [token for token in required if token not in server]
-if missing:
-    raise SystemExit("Phase 120 lost post-retry synchronization anchors: " + ", ".join(missing))
+if retry_index < 0:
+    raise SystemExit("Phase 120 lost retry-mutation marker")
+if min(sync_index, mutation_index, sync_call_index) < 0:
+    raise SystemExit("Phase 120 could not verify the existing retry placement synchronization")
+if not (mutation_index < sync_call_index < sync_index < retry_index):
+    raise SystemExit("Phase 120 found unexpected retry placement synchronization ordering")
+if retry_index - mutation_index > 5000:
+    raise SystemExit("Phase 120 retry placement synchronization is not structurally local to the mutation")
 
-server_probe.write_text(server, encoding="utf-8")
-print("Phase 120: synchronizes the exact fixture carriage only after the verified retry placement mutation; harness-only")
+print("Phase 120: verified Phase 117 already synchronizes the exact fixture carriage after retry setBlock; no duplicate sync or gameplay mutation")

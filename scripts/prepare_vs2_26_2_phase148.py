@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -70,3 +71,7 @@ for forbidden in ["player.setPos(", "player.setDeltaMovement(", ".teleport", "se
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 148: inventories the exact runtime native-dispatch and network send surface read-only after genuine held-block Create interaction")
+
+# Run the evidence-driven support-reacquire de-dup guard after all cumulative carry
+# rewrites are installed so it patches the one final Phase85 replay predicate.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase150.py")), run_name="__main__")

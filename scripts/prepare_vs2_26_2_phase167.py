@@ -10,12 +10,18 @@ source = client_probe.read_text(encoding="utf-8")
 # carriage itself moved only 3.389730 blocks. Existing Create collider telemetry simultaneously
 # reported a 5.500132-block requested/allowed horizontal collision vector. Before changing any
 # gameplay behavior, correlate the active carriage's own getContactPointMotion() with that Create
-# collider request and the player's vanilla delta movement on every bounded walk sample. This is
+# collider request and the player's vanilla delta movement on every bounded walk sample. Phase165
+# has already replaced the sample branch's original keyUp=true statement with keyUp=false plus
+# keyDown=false by the time this phase runs, so anchor that final cumulative input seam. This is
 # read-only diagnostics only; no player, collision, train, world, or VS2/Create physics mutation.
 anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
+                                client.options.keyUp.setDown(false);
+                                client.options.keyDown.setDown(false);
                                 LOGGER.info(
                                     "GATE_E_PHASE163_WALK_WORLD_FRAME'''
 insert = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
+                                client.options.keyUp.setDown(false);
+                                client.options.keyDown.setDown(false);
                                 String phase167ContactMotionState = "unresolved";
                                 try {
                                     java.lang.reflect.Method phase167ContactMotionMethod = null;
@@ -53,7 +59,7 @@ insert = '''                            if (player.tickCount <= phase154WalkStar
 
 if "GATE_E_PHASE167_WALK_NATIVE_MOTION" not in source:
     if source.count(anchor) != 1:
-        raise SystemExit("Phase 167 expected exactly one Phase163 walk world-frame sample anchor")
+        raise SystemExit("Phase 167 expected exactly one final Phase165/163 walk sample anchor")
     source = source.replace(anchor, insert, 1)
 
 required = [
@@ -63,6 +69,8 @@ required = [
     "player.position()",
     "player.getDeltaMovement()",
     "carryReplayPlayerTick",
+    "client.options.keyUp.setDown(false)",
+    "client.options.keyDown.setDown(false)",
     "GATE_E_PHASE163_WALK_WORLD_FRAME",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
 ]

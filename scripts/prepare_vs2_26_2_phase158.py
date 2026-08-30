@@ -46,9 +46,32 @@ if "GATE_E_PHASE158_LOCOMOTION_HEALTH_REJECT" not in source:
         raise SystemExit("Phase 158 expected exactly one Phase157 locomotion-health block")
     source = source.replace(health_old, health_new, 1)
 
+# Production-world #290 reached the real train and proved native carry/interaction/authoritative
+# placement replication, but the walk fixture started at tick 40 after the strict Phase81 support
+# detector had already gone false (vertical_gap=-0.0705). Broadphase+onGround alone therefore
+# admitted an already-sinking start frame and made the later 1.445-block local jump ambiguous.
+# Require the existing strict simplified-collider support proof in addition to fresh native carry
+# before pressing the forward key. Harness/gate only; no player, carry, collision, train, or
+# physics behavior is changed.
 walk_start_old = '''                        if (!phase154WalkStarted && phase154SupportNow) {
                             phase154WalkStarted = true;'''
 walk_start_new = '''                        boolean phase158FreshNativeCarry = Boolean.parseBoolean(System.getProperty(
+                            "vs2.phase134NativeCarryHealthy." + phase154Carriage.getId(), "false"))
+                            && (Integer.toString(player.tickCount).equals(System.getProperty(
+                                    "vs2.phase134NativeCarryHealthyTick." + phase154Carriage.getId()))
+                                || Integer.toString(player.tickCount - 1).equals(System.getProperty(
+                                    "vs2.phase134NativeCarryHealthyTick." + phase154Carriage.getId())));
+                        if (!phase154WalkStarted && phase154SupportNow && phase81PhysicalSupport && phase158FreshNativeCarry) {
+                            LOGGER.info(
+                                "GATE_E_PHASE158_WALK_NATIVE_READY player_tick={} carriage_id={} support_now=true strict_physical_support=true native_carry_healthy=true fresh_sample=true fixture_only=true",
+                                player.tickCount, phase154Carriage.getId());
+                            phase154WalkStarted = true;'''
+if "GATE_E_PHASE158_WALK_NATIVE_READY" not in source:
+    if source.count(walk_start_old) != 1:
+        raise SystemExit("Phase 158 expected exactly one Phase154 walk-start guard")
+    source = source.replace(walk_start_old, walk_start_new, 1)
+elif "strict_physical_support=true" not in source:
+    old_existing = '''                        boolean phase158FreshNativeCarry = Boolean.parseBoolean(System.getProperty(
                             "vs2.phase134NativeCarryHealthy." + phase154Carriage.getId(), "false"))
                             && (Integer.toString(player.tickCount).equals(System.getProperty(
                                     "vs2.phase134NativeCarryHealthyTick." + phase154Carriage.getId()))
@@ -59,10 +82,9 @@ walk_start_new = '''                        boolean phase158FreshNativeCarry = B
                                 "GATE_E_PHASE158_WALK_NATIVE_READY player_tick={} carriage_id={} support_now=true native_carry_healthy=true fresh_sample=true fixture_only=true",
                                 player.tickCount, phase154Carriage.getId());
                             phase154WalkStarted = true;'''
-if "GATE_E_PHASE158_WALK_NATIVE_READY" not in source:
-    if source.count(walk_start_old) != 1:
-        raise SystemExit("Phase 158 expected exactly one Phase154 walk-start guard")
-    source = source.replace(walk_start_old, walk_start_new, 1)
+    if source.count(old_existing) != 1:
+        raise SystemExit("Phase 158 could not tighten existing walk-start support guard")
+    source = source.replace(old_existing, walk_start_new, 1)
 
 # Production-world #282 proves the bounded recovery itself is now reachable, but also exposes
 # a distinct duplicate-replay edge at a legitimate sibling-carriage handoff. Tick 34 rebases
@@ -93,7 +115,8 @@ required = [
     "phase158FreshNativeCarry",
     "vs2.phase134NativeCarryHealthy.",
     "vs2.phase134NativeCarryHealthyTick.",
-    "phase154SupportNow && phase158FreshNativeCarry",
+    "phase154SupportNow && phase81PhysicalSupport && phase158FreshNativeCarry",
+    "strict_physical_support=true",
     "phase158LocomotionHealthHold",
     "phase134DriftSq <= 0.5625",
     "GATE_E_PHASE158_LOCOMOTION_HEALTH_REJECT",
@@ -116,4 +139,4 @@ for forbidden in [
         raise SystemExit("Phase 158 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 158: starts walk only after fresh native carry, bounds locomotion recovery, and suppresses duplicate replay for one full tick after sibling handoff")
+print("Phase 158: starts walk only after fresh native carry plus strict physical support, bounds locomotion recovery, and suppresses duplicate replay for one full tick after sibling handoff")

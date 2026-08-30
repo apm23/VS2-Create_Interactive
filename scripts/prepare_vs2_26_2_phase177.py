@@ -61,36 +61,34 @@ if "GATE_E_PHASE177_FAILED_WALK_NATIVE_FRAME" not in source:
     source = source.replace(anchor, insert, 1)
     inserted = insert
 
-# Production-world #350 isolated a deterministic accounting oscillator rather than a new
-# collision/physics failure. On carriage 8 tick 26 the existing compatibility replay moved the
-# player by 2.78087 blocks. Phase137 then sampled that replay as player_delta on tick 27, saw it
-# nearly equal the new 2.78253 carriage frame step, selected the raw observation, and incorrectly
-# published native_carry_healthy=true. That suppresses the current-tick recovery, so the player
-# immediately falls behind by exactly one carriage frame; the cycle then repeats. During the
-# bounded disposable walk fixture only, always remove a replay that is known to be inside the
-# current health sample before deciding whether native Create carry is healthy. If genuine native
-# carry also occurred, the discounted observation retains it; if replay was the only carry, health
-# correctly remains false and the already-existing Create-filtered recovery stays active. This is
-# accounting/fixture scoping only: it introduces no new carry vector or movement mutation.
-phase178_old = '''boolean phase137UseReplayDiscount = phase137PreviousReplayInSample
-    && phase137DiscountedDriftSq < phase137RawDriftSq;'''
-phase178_new = '''boolean phase178FixtureWalkReplayAccounting = productionSmokeFixture
-    && phase154WalkStarted && !phase154WalkFinished
-    && phase137PreviousReplayInSample;
-boolean phase137UseReplayDiscount = phase137PreviousReplayInSample
-    && (phase178FixtureWalkReplayAccounting
-        || phase137DiscountedDriftSq < phase137RawDriftSq);
-if (phase178FixtureWalkReplayAccounting) {
-    LOGGER.info(
-        "GATE_E_PHASE178_FIXTURE_WALK_REPLAY_ACCOUNTING player_tick={} carriage_id={} previous_replay_tick={} raw_drift_sq={} discounted_drift_sq={} force_discount=true prevents_replay_as_native_health=true fixture_only=true accounting_only=true",
-        player.tickCount, carriage.getId(), phase137PreviousReplayTick,
-        phase137RawDriftSq, phase137DiscountedDriftSq);
-}'''
+# Production-world #350 isolated an accounting oscillator: a compatibility replay from the
+# previous sample can resemble the next carriage frame closely enough that Phase137's adaptive
+# raw-vs-discounted selector chooses raw and publishes native_carry_healthy=true. Do not rewrite
+# that historical selector here (later cumulative phases may legitimately reshape it). Instead,
+# at the final cumulative Phase166 health-publication predicate, reject only the narrow case where
+# a known previous replay is still inside the bounded disposable walk sample and the selector did
+# not discount it. Genuine native carry remains eligible; this adds no movement or physics path.
+phase178_old = '''boolean phase134NativeCarryHealthy = phase134TickGap >= 1 && phase134TickGap <= 2
+            && player.onGround()
+            && (phase134DriftSq <= 0.01 || phase158LocomotionHealthHold);'''
+phase178_new = '''boolean phase178FixtureReplayMasquerade = productionSmokeFixture
+            && phase154WalkStarted && !phase154WalkFinished
+            && phase137PreviousReplayInSample && !phase137UseReplayDiscount;
+        boolean phase134NativeCarryHealthy = phase134TickGap >= 1 && phase134TickGap <= 2
+            && player.onGround()
+            && !phase178FixtureReplayMasquerade
+            && (phase134DriftSq <= 0.01 || phase158LocomotionHealthHold);
+        if (phase178FixtureReplayMasquerade) {
+            LOGGER.info(
+                "GATE_E_PHASE178_FIXTURE_WALK_REPLAY_ACCOUNTING player_tick={} carriage_id={} previous_replay_tick={} raw_drift_sq={} discounted_drift_sq={} selected_raw=true native_health_rejected=true prevents_replay_as_native_health=true fixture_only=true accounting_only=true",
+                player.tickCount, carriage.getId(), phase137PreviousReplayTick,
+                phase137RawDriftSq, phase137DiscountedDriftSq);
+        }'''
 phase178_inserted = ""
 if "GATE_E_PHASE178_FIXTURE_WALK_REPLAY_ACCOUNTING" not in source:
     count = source.count(phase178_old)
     if count != 1:
-        raise SystemExit(f"Phase 178 expected exactly one Phase137 replay-health selector, found {count}")
+        raise SystemExit(f"Phase 178 expected exactly one cumulative Phase166 native-health predicate, found {count}")
     source = source.replace(phase178_old, phase178_new, 1)
     phase178_inserted = phase178_new
 
@@ -106,9 +104,11 @@ required = [
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
     "phase154WalkStartTick + 20",
     "GATE_E_PHASE178_FIXTURE_WALK_REPLAY_ACCOUNTING",
-    "phase178FixtureWalkReplayAccounting",
+    "phase178FixtureReplayMasquerade",
     "phase137PreviousReplayInSample",
+    "phase137UseReplayDiscount",
     "phase137DiscountedDriftSq",
+    "native_health_rejected=true",
     "prevents_replay_as_native_health=true",
     "accounting_only=true",
 ]
@@ -126,4 +126,4 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 177: correlates failed walk frames with the exact same-tick native-contact carriage; read-only only")
-print("Phase 178: prevents previous compatibility replay from masquerading as fresh native carry during the bounded walk fixture")
+print("Phase 178: rejects replay-only native-health masquerade at cumulative walk health publication")

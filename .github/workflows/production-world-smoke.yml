@@ -257,14 +257,14 @@ jobs:
 
           INTERACTION_TARGET_READY=0
           for i in $(seq 1 60); do
-            if grep -Eq 'GATE_F_CREATE_NATIVE_RAY_SETTLED[^\n]*hit=[^;]+;face=' ../production-world-smoke.log; then
+            if grep -Eq 'GATE_F_CREATE_NATIVE_RAY_SETTLED.*hit=[^;]+;face=' ../production-world-smoke.log; then
               echo 'PRODUCTION_INTERACTION native_create_ray_ready'
               INTERACTION_TARGET_READY=1
               break
             fi
-            if grep -Eq 'GATE_F_CONTRAPTION_EXACT_LOCAL_HIT[^\n]*exact_hit=true' ../production-world-smoke.log \
-              && grep -Eq 'GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED[^\n]*fields_match=true' ../production-world-smoke.log \
-              && grep -Eq 'GATE_F_INTERACTION_DISPATCH_CANDIDATE[^\n]*exact_handle_player_interaction=true' ../production-world-smoke.log; then
+            if grep -Eq 'GATE_F_CONTRAPTION_EXACT_LOCAL_HIT.*exact_hit=true' ../production-world-smoke.log \
+              && grep -Eq 'GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED.*fields_match=true' ../production-world-smoke.log \
+              && grep -Eq 'GATE_F_INTERACTION_DISPATCH_CANDIDATE.*exact_handle_player_interaction=true' ../production-world-smoke.log; then
               echo 'PRODUCTION_INTERACTION validated_contraption_local_fallback'
               INTERACTION_TARGET_READY=1
               break
@@ -281,7 +281,7 @@ jobs:
 
           RIGHT_CLICK_ENTRYPOINT_READY=0
           for i in $(seq 1 60); do
-            if grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT[^\n]*exact=true' ../production-world-smoke.log; then
+            if grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT.*exact=true' ../production-world-smoke.log; then
               RIGHT_CLICK_ENTRYPOINT_READY=1
               break
             fi

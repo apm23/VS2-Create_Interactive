@@ -5,12 +5,10 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #193 is green for real-train movement and emitted the authoritative
-# GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED marker at tick 34, but the Phase135 held-block marker
-# was absent. That proves the prior single source.replace() still instrumented an inactive
-# duplicate confirmation site. Instrument every exact confirmation LOGGER site instead.
-# Each probe remains disposable-fixture-only: equip one STONE, invoke Create's already
-# resolved native right-click entrypoint, restore the original main hand in finally, log.
+# Instrument every authoritative native-right-click confirmation branch. The probe is
+# fixture-only and now also signals the integrated server after the native held-block
+# invocation actually returns, so the server-side fixture inventory is not restored on
+# an unrelated faster server tick clock while the client render thread is still behind.
 confirmation = '"GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED carriage_id={} player_tick={} handled=true target_source=create_native_ray_settled"'
 positions = []
 search_from = 0
@@ -33,7 +31,7 @@ for index, marker_pos in enumerate(positions):
     if stmt_end < 0 or stmt_end - marker_pos > 600:
         raise SystemExit(f"Phase 134 could not find LOGGER.info end for confirmation site {index}")
     stmt_end += 2
-    nearby = source[stmt_end:stmt_end + 2400]
+    nearby = source[stmt_end:stmt_end + 2800]
     if f"GATE_F_PHASE136_HELD_BLOCK_NATIVE_MULTI_ANCHOR site={index}" in nearby:
         continue
     line_start = source.rfind("\n", 0, logger_pos) + 1
@@ -48,14 +46,16 @@ for index, marker_pos in enumerate(positions):
 {indent}        player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, phase136ProbeStack{i});
 {indent}        phase136HeldBlockHandled{i} = settledExactRightClickMethod.invoke(
 {indent}            null, client, net.minecraft.world.InteractionHand.MAIN_HAND);
+{indent}        System.setProperty("vs2.productionHeldBlockNativeDispatchCompleted", "true");
 {indent}    }} catch (ReflectiveOperationException | RuntimeException phase136Exception{i}) {{
 {indent}        phase136HeldBlockError{i} = phase136Exception{i}.getClass().getSimpleName();
 {indent}    }} finally {{
 {indent}        player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, phase136OriginalMainHand{i});
 {indent}    }}
 {indent}    LOGGER.info(
-{indent}        "GATE_F_PHASE136_HELD_BLOCK_NATIVE_MULTI_ANCHOR site={i} carriage_id={{}} player_tick={{}} invoked=true item=stone handled={{}} error={{}} confirmed_branch=true fixture_only=true restored_main_hand={{}}",
-{indent}        carriage.getId(), player.tickCount, phase136HeldBlockHandled{i}, phase136HeldBlockError{i}, player.getMainHandItem());
+{indent}        "GATE_F_PHASE136_HELD_BLOCK_NATIVE_MULTI_ANCHOR site={i} carriage_id={{}} player_tick={{}} invoked=true item=stone handled={{}} error={{}} confirmed_branch=true fixture_only=true restored_main_hand={{}} dispatch_completed_signal={{}}",
+{indent}        carriage.getId(), player.tickCount, phase136HeldBlockHandled{i}, phase136HeldBlockError{i}, player.getMainHandItem(),
+{indent}        Boolean.getBoolean("vs2.productionHeldBlockNativeDispatchCompleted"));
 {indent}}}'''
     insertions.append((stmt_end, probe))
 
@@ -69,6 +69,7 @@ required = [
     "GATE_F_PHASE136_HELD_BLOCK_NATIVE_MULTI_ANCHOR",
     "new net.minecraft.world.item.ItemStack(net.minecraft.world.level.block.Blocks.STONE, 1)",
     "settledExactRightClickMethod.invoke(",
+    "vs2.productionHeldBlockNativeDispatchCompleted",
     "EquipmentSlot.MAINHAND",
     "confirmed_branch=true",
     "fixture_only=true",
@@ -78,9 +79,8 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 134 lost multi-anchor held-block probe requirements: " + ", ".join(missing))
 
-# Keep this interaction probe isolated from movement/world/train/physics changes.
 for marker_pos in [p for p in range(len(source)) if source.startswith("GATE_F_PHASE136_HELD_BLOCK_NATIVE_MULTI_ANCHOR", p)]:
-    probe_slice = source[max(0, marker_pos - 2200):marker_pos + 900]
+    probe_slice = source[max(0, marker_pos - 2400):marker_pos + 1000]
     for forbidden in [
         "player.setPos(", "player.setDeltaMovement(", ".teleport", "setBlock(",
         ".put(", ".remove(", "setSchedule", "setTrain", "setVelocity",
@@ -89,4 +89,4 @@ for marker_pos in [p for p in range(len(source)) if source.startswith("GATE_F_PH
             raise SystemExit("Phase 134 found forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print(f"Phase 134: instrumented {len(insertions)} authoritative native confirmation site(s) with fixture-only held-block dispatch probes")
+print(f"Phase 134: instrumented {len(insertions)} native confirmation site(s) and signals server only after held-block dispatch completes")

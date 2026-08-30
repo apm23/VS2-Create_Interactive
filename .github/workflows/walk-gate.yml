@@ -13,11 +13,28 @@ jobs:
   moving-train-walk-stability:
     runs-on: ubuntu-latest
     steps:
-      - name: Require source production-world success
+      - name: Resolve source production-world run
         shell: bash
-        run: test '${{ github.event.workflow_run.conclusion }}' = 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          set -euo pipefail
+          LATEST_ID="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${SOURCE_SHA}&event=push&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name == "production-world-smoke")] | sort_by(.created_at) | last | .id // empty')"
+          test -n "$LATEST_ID"
+          if [ "$SOURCE_ID" != "$LATEST_ID" ]; then
+            echo "Ignoring stale production-world workflow_run source ${SOURCE_ID}; newer same-SHA source is ${LATEST_ID}."
+            echo 'STALE_SOURCE=true' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          test "$SOURCE_CONCLUSION" = 'success'
+          echo 'STALE_SOURCE=false' >> "$GITHUB_ENV"
 
       - name: Download production-world diagnostics
+        if: env.STALE_SOURCE != 'true'
         uses: actions/download-artifact@v5
         with:
           name: vs2-production-real-train-world-smoke-log
@@ -26,6 +43,7 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
 
       - name: Require bounded same-carriage walking stability
+        if: env.STALE_SOURCE != 'true'
         shell: bash
         run: |
           set -euo pipefail

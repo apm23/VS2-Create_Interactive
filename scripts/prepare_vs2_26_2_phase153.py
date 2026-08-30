@@ -14,7 +14,9 @@ source = client_probe.read_text(encoding="utf-8")
 # path reaches handled=true, but unlike the direct Phase152 path it still left the disposable
 # client fixture STONE in hand. Clear only that client fixture hand after handled dispatch so
 # both native-dispatch paths expose the same postcondition; the authoritative server hand
-# remains independently guarded/restored by Phase136. This is fixture-only handshake logic:
+# remains independently guarded/restored by Phase136. The downstream held-block gate consumes
+# the canonical NATIVE_RIGHT_CLICK_PROBE + NATIVE_RIGHT_CLICK_CONFIRMED pair, so assert both
+# markers remain present in the generated source. This is fixture-only handshake logic:
 # no movement, collision, train, world/contraption, schedule, or VS2 physics mutation.
 field_anchor = '''    private static boolean nativeRightClickProbeDispatched;\n'''
 field_insert = field_anchor + '''    private static java.lang.reflect.Method phase153PendingHeldBlockRightClickMethod;\n    private static int phase153PendingHeldBlockCarriageId = -1;\n    private static int phase153PendingHeldBlockRayTick = -1;\n'''
@@ -100,6 +102,8 @@ required = [
     "phase153PendingHeldBlockRightClickMethod",
     "GATE_F_PHASE153_PENDING_NATIVE_RAY",
     "GATE_F_PHASE153_SERVER_ARM_RETRY_DISPATCH",
+    "GATE_F_NATIVE_RIGHT_CLICK_PROBE",
+    "GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED",
     "readiness_source=server_arm_retry",
     "vs2.productionHeldBlockServerArmed",
     "vs2.productionHeldBlockNativeDispatchCompleted",
@@ -120,4 +124,4 @@ for forbidden in ["player.setPos(", "player.setDeltaMovement(", ".teleport", "se
         raise SystemExit("Phase 153 introduced forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 153: retries the single-tick exact Create ray after authoritative server arm on same-carriage stable support and clears only the disposable client fixture hand after handled dispatch")
+print("Phase 153: retries the single-tick exact Create ray after authoritative server arm on same-carriage stable support, clears only the disposable client fixture hand after handled dispatch, and preserves canonical downstream gate markers")

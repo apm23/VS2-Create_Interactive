@@ -7,9 +7,10 @@ client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client
 source = client_probe.read_text(encoding="utf-8")
 
 adaptive_suppression = '!(productionSmoke && explicitCarryCompat && Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false")))'
+phase137_suppression = 'Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))'
 if "&& &&" in source:
     raise SystemExit("Phase 131 found duplicate conjunction after Phase130")
-if "!(productionSmoke && explicitCarryCompat)" not in source and adaptive_suppression not in source:
+if "!(productionSmoke && explicitCarryCompat)" not in source and adaptive_suppression not in source and phase137_suppression not in source:
     raise SystemExit("Phase 131 lost production carry replay suppression predicate")
 if "carryReplayPlayerTick != player.tickCount" not in source:
     raise SystemExit("Phase 131 lost original replay tick predicate")
@@ -22,7 +23,7 @@ if "carryReplayPlayerTick != player.tickCount" not in source:
 # suppressed while that signal is healthy. No new vector, clamp, teleport, or physics path
 # is introduced: this only re-enables the already validated Create-computed/filtered replay
 # when native Create carry demonstrably failed to advance the supported LocalPlayer.
-if adaptive_suppression not in source:
+if adaptive_suppression not in source and phase137_suppression not in source:
     source = source.replace(
         '!(productionSmoke && explicitCarryCompat)',
         adaptive_suppression,
@@ -128,6 +129,7 @@ if "GATE_E_PHASE134_ACTIVE_SUPPORT_CARRY_BALANCE" not in source:
     )
     source = source[:marker_match.start()] + telemetry + source[marker_match.start():]
 
+active_suppression = adaptive_suppression if adaptive_suppression in source else phase137_suppression
 required = [
     "GATE_E_PHASE131_SUPPORT_STREAK",
     "GATE_E_PHASE133_SUPPORT_LOSS_DIAGNOSTIC",
@@ -139,7 +141,7 @@ required = [
     "vs2.phase134NativeCarryHealthy.",
     "phase134NativeCarryHealthy",
     "native_carry_healthy={}",
-    adaptive_suppression,
+    active_suppression,
     "read_only=true",
 ]
 missing = [token for token in required if token not in source]

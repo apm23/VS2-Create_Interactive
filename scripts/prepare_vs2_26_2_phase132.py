@@ -148,6 +148,24 @@ if "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE" not in source:
     )
     if guard_rewritten == guard_segment:
         raise SystemExit("Phase 132 failed to widen replay guard with bounded grace")
+
+    # Production-world #286 proves the grace predicate itself becomes true at the first
+    # native-support loss (tick 41), but Phase137's stale previous-healthy de-dup predicate
+    # still suppresses Phase85 before it can consume that grace. Let this already-bounded
+    # grace override only that de-dup suppression. All other replay predicates remain intact.
+    native_suppression_pattern = re.compile(
+        r'!\(productionSmoke && explicitCarryCompat && \(\s*'
+        r'Boolean\.parseBoolean\(System\.getProperty\("vs2\.phase134NativeCarryHealthy\." \+ carriage\.getId\(\), "false"\)\)\s*'
+        r'\|\| Integer\.toString\(player\.tickCount - 1\)\.equals\(System\.getProperty\("vs2\.phase134NativeCarryHealthyTick\." \+ carriage\.getId\(\)\)\)\)\)'
+    )
+    suppression_match = native_suppression_pattern.search(guard_rewritten)
+    if suppression_match is None:
+        raise SystemExit("Phase 132 could not find Phase137 native carry de-dup suppression")
+    guard_rewritten = (
+        guard_rewritten[:suppression_match.start()]
+        + "(" + suppression_match.group(0) + " || phase133ReplayGrace)"
+        + guard_rewritten[suppression_match.end():]
+    )
     source = source[:replay_if_pos] + guard_rewritten + source[replay_tick_pos:]
 
     assignment = "carryReplayPlayerTick = player.tickCount;"
@@ -179,6 +197,7 @@ required = [
     "(!phase159PreviousNativeHealthy || broadphaseOverlap)",
     "(phase159PreviousNativeHealthy || phase133LastGraceReplayTick != carryReplayPlayerTick)",
     "(phase81PhysicalSupport || phase133ReplayGrace)",
+    "|| phase133ReplayGrace)",
     "System.setProperty(phase133GraceKey, Integer.toString(player.tickCount))",
     "existing_create_filtered_replay=true",
     "bounded_one_tick=true",
@@ -198,4 +217,4 @@ for marker in ["GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE", "GATE_F_PHASE135_HELD_
             raise SystemExit("Phase 132 found forbidden direct mutation near native held-block probe: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 132: preserves bounded Create-filtered replay grace across either prior replay or one authoritative native-carry loss tick")
+print("Phase 132: lets the bounded native-loss grace bypass only stale native de-dup suppression while preserving Create-filtered replay")

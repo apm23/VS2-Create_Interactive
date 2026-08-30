@@ -256,10 +256,12 @@ jobs:
           fi
 
           INTERACTION_TARGET_READY=0
+          NATIVE_RAY_USED=0
           for i in $(seq 1 60); do
             if grep -Eq 'GATE_F_CREATE_NATIVE_RAY_SETTLED.*hit=[^;]+;face=' ../production-world-smoke.log; then
               echo 'PRODUCTION_INTERACTION native_create_ray_ready'
               INTERACTION_TARGET_READY=1
+              NATIVE_RAY_USED=1
               break
             fi
             if grep -Eq 'GATE_F_CONTRAPTION_EXACT_LOCAL_HIT.*exact_hit=true' ../production-world-smoke.log \
@@ -295,6 +297,26 @@ jobs:
             exit 1
           fi
 
+          if [ "$NATIVE_RAY_USED" -eq 1 ]; then
+            NATIVE_RIGHT_CLICK_CONFIRMED=0
+            for i in $(seq 1 60); do
+              if grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_PROBE.*invoked=true.*handled=true.*hand_empty_after=true' ../production-world-smoke.log \
+                && grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED.*handled=true' ../production-world-smoke.log; then
+                echo 'PRODUCTION_INTERACTION native_right_click_dispatch_confirmed'
+                NATIVE_RIGHT_CLICK_CONFIRMED=1
+                break
+              fi
+              if fatal_state; then exit 1; fi
+              if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            if [ "$NATIVE_RIGHT_CLICK_CONFIRMED" -ne 1 ]; then
+              echo 'Native Create ray was ready but the fixture did not prove an actual handled empty-hand right-click dispatch.'
+              grep -E 'GATE_F_CREATE_NATIVE_RAY_SETTLED|GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT|GATE_F_NATIVE_RIGHT_CLICK_PROBE|GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED' ../production-world-smoke.log | tail -160 || true
+              exit 1
+            fi
+          fi
+
           PLACEMENT_SYNC_READY=0
           for i in $(seq 1 60); do
             if grep -Eq 'VS2_CREATE_CELL_REPLICATION_CONFIRMED.*state=Block\{minecraft:stone\}.*state_match=true.*packet_authoritative=true' ../production-world-smoke.log \
@@ -315,7 +337,7 @@ jobs:
 
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Production sustained carriage-local carry continuity, interaction targeting/entrypoint, and authoritative moving-carriage placement replication passed.'
+          echo 'Production sustained carriage-local carry continuity, interaction targeting/entrypoint, confirmed native dispatch when available, and authoritative moving-carriage placement replication passed.'
 
       - name: Upload production real-world diagnostics
         if: always()

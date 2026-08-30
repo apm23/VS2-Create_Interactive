@@ -10,10 +10,13 @@ source = client_probe.read_text(encoding="utf-8")
 # assembled train, inspect the exact Create-native settled hit cell and its six adjacent
 # cells in the live contraption block map. Re-run the same read-only native ray here so
 # Phase 102 does not depend on the narrower Phase 95 synthetic-hit local variable scope.
-anchor = '''                                                        LOGGER.info(
+legacy_anchor = '''                                                        LOGGER.info(
                                                             "GATE_F_CONTRAPTION_MUTATION_SURFACE carriage_id={} player_tick={} contraption_class={} methods={} method_count={} fields={} field_count={} read_only=true",
                                                             carriage.getId(), player.tickCount, contraptionObject.getClass().getName(),
                                                             mutationMethods, mutationMethods.size(), mutationFields, mutationFields.size());'''
+current_anchor = '''                                                        LOGGER.info("GATE_F_CONTRAPTION_MUTATION_SURFACE carriage_id={} player_tick={} contraption_class={} methods={} method_count={} fields={} field_count={} read_only=true",
+                                                            carriage.getId(), player.tickCount, contraptionObject.getClass().getName(), mutationMethods, mutationMethods.size(), mutationFields, mutationFields.size());'''
+anchor = legacy_anchor if legacy_anchor in source else current_anchor
 replacement = anchor + '''
                                                         try {
                                                             java.lang.reflect.Method getBlocksMethod = contraptionObject.getClass().getMethod("getBlocks");

@@ -239,33 +239,49 @@ jobs:
             exit 1
           fi
 
-          NATIVE_INTERACTION_TARGET=0
+          INTERACTION_TARGET_READY=0
           for i in $(seq 1 60); do
             if grep -Eq 'GATE_F_CREATE_NATIVE_RAY_SETTLED[^\n]*hit=[^;]+;face=' ../production-world-smoke.log; then
-              NATIVE_INTERACTION_TARGET=1
+              echo 'PRODUCTION_INTERACTION native_create_ray_ready'
+              INTERACTION_TARGET_READY=1
+              break
+            fi
+            if grep -Eq 'GATE_F_CONTRAPTION_EXACT_LOCAL_HIT[^\n]*exact_hit=true' ../production-world-smoke.log \
+              && grep -Eq 'GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED[^\n]*fields_match=true' ../production-world-smoke.log \
+              && grep -Eq 'GATE_F_INTERACTION_DISPATCH_CANDIDATE[^\n]*exact_handle_player_interaction=true' ../production-world-smoke.log; then
+              echo 'PRODUCTION_INTERACTION validated_contraption_local_fallback'
+              INTERACTION_TARGET_READY=1
               break
             fi
             if fatal_state; then exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
             sleep 1
           done
-          test "$NATIVE_INTERACTION_TARGET" -eq 1
+          if [ "$INTERACTION_TARGET_READY" -ne 1 ]; then
+            echo 'Production world did not prove an exact moving-contraption interaction target.'
+            grep -E 'GATE_F_CREATE_NATIVE_RAY_SETTLED|GATE_F_CONTRAPTION_EXACT_LOCAL_HIT|GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED|GATE_F_INTERACTION_DISPATCH_CANDIDATE' ../production-world-smoke.log | tail -160 || true
+            exit 1
+          fi
 
-          NATIVE_RIGHT_CLICK_READY=0
+          RIGHT_CLICK_ENTRYPOINT_READY=0
           for i in $(seq 1 60); do
-            if grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT[^\n]*exact=true[^\n]*target_match_ready=true' ../production-world-smoke.log; then
-              NATIVE_RIGHT_CLICK_READY=1
+            if grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT[^\n]*exact=true' ../production-world-smoke.log; then
+              RIGHT_CLICK_ENTRYPOINT_READY=1
               break
             fi
             if fatal_state; then exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
             sleep 1
           done
-          test "$NATIVE_RIGHT_CLICK_READY" -eq 1
+          if [ "$RIGHT_CLICK_ENTRYPOINT_READY" -ne 1 ]; then
+            echo 'Production world did not expose the exact Create moving-contraption right-click entrypoint.'
+            grep -E 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT|GATE_F_INTERACTION_DISPATCH_CANDIDATE' ../production-world-smoke.log | tail -120 || true
+            exit 1
+          fi
 
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Production sustained carriage-local carry continuity, Create-native moving-train ray targeting, and native right-click readiness passed.'
+          echo 'Production sustained carriage-local carry continuity and validated moving-contraption interaction targeting/entrypoint passed.'
 
       - name: Upload production real-world diagnostics
         if: always()

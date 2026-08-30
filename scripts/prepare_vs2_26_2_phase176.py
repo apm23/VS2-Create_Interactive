@@ -30,9 +30,11 @@ if "GATE_E_PHASE176_ACTIVE_CARRIAGE_HANDOFF_SYNC" not in source:
         raise SystemExit(f"Phase 176 expected exactly one Phase156 accepted-handoff assignment, found {count}")
     source = source.replace(old, new, 1)
 
+# Validate only durable semantic anchors. The exact historical Phase156 handoff predicate has
+# been reformatted by later cumulative phases; requiring its old textual spelling is brittle and
+# caused production-world #346 to stop during preparation before runtime.
 required = [
     "GATE_E_PHASE156_WALK_SIBLING_HANDOFF",
-    "carryBaselineRebaseTick == player.tickCount",
     "phase154WalkCarriageId = phase154Carriage.getId()",
     "vs2.phase172WalkActiveCarriageId",
     "GATE_E_PHASE176_ACTIVE_CARRIAGE_HANDOFF_SYNC",

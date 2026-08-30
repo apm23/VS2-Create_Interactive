@@ -40,6 +40,7 @@ jobs:
           grep -q 'vs2.productionSmokeFixture' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'GATE_E_CARRIAGE_LOCAL_CONTINUITY' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
 
       - name: Reconstruct verified r0v3 train save
         shell: bash
@@ -159,45 +160,42 @@ jobs:
           CARRY=0
           for i in $(seq 1 40); do
             if python3 - ../production-world-smoke.log <<'PY'
-          import re, sys
+          import math, re, sys
           text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
-          replay = re.compile(
-              r'GATE_E_PHASE85_CARRY_REPLAY[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
-              r'[^\n]*allowed=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
-              r'[^\n]*before=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
-              r'[^\n]*after=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)')
-          for match in replay.finditer(text):
-              v = list(map(float, match.groups()))
-              req_x, _req_y, req_z, allow_x, _allow_y, allow_z, before_x, before_y, before_z, after_x, after_y, after_z = v
-              if ((abs(req_x) > 1e-6 or abs(req_z) > 1e-6)
-                      and (abs(allow_x) > 1e-6 or abs(allow_z) > 1e-6)
-                      and abs((after_x - before_x) - allow_x) <= 1e-6
-                      and abs((after_z - before_z) - allow_z) <= 1e-6
-                      and abs(after_y - before_y) <= 1e-9):
-                  print('PRODUCTION_CARRY phase85_replay')
-                  raise SystemExit(0)
+          pattern = re.compile(
+              r'GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
+              r'[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
+              r'[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)')
+          samples = []
+          for match in pattern.finditer(text):
+              tick, carriage = map(int, match.groups()[:2])
+              x, y, z = map(float, match.groups()[2:5])
+              broadphase, on_ground = match.groups()[5:]
+              samples.append((tick, carriage, x, y, z, broadphase == 'true', on_ground == 'true'))
 
-          relative = re.compile(
-              r'GATE_E_CLIENT_CARRY_DELTA[^\n]*player_delta=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
-              r'[^\n]*carriage_delta=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
-              r'[^\n]*relative_drift=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)'
-              r'[^\n]*drift_sq=([-+0-9.eE]+)[^\n]*contact_now=(true|false)[^\n]*on_ground_now=(true|false)')
-          for match in relative.finditer(text):
-              values = list(map(float, match.groups()[:10]))
-              player_x, player_y, player_z, carriage_x, carriage_y, carriage_z, drift_x, drift_y, drift_z, drift_sq = values
-              contact_now, on_ground_now = match.groups()[10:]
-              carriage_horizontal = (carriage_x * carriage_x + carriage_z * carriage_z) ** 0.5
-              player_horizontal = (player_x * player_x + player_z * player_z) ** 0.5
-              drift_horizontal = (drift_x * drift_x + drift_z * drift_z) ** 0.5
-              if (carriage_horizontal >= 0.25
-                      and player_horizontal >= 0.25
-                      and drift_horizontal <= 0.05
-                      and abs(drift_y) <= 0.05
-                      and drift_sq <= 0.01
-                      and contact_now == 'true'
-                      and on_ground_now == 'true'):
-                  print(f'PRODUCTION_CARRY relative_frame carriage_horizontal={carriage_horizontal:.9f} player_horizontal={player_horizontal:.9f} drift_horizontal={drift_horizontal:.9f}')
-                  raise SystemExit(0)
+          streak = []
+          best = []
+          for sample in samples:
+              if not sample[5] or not sample[6]:
+                  streak = []
+                  continue
+              if not streak:
+                  streak = [sample]
+              else:
+                  prev = streak[-1]
+                  local_step = math.dist(sample[2:5], prev[2:5])
+                  if sample[0] == prev[0] + 1 and sample[1] == prev[1] and local_step <= 0.05:
+                      streak.append(sample)
+                  else:
+                      streak = [sample]
+              if len(streak) > len(best):
+                  best = list(streak)
+
+          if len(best) >= 5:
+              start, end = best[0], best[-1]
+              span = math.dist(start[2:5], end[2:5])
+              print(f'PRODUCTION_CARRY carriage_local_stable carriage_id={start[1]} ticks={start[0]}-{end[0]} samples={len(best)} span={span:.9f}')
+              raise SystemExit(0)
           raise SystemExit(1)
           PY
             then CARRY=1; break; fi
@@ -206,8 +204,8 @@ jobs:
             sleep 1
           done
           if [ "$CARRY" -ne 1 ]; then
-            echo 'Production world did not prove train-frame carry continuity.'
-            grep -E 'GATE_D_TRAIN_MOVED|GATE_E_CLIENT_CARRY_DELTA|GATE_E_PHASE85_CARRY_REPLAY' ../production-world-smoke.log | tail -320 || true
+            echo 'Production world did not prove sustained carriage-local carry continuity.'
+            grep -E 'GATE_D_TRAIN_MOVED|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA|GATE_E_PHASE85_CARRY_REPLAY' ../production-world-smoke.log | tail -320 || true
             exit 1
           fi
 
@@ -237,7 +235,7 @@ jobs:
 
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Production train-frame carry continuity, Create-native moving-train ray targeting, and native right-click readiness passed.'
+          echo 'Production sustained carriage-local carry continuity, Create-native moving-train ray targeting, and native right-click readiness passed.'
 
       - name: Upload production real-world diagnostics
         if: always()

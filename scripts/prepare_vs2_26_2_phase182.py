@@ -37,14 +37,14 @@ if assignment_pos < 0:
 accumulation = '''                            if (phase154SupportNow
                                     && !phase156SiblingHandoff
                                     && !phase160PreviousReplayAccountingSeam
-                                    && phase160GuardStep <= 0.75) {
+                                    && (phase160GuardStep <= 0.75 || phase166FixturePulseStep)) {
                                 phase182WalkAccumulatedLocalDistance += phase160GuardStep;
                             }
                             LOGGER.info(
-                                "GATE_E_PHASE182_WALK_DISTANCE player_tick={} carriage_id={} guard_step={} accumulated_local_distance={} sibling_handoff={} replay_accounting_seam={} support_healthy={} fixture_only=true read_only_accounting=true",
+                                "GATE_E_PHASE182_WALK_DISTANCE player_tick={} carriage_id={} guard_step={} accumulated_local_distance={} sibling_handoff={} replay_accounting_seam={} fixture_pulse_step={} support_healthy={} fixture_only=true read_only_accounting=true",
                                 player.tickCount, phase154Carriage.getId(), phase160GuardStep,
                                 phase182WalkAccumulatedLocalDistance, phase156SiblingHandoff,
-                                phase160PreviousReplayAccountingSeam, phase154WalkSupportHealthy);
+                                phase160PreviousReplayAccountingSeam, phase166FixturePulseStep, phase154WalkSupportHealthy);
 '''
 if "GATE_E_PHASE182_WALK_DISTANCE" not in source:
     source = source[:assignment_pos] + accumulation + source[assignment_pos:]
@@ -57,23 +57,31 @@ if old_final in source:
 elif new_final not in source:
     raise SystemExit("Phase 182 could not find Phase154 final cross-frame distance calculation")
 
+old_proof = '''                                    && phase165WalkPathDistance >= 0.20 && phase165WalkPathDistance <= 4.00
+                                    && phase154LocalDistance <= 3.00;'''
+new_proof = '''                                    && phase154LocalDistance >= 0.20 && phase154LocalDistance <= 4.00;'''
+if old_proof in source:
+    source = source.replace(old_proof, new_proof, 1)
+elif new_proof not in source:
+    raise SystemExit("Phase 182 could not find cumulative Phase165 walk completion proof")
+
 required = [
     "phase182WalkAccumulatedLocalDistance",
     "phase182WalkAccumulatedLocalDistance = 0.0",
     "GATE_E_PHASE182_WALK_DISTANCE",
     "!phase156SiblingHandoff",
     "!phase160PreviousReplayAccountingSeam",
-    "phase160GuardStep <= 0.75",
+    "phase160GuardStep <= 0.75 || phase166FixturePulseStep",
     "double phase154LocalDistance = phase182WalkAccumulatedLocalDistance;",
     "phase154LocalDistance >= 0.20",
-    "phase154LocalDistance <= 6.00",
+    "phase154LocalDistance <= 4.00",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
 ]
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 182 lost sibling-frame walk-accounting anchors: " + ", ".join(missing))
 
-patch_text = field_insert + start_insert + accumulation + new_final
+patch_text = field_insert + start_insert + accumulation + new_final + new_proof
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",

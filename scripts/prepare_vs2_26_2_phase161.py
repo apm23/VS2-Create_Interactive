@@ -9,8 +9,8 @@ source = client_probe.read_text(encoding="utf-8")
 # lose ~1.4 blocks of native carriage carry while the player remains grounded, inside the
 # simplified collider, broadphase-overlapping, and actively walking. Phase158 deliberately
 # marks that large locomotion drift unhealthy so the existing Phase85 Create-filtered replay
-# can recover it. Phase132's previous-native-healthy de-dup still suppresses that replay on
-# the exact first loss tick. Bypass only that de-dup condition for this tightly bounded case.
+# can recover it. The native-health de-dup still suppresses that replay on the exact first
+# loss tick. Bypass only that de-dup condition for this tightly bounded case.
 # This does not create a carry vector: Phase85 remains the sole producer and keeps Create's
 # collision filtering. No teleport, world/train mutation, or VS2 physics mutation is added.
 if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
@@ -43,20 +43,38 @@ if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
     )
     source = source[:replay_if_pos] + selector + source[replay_if_pos:]
 
-    # Phase150 and later replay-guard patches may add predicates around the native de-dup
-    # expression. Do not require their whole formatting to match byte-for-byte. The stable
-    # semantic seam owned by Phase132 is the final phase133ReplayGrace escape hatch inside
-    # this one, already-identified Phase85 guard. Widen only that tail, and require it once.
+    # The cumulative chain can reach this phase with the Phase137, Phase150, or Phase132
+    # shape of the same native-health de-dup guard, depending on which recursive preparation
+    # path invoked it. Support those known semantic forms explicitly instead of depending on
+    # one later phase's formatting. Only the native de-dup term is widened; all surrounding
+    # Phase85 support/collision/rebase/tick predicates remain untouched.
     replay_tick_pos = source.find(replay_tick_token, replay_if_pos + len(selector))
     replay_if_pos = source.rfind("if (", 0, replay_tick_pos)
     guard_segment = source[replay_if_pos:replay_tick_pos]
-    grace_tail = "|| phase133ReplayGrace)"
-    widened_tail = "|| phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)"
-    if guard_segment.count(grace_tail) != 1:
-        raise SystemExit(
-            "Phase 161 expected exactly one Phase133 replay-grace tail in the final Phase85 guard"
-        )
-    guard_segment = guard_segment.replace(grace_tail, widened_tail, 1)
+
+    phase137 = '''!(productionSmoke && explicitCarryCompat && (
+                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
+                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))))'''
+    phase150 = '''!(productionSmoke && explicitCarryCompat && (
+                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
+                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
+                                || phase150SupportReacquired))'''
+    phase132 = '''(!(productionSmoke && explicitCarryCompat && (
+                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
+                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
+                                || phase150SupportReacquired)) || phase133ReplayGrace)'''
+
+    matched = None
+    for candidate in (phase132, phase150, phase137):
+        if candidate in guard_segment:
+            if matched is not None:
+                raise SystemExit("Phase 161 found multiple native de-dup guard variants")
+            matched = candidate
+    if matched is None:
+        raise SystemExit("Phase 161 could not find a known native carry de-dup guard variant")
+
+    widened = f'({matched} || phase161SupportedLocomotionNativeLoss)'
+    guard_segment = guard_segment.replace(matched, widened, 1)
     source = source[:replay_if_pos] + guard_segment + source[replay_tick_pos:]
 
 required = [
@@ -70,7 +88,7 @@ required = [
     "!Boolean.parseBoolean(System.getProperty(",
     "vs2.phase134NativeCarryHealthy.",
     "vs2.phase134NativeCarryHealthyTick.",
-    "|| phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)",
+    "|| phase161SupportedLocomotionNativeLoss)",
     "existing_create_filtered_replay=true",
     "bounded_same_tick=true",
     "GATE_E_PHASE85_CARRY_REPLAY",
@@ -83,7 +101,7 @@ for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
 ]:
-    if forbidden in selector or forbidden in widened_tail:
+    if forbidden in selector or forbidden in widened:
         raise SystemExit("Phase 161 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")

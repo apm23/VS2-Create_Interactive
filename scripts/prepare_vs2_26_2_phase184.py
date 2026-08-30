@@ -77,6 +77,24 @@ if marker not in source:
         raise SystemExit("Phase 184 could not find Phase81 support in final replay guard")
     source = source[:if_pos] + final_guard + source[if_end + 3:]
 
+# Production-world #373 isolated the remaining walk failure to Create's interpolation frame rather
+# than real carriage-local drift. At tick 39 on carriage 4, Phase183 measured local_p0=(6.402...,1.5)
+# but local_p1=(-5.402...,-0.5), exactly matching the previous stable local frame; p0_to_p1 equaled
+# the entire 11.973-block rejected walk step. The player remained grounded and broadphase-supported.
+# Use the end-of-tick Create transform (partial tick 1.0) for the bounded walk verifier so it compares
+# player samples in the same completed carriage frame. This changes fixture accounting only: it does
+# not alter player position, velocity, collision, Create carry, train state, world blocks, or VS2 physics.
+walk_local_old = '''                        net.minecraft.world.phys.Vec3 phase154Local = (net.minecraft.world.phys.Vec3) phase154ToLocal.invoke(
+                            phase154Carriage, player.position(), 0.0f);'''
+walk_local_new = '''                        net.minecraft.world.phys.Vec3 phase154Local = (net.minecraft.world.phys.Vec3) phase154ToLocal.invoke(
+                            phase154Carriage, player.position(), 1.0f);'''
+if walk_local_old in source:
+    if source.count(walk_local_old) != 1:
+        raise SystemExit("Phase 184 found ambiguous Phase154 walk-local transform site")
+    source = source.replace(walk_local_old, walk_local_new, 1)
+elif walk_local_new not in source:
+    raise SystemExit("Phase 184 could not align Phase154 walk accounting to end-tick carriage frame")
+
 required = [
     marker,
     "phase184BoundedSupportContinuity",
@@ -90,10 +108,12 @@ required = [
     "carryReplayPlayerTick != player.tickCount",
     "GATE_E_PHASE85_CARRY_REPLAY",
     "fixture_only=true bounded_continuity=true",
+    "phase154Carriage, player.position(), 1.0f",
+    "GATE_E_PHASE183_WALK_TRANSFORM_SEAM",
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 184 lost bounded support-continuity anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 184 lost bounded support/end-tick accounting anchors: " + ", ".join(missing))
 
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
@@ -104,4 +124,4 @@ for forbidden in [
         raise SystemExit("Phase 184 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 184: preserves bounded same-carriage support continuity after strict shape-probe dropout; existing Create-filtered replay only")
+print("Phase 184: preserves bounded support continuity and aligns walk accounting to Create end-tick carriage frame; no gameplay mutation")

@@ -6,12 +6,14 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #137 proved that vanilla onGround is not a valid completion signal
-# for Create contact acquisition: onGround stayed true while Create contact expired and
-# the moving carriage outran the LocalPlayer. Keep the archived-world setup deterministic
-# by reacquiring the real simplified collider for exactly twelve bounded fixture ticks,
-# regardless of vanilla onGround. Carry proof is explicitly delayed until that assisted
-# setup window is over, so no repositioned sample can satisfy the production stability gate.
+# Production-world #133 showed a harness race rather than a production carry failure:
+# the one-shot simplified-collider normalization ran while the train was moving several
+# blocks per client tick, so the carriage outran the fixture before Create could promote
+# LocalPlayer to genuine contact/onGround. Use a fixed, bounded 12-tick setup window to
+# reacquire a real Create simplified collider. Crucially, do not use vanilla onGround as
+# the stop condition: production-world #137 proved onGround can remain true after Create
+# contact is already gone. After the 12 setup ticks, all fixture assistance stops and the
+# sustained carry proof must be entirely unassisted.
 field_old = '''    private static boolean fixtureColliderNormalized;\n'''
 field_new = '''    private static boolean fixtureColliderNormalized;\n    private static int fixtureContactAcquireTicks;\n'''
 if "fixtureContactAcquireTicks" not in source:
@@ -54,30 +56,58 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     )
     source = source[:match.start()] + replacement + source[match.end():]
 
-# Phase 127 continuity telemetry must only observe unassisted production carry. Extend
-# its observation tail slightly, but suppress every sample until all twelve fixture-only
-# acquisition attempts are complete. This prevents the setup repositions from making the
-# sustained carriage-local gate pass artificially.
-continuity_old = 'if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 32) {'
-continuity_new = 'if (productionSmokeFixture && fixtureContactAcquireTicks >= 12 && player.tickCount >= 14 && player.tickCount <= 40) {'
-if continuity_new not in source:
-    if continuity_old not in source:
-        raise SystemExit("Phase 129 could not isolate Phase 127 continuity proof from fixture acquisition")
-    source = source.replace(continuity_old, continuity_new, 1)
+# Keep carriage-local continuity telemetry out of the assisted setup interval. The
+# production gate therefore only sees samples produced after all fixture repositioning
+# has stopped. Extend the observation window so CI still has enough unassisted ticks.
+source = source.replace(
+    '''if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 32) {''',
+    '''if (productionSmokeFixture && fixtureContactAcquireTicks >= 12 && player.tickCount >= 14 && player.tickCount <= 40) {''',
+    1,
+)
+
+# Production-world #138 still lost carry immediately after the bounded fixture window.
+# Do not alter movement yet: trace every predicate that can suppress the already-validated
+# Create-computed/filtered Phase85 replay, including sibling-carriage rebase settling.
+# This is read-only and exists only in the disposable production smoke fixture.
+if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
+    replay_pattern = re.compile(
+        r'(?P<indent>\s*)if \(carryBaselineCaptured\s*\n'
+        r'(?P=indent)    && phase81PhysicalSupport[\s\S]{0,700}?'
+        r'carryReplayPlayerTick != player\.tickCount'
+    )
+    replay_match = replay_pattern.search(source)
+    if replay_match is None:
+        raise SystemExit("Phase 129 could not locate final Phase85 replay guard for telemetry")
+    replay_indent = replay_match.group("indent")
+    replay_probe = (
+        f'{replay_indent}if (productionSmokeFixture && fixtureContactAcquireTicks >= 12 '
+        f'&& player.tickCount >= 14 && player.tickCount <= 40) {{\n'
+        f'{replay_indent}    LOGGER.info(\n'
+        f'{replay_indent}        "GATE_E_PHASE130_REPLAY_GUARD player_tick={{}} carriage_id={{}} baseline_captured={{}} physical_support={{}} collision_eligible={{}} broadphase={{}} baseline_carriage_id={{}} rebase_tick={{}} rebase_age={{}} replay_tick={{}} read_only=true",\n'
+        f'{replay_indent}        player.tickCount, carriage.getId(), carryBaselineCaptured, phase81PhysicalSupport, collisionEligible, broadphaseOverlap,\n'
+        f'{replay_indent}        carryBaselineCarriageId, carryBaselineRebaseTick,\n'
+        f'{replay_indent}        carryBaselineRebaseTick == Integer.MIN_VALUE ? -1 : player.tickCount - carryBaselineRebaseTick,\n'
+        f'{replay_indent}        carryReplayPlayerTick);\n'
+        f'{replay_indent}}}\n\n'
+    )
+    source = source[:replay_match.start()] + replay_probe + source[replay_match.start():]
 
 required = [
-    'productionSmokeFixture && fixtureContactAcquireTicks < 12',
+    'fixtureContactAcquireTicks < 12',
     'fixtureContactAcquireTicks >= 12',
-    'player.tickCount <= 40',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',
     'bounded=true fixture_only=true',
     'GATE_E_FIXTURE_COLLIDER_NEAREST_FALLBACK',
     'GATE_E_FIXTURE_COLLIDER_REPOSITIONED',
-    'GATE_E_CARRIAGE_LOCAL_CONTINUITY',
+    'player.tickCount <= 40',
+    'GATE_E_PHASE130_REPLAY_GUARD',
+    'physical_support={}',
+    'rebase_age={}',
+    'read_only=true',
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 129 lost bounded fixture-contact/carry-proof anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 129 lost bounded fixture/contact telemetry anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 129: bounded 12-tick fixture contact acquisition, then unassisted carriage-local carry proof; production carry unchanged")
+print("Phase 129: bounded fixture acquisition plus read-only post-acquisition Phase85 guard telemetry; production carry unchanged")

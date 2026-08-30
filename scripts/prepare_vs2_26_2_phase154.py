@@ -5,16 +5,12 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #257 proves stationary carriage-local continuity, native Create interaction,
-# and authoritative moving-cell placement. The next safe gap is functional walking: drive the
-# normal client forward key for a short bounded interval after the exact authoritative moving
-# cell is visibly present on the client, then verify the player actually changed position in
-# the same moving carriage-local frame without losing ground/support. Production-world #263
-# then exposed a pre-walk regression: carriage-local Y decays while onGround remains true and
-# the player subsequently exits broadphase before exact placement is reached. Capture a bounded
-# per-tick baseline-carriage trace before any walk input so the next run can distinguish native
-# carry/contact loss from the later walk fixture. This telemetry is read-only and does not alter
-# player position/velocity, collision response, train state, world blocks, or VS2/Create physics.
+# Production-world #265 and walk-gate #8 prove bounded normal-key walking can displace the
+# player while remaining grounded and inside one moving Create carriage frame. Strengthen
+# that functional proof from five to twenty ticks before moving on to less-bounded movement.
+# Capture the existing bounded pre-walk trace as before. This fixture uses only the vanilla
+# forward key and does not alter player position/velocity, collision response, train state,
+# world blocks, or VS2/Create physics.
 field_anchor = '''    private static boolean nativeRightClickProbeDispatched;\n'''
 field_insert = field_anchor + '''    private static boolean phase154WalkStarted;\n    private static boolean phase154WalkFinished;\n    private static int phase154WalkStartTick = -1;\n    private static int phase154WalkCarriageId = -1;\n    private static net.minecraft.world.phys.Vec3 phase154WalkStartLocal;\n    private static net.minecraft.world.phys.Vec3 phase154WalkPreviousLocal;\n    private static boolean phase154WalkSupportHealthy = true;\n    private static net.minecraft.world.phys.Vec3 phase154PreWalkPreviousLocal;\n    private static int phase154PreWalkPreviousTick = -1;\n'''
 if "phase154WalkStarted" not in source:
@@ -29,7 +25,7 @@ elif "phase154PreWalkPreviousLocal" not in source:
 
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
 probe = '''            if (productionSmokeFixture
-                    && player.tickCount >= 14 && player.tickCount <= 50
+                    && player.tickCount >= 14 && player.tickCount <= 70
                     && carryBaselineCarriageId != Integer.MIN_VALUE) {
                 net.minecraft.world.entity.Entity phase154PreWalkCarriage = client.level.getEntity(carryBaselineCarriageId);
                 if (phase154PreWalkCarriage != null
@@ -98,7 +94,7 @@ probe = '''            if (productionSmokeFixture
                             double phase154Step = phase154WalkPreviousLocal == null
                                 ? 0.0 : phase154Local.distanceTo(phase154WalkPreviousLocal);
                             phase154WalkPreviousLocal = phase154Local;
-                            if (player.tickCount <= phase154WalkStartTick + 5) {
+                            if (player.tickCount <= phase154WalkStartTick + 20) {
                                 client.options.keyUp.setDown(true);
                                 LOGGER.info(
                                     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE player_tick={} carriage_id={} local={} local_step={} on_ground={} broadphase={} support_healthy={} fixture_only=true",
@@ -111,13 +107,13 @@ probe = '''            if (productionSmokeFixture
                                 boolean phase154Confirmed = phase154WalkSupportHealthy
                                     && phase154Carriage.getId() == phase154WalkCarriageId
                                     && phase154Broadphase && player.onGround()
-                                    && phase154LocalDistance >= 0.05 && phase154LocalDistance <= 1.50;
+                                    && phase154LocalDistance >= 0.20 && phase154LocalDistance <= 6.00;
                                 phase154WalkFinished = true;
                                 System.setProperty("vs2.productionFixtureWalkConfirmed", Boolean.toString(phase154Confirmed));
                                 LOGGER.info(
-                                    "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick={} carriage_id={} local_start={} local_end={} local_distance={} on_ground={} broadphase={} support_healthy={} confirmed={} fixture_only=true",
+                                    "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick={} carriage_id={} local_start={} local_end={} local_distance={} duration_ticks={} on_ground={} broadphase={} support_healthy={} confirmed={} fixture_only=true",
                                     player.tickCount, phase154Carriage.getId(), phase154WalkStartLocal, phase154Local,
-                                    phase154LocalDistance, player.onGround(), phase154Broadphase,
+                                    phase154LocalDistance, player.tickCount - phase154WalkStartTick, player.onGround(), phase154Broadphase,
                                     phase154WalkSupportHealthy, phase154Confirmed);
                             }
                         }
@@ -144,7 +140,7 @@ required = [
     "phase154WalkStarted",
     "phase154PreWalkPreviousLocal",
     "GATE_E_PHASE154_PRE_WALK_TRACE",
-    "player.tickCount >= 14 && player.tickCount <= 50",
+    "player.tickCount >= 14 && player.tickCount <= 70",
     "player.getDeltaMovement()",
     "exact_cell_present={}",
     "walk_started={}",
@@ -155,13 +151,15 @@ required = [
     "vs2.productionFixtureWalkConfirmed",
     "client.options.keyUp.setDown(true)",
     "client.options.keyUp.setDown(false)",
-    "phase154LocalDistance >= 0.05",
-    "phase154LocalDistance <= 1.50",
+    "phase154WalkStartTick + 20",
+    "phase154LocalDistance >= 0.20",
+    "phase154LocalDistance <= 6.00",
+    "duration_ticks={}",
     "phase154WalkSupportHealthy",
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 154 lost bounded walk/pre-walk telemetry anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 154 lost extended walk/pre-walk telemetry anchors: " + ", ".join(missing))
 
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
@@ -171,4 +169,4 @@ for forbidden in [
         raise SystemExit("Phase 154 introduced forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 154: traces pre-walk baseline-carriage loss read-only, then drives bounded fixture-only forward-key walking only after exact authoritative cell presence")
+print("Phase 154: traces pre-walk baseline-carriage continuity, then drives a twenty-tick fixture-only forward-key walk after exact authoritative cell presence")

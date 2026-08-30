@@ -16,8 +16,10 @@ source = client_probe.read_text(encoding="utf-8")
 # Production-world #259 then proved the workflow can consume this exact-sync marker and
 # terminate the client before the bounded normal-key walking fixture receives another tick.
 # Record exact cell presence immediately, but publish the existing exact-sync completion
-# marker only after eight client ticks. This is observation timing only: the replicated
-# block is not changed and no player/train/physics state is mutated.
+# marker only after eight client ticks. Preserve the historical exact-sync marker shape so
+# Phase130 can still attach its read-only interaction/placement carriage correlation at the
+# same structural seam. This is observation timing only: the replicated block is not changed
+# and no player/train/physics state is mutated.
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
 probe = '''            if (productionSmokeFixture
                     && java.lang.Boolean.getBoolean("vs2.productionNativePlacementMutationSucceeded")
@@ -64,11 +66,14 @@ probe = '''            if (productionSmokeFixture
                                 exactFirstTick = Integer.parseInt(exactFirstTickText);
                             }
                             if (player.tickCount >= exactFirstTick + 8) {
+                                LOGGER.info(
+                                    "GATE_F_PHASE154_EXACT_SYNC_RELEASE carriage_id={} player_tick={} observation_delay_ticks={} exact_cell_present=true read_only=true",
+                                    exactCarriageId, player.tickCount, player.tickCount - exactFirstTick);
+                                System.setProperty("vs2.productionNativePlacementClientObserved", "true");
                                 System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");
                                 LOGGER.info(
-                                    "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true observation_delay_ticks={} read_only=true",
-                                    exactCarriageId, player.tickCount, exactPos, exactEntity != null, exactEntry != null, exactState,
-                                    player.tickCount - exactFirstTick);
+                                    "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",
+                                    exactCarriageId, player.tickCount, exactPos, exactEntity != null, exactEntry != null, exactState);
                             } else if (player.tickCount == exactFirstTick || player.tickCount % 3 == 0) {
                                 LOGGER.info(
                                     "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_PENDING carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true exact_cell_present=true publish_delayed=true first_tick={} read_only=true",
@@ -104,6 +109,7 @@ if "vs2.productionNativePlacementExactCellPresent" not in source:
 required = [
     'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC',
     'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_PENDING',
+    'GATE_F_PHASE154_EXACT_SYNC_RELEASE',
     'exactLevel.getEntity(exactCarriageId)',
     'vs2.productionNativePlacementMutationSucceeded',
     'vs2.productionNativePlacementSyncInvoked',
@@ -111,7 +117,8 @@ required = [
     'vs2.productionNativePlacementExactCellFirstTick',
     'vs2.productionNativePlacementExactClientObserved',
     'player.tickCount >= exactFirstTick + 8',
-    'synced=true observation_delay_ticks={}',
+    'observation_delay_ticks={}',
+    'synced=true read_only=true',
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -125,7 +132,7 @@ for forbidden in [
         raise SystemExit("Phase 118 found forbidden client mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 118: resolves exact client carriage replication immediately and delays only the final sync marker eight ticks so bounded normal-key walking can be observed; read-only replication timing only")
+print("Phase 118: resolves exact client carriage replication immediately, delays final sync publication eight ticks for bounded walking, and preserves the Phase130 correlation seam; read-only replication timing only")
 
 # Run the production-smoke-only collider recovery after all earlier fixture transforms
 # have been installed, so it patches the final generated Gate E source without changing

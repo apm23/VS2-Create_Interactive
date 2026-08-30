@@ -41,18 +41,93 @@ if "GATE_E_PHASE133_SUPPORT_LOSS_DIAGNOSTIC" not in source:
     )
     source = source[:match.start()] + replacement + source[match.end():]
 
+# Production-world #176 reached the real moving train and showed one exact native-carry
+# interval (drift_sq=0), but the long-lived Phase127 baseline stayed on carriage 5 while
+# the physically supporting Create candidate moved through sibling carriage 7. Before
+# changing any carry behavior, measure player-vs-carriage world delta independently for
+# each carriage that currently has strict simplified-collider support. System properties
+# are telemetry storage only; no player, carriage, collision, world, or physics state is
+# mutated. Per-carriage keys also avoid cross-frame contamination during sibling handoff.
+if "GATE_E_PHASE134_ACTIVE_SUPPORT_CARRY_BALANCE" not in source:
+    marker_pattern = re.compile(r'(?m)^(?P<indent>[ \t]*)int productionSmokeSupportLossTicks;')
+    marker_match = marker_pattern.search(source)
+    if marker_match is None:
+        raise SystemExit("Phase 131 could not find support telemetry insertion point")
+    indent = marker_match.group("indent")
+    telemetry = (
+        f'{indent}if (phase81PhysicalSupport && collisionEligible && broadphaseOverlap) {{\n'
+        f'{indent}    String phase134Prefix = "vs2.phase134." + carriage.getId() + ".";\n'
+        f'{indent}    String phase134TickText = System.getProperty(phase134Prefix + "tick");\n'
+        f'{indent}    int phase134PreviousTick = Integer.MIN_VALUE;\n'
+        f'{indent}    double phase134PreviousPlayerX = Double.NaN;\n'
+        f'{indent}    double phase134PreviousPlayerY = Double.NaN;\n'
+        f'{indent}    double phase134PreviousPlayerZ = Double.NaN;\n'
+        f'{indent}    double phase134PreviousCarriageX = Double.NaN;\n'
+        f'{indent}    double phase134PreviousCarriageY = Double.NaN;\n'
+        f'{indent}    double phase134PreviousCarriageZ = Double.NaN;\n'
+        f'{indent}    try {{\n'
+        f'{indent}        if (phase134TickText != null) {{\n'
+        f'{indent}            phase134PreviousTick = Integer.parseInt(phase134TickText);\n'
+        f'{indent}            phase134PreviousPlayerX = Double.parseDouble(System.getProperty(phase134Prefix + "px"));\n'
+        f'{indent}            phase134PreviousPlayerY = Double.parseDouble(System.getProperty(phase134Prefix + "py"));\n'
+        f'{indent}            phase134PreviousPlayerZ = Double.parseDouble(System.getProperty(phase134Prefix + "pz"));\n'
+        f'{indent}            phase134PreviousCarriageX = Double.parseDouble(System.getProperty(phase134Prefix + "cx"));\n'
+        f'{indent}            phase134PreviousCarriageY = Double.parseDouble(System.getProperty(phase134Prefix + "cy"));\n'
+        f'{indent}            phase134PreviousCarriageZ = Double.parseDouble(System.getProperty(phase134Prefix + "cz"));\n'
+        f'{indent}        }}\n'
+        f'{indent}    }} catch (NumberFormatException ignored) {{\n'
+        f'{indent}        phase134PreviousTick = Integer.MIN_VALUE;\n'
+        f'{indent}    }}\n'
+        f'{indent}    if (phase134PreviousTick != Integer.MIN_VALUE && player.tickCount > phase134PreviousTick) {{\n'
+        f'{indent}        int phase134TickGap = player.tickCount - phase134PreviousTick;\n'
+        f'{indent}        double phase134PlayerDx = player.getX() - phase134PreviousPlayerX;\n'
+        f'{indent}        double phase134PlayerDy = player.getY() - phase134PreviousPlayerY;\n'
+        f'{indent}        double phase134PlayerDz = player.getZ() - phase134PreviousPlayerZ;\n'
+        f'{indent}        double phase134CarriageDx = carriage.getX() - phase134PreviousCarriageX;\n'
+        f'{indent}        double phase134CarriageDy = carriage.getY() - phase134PreviousCarriageY;\n'
+        f'{indent}        double phase134CarriageDz = carriage.getZ() - phase134PreviousCarriageZ;\n'
+        f'{indent}        double phase134DriftX = phase134PlayerDx - phase134CarriageDx;\n'
+        f'{indent}        double phase134DriftY = phase134PlayerDy - phase134CarriageDy;\n'
+        f'{indent}        double phase134DriftZ = phase134PlayerDz - phase134CarriageDz;\n'
+        f'{indent}        double phase134DriftSq = phase134DriftX * phase134DriftX\n'
+        f'{indent}            + phase134DriftY * phase134DriftY + phase134DriftZ * phase134DriftZ;\n'
+        f'{indent}        LOGGER.info(\n'
+        f'{indent}            "GATE_E_PHASE134_ACTIVE_SUPPORT_CARRY_BALANCE player_tick={{}} carriage_id={{}} tick_gap={{}} player_delta={{}},{{}},{{}} carriage_delta={{}},{{}},{{}} relative_drift={{}},{{}},{{}} drift_sq={{}} physical_support=true collision_eligible=true broadphase=true on_ground={{}} read_only=true",\n'
+        f'{indent}            player.tickCount, carriage.getId(), phase134TickGap,\n'
+        f'{indent}            phase134PlayerDx, phase134PlayerDy, phase134PlayerDz,\n'
+        f'{indent}            phase134CarriageDx, phase134CarriageDy, phase134CarriageDz,\n'
+        f'{indent}            phase134DriftX, phase134DriftY, phase134DriftZ, phase134DriftSq, player.onGround());\n'
+        f'{indent}    }}\n'
+        f'{indent}    System.setProperty(phase134Prefix + "tick", Integer.toString(player.tickCount));\n'
+        f'{indent}    System.setProperty(phase134Prefix + "px", Double.toString(player.getX()));\n'
+        f'{indent}    System.setProperty(phase134Prefix + "py", Double.toString(player.getY()));\n'
+        f'{indent}    System.setProperty(phase134Prefix + "pz", Double.toString(player.getZ()));\n'
+        f'{indent}    System.setProperty(phase134Prefix + "cx", Double.toString(carriage.getX()));\n'
+        f'{indent}    System.setProperty(phase134Prefix + "cy", Double.toString(carriage.getY()));\n'
+        f'{indent}    System.setProperty(phase134Prefix + "cz", Double.toString(carriage.getZ()));\n'
+        f'{indent}}}\n'
+    )
+    source = source[:marker_match.start()] + telemetry + source[marker_match.start():]
+
 required = [
     "GATE_E_PHASE131_SUPPORT_STREAK",
     "GATE_E_PHASE133_SUPPORT_LOSS_DIAGNOSTIC",
+    "GATE_E_PHASE134_ACTIVE_SUPPORT_CARRY_BALANCE",
     "workflow_gate_authoritative=true",
     "nonfatal=true",
     "productionSmokeSupportTrackedCarriage",
+    "phase81PhysicalSupport && collisionEligible && broadphaseOverlap",
+    "read_only=true",
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 131 lost support diagnostic anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 131 lost support/carry diagnostic anchors: " + ", ".join(missing))
 if "Production smoke rejected unsupported carriage-local carry continuity" in source:
     raise SystemExit("Phase 131 failed to remove diagnostic crash path")
 
+for forbidden in ['player.setPos(', 'player.setDeltaMovement(', '.move(', '.teleport', 'setBlock(', '.useItemOn(', '.attack(']:
+    if forbidden in telemetry if 'telemetry' in locals() else False:
+        raise SystemExit("Phase 131 active-support telemetry found forbidden gameplay mutation: " + forbidden)
+
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 131: validates Phase130 replay syntax and structurally keeps support-loss telemetry nonfatal so the workflow is the authoritative carry gate")
+print("Phase 131: keeps support-loss nonfatal and adds read-only per-active-support native carry balance telemetry")

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinAbstractContraptionEntityContactTrace.java"
@@ -63,3 +64,4 @@ for forbidden in ["setPos(", "setDeltaMovement(", ".move(", ".teleport", "setBlo
         raise SystemExit("Phase 168 introduced forbidden gameplay mutation: " + forbidden)
 
 print("Phase 168: traces the exact Create carriage owning each native contact-motion vector; read-only only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase169.py")), run_name="__main__")

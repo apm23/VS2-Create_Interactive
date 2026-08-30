@@ -34,11 +34,16 @@ if "phase163SupportedActiveHandoff" not in source:
 # #308 still produced multi-block local jumps while the same carriage id remained selected.
 # Add read-only world-frame telemetry next to the existing walk sample so the next real-world
 # smoke can distinguish actual player motion from carriage transform/interpolation movement or
-# a late compatibility replay. Do not weaken the walk proof and do not mutate gameplay state.
+# a late compatibility replay. Phase154 still owns the ordinary keyUp call at this point in the
+# cumulative patch chain (Phase165 changes it later), so include that stable statement in the
+# anchor instead of assuming LOGGER immediately follows the tick-window branch. Do not weaken
+# the walk proof and do not mutate gameplay state.
 walk_sample_anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
+                                client.options.keyUp.setDown(true);
                                 LOGGER.info(
                                     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE'''
 walk_sample_diag = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
+                                client.options.keyUp.setDown(true);
                                 LOGGER.info(
                                     "GATE_E_PHASE163_WALK_WORLD_FRAME player_tick={} carriage_id={} walk_carriage_id={} baseline_carriage_id={} rebase_tick={} replay_tick={} player_world={} carriage_world={} local={} local_step={} key_up={} key_down={} on_ground={} broadphase={} read_only=true",
                                     player.tickCount, phase154Carriage.getId(), phase154WalkCarriageId, carryBaselineCarriageId,
@@ -49,7 +54,7 @@ walk_sample_diag = '''                            if (player.tickCount <= phase1
                                     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE'''
 if "GATE_E_PHASE163_WALK_WORLD_FRAME" not in source:
     if source.count(walk_sample_anchor) != 1:
-        raise SystemExit("Phase 163 expected exactly one Phase154 walk-sample branch for world-frame telemetry")
+        raise SystemExit("Phase 163 expected exactly one Phase154 walk-sample branch with Phase154 keyUp statement")
     source = source.replace(walk_sample_anchor, walk_sample_diag, 1)
 
 required = [
@@ -63,6 +68,7 @@ required = [
     "player.position()",
     "phase154Carriage.position()",
     "carryReplayPlayerTick",
+    "client.options.keyUp.setDown(true)",
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
 ]

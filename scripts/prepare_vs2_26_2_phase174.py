@@ -10,8 +10,9 @@ source = client_probe.read_text(encoding="utf-8")
 # BlockHitResult validation still execute, but the historical dispatch-candidate marker
 # no longer survives the cumulative preparation chain. The workflow intentionally uses
 # that marker only to recognize the validated local fallback; native right-click has a
-# separate mandatory gate afterwards. Restore the read-only contract marker at the exact
-# point where syntheticFieldsMatch is known. No interaction is dispatched here.
+# separate mandatory gate afterwards. Restore the read-only contract marker at every
+# validated synthetic-hit site because the cumulative probe intentionally has two settled
+# ray execution sites. No interaction is dispatched here.
 inserted = ""
 marker = "source=validated_exact_local_hit read_only=true"
 if marker not in source:
@@ -22,22 +23,28 @@ if marker not in source:
         re.DOTALL,
     )
     matches = list(pattern.finditer(source))
-    if len(matches) != 1:
-        raise SystemExit(
-            f"Phase 174 expected exactly one synthetic-hit log statement, found {len(matches)}"
+    if not matches:
+        raise SystemExit("Phase 174 found no synthetic-hit log statements")
+    pieces = []
+    cursor = 0
+    additions = []
+    for match in matches:
+        indent = match.group("indent")
+        addition = (
+            "\n"
+            + indent + "if (syntheticFieldsMatch) {\n"
+            + indent + "    LOGGER.info(\n"
+            + indent + "        \"GATE_F_INTERACTION_DISPATCH_CANDIDATE carriage_id={} player_tick={} exact_handle_player_interaction=true source=validated_exact_local_hit read_only=true\",\n"
+            + indent + "        carriage.getId(), player.tickCount);\n"
+            + indent + "}"
         )
-    match = matches[0]
-    indent = match.group("indent")
-    addition = (
-        "\n"
-        + indent + "if (syntheticFieldsMatch) {\n"
-        + indent + "    LOGGER.info(\n"
-        + indent + "        \"GATE_F_INTERACTION_DISPATCH_CANDIDATE carriage_id={} player_tick={} exact_handle_player_interaction=true source=validated_exact_local_hit read_only=true\",\n"
-        + indent + "        carriage.getId(), player.tickCount);\n"
-        + indent + "}"
-    )
-    source = source[:match.end()] + addition + source[match.end():]
-    inserted = addition
+        pieces.append(source[cursor:match.end()])
+        pieces.append(addition)
+        additions.append(addition)
+        cursor = match.end()
+    pieces.append(source[cursor:])
+    source = "".join(pieces)
+    inserted = "".join(additions)
 
 required = [
     "GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED",
@@ -61,4 +68,4 @@ for forbidden in [
         raise SystemExit("Phase 174 introduced forbidden mutation/dispatch token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 174: restores validated exact-local interaction candidate telemetry contract; read-only only")
+print("Phase 174: restores validated exact-local interaction candidate telemetry contract at all synthetic-hit sites; read-only only")

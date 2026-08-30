@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -60,3 +61,4 @@ for forbidden in ["setPos(", "setDeltaMovement(", ".teleport", "setBlock(", "set
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 142: arms held-block request directly at the executed settled native-ray entrypoint")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase143.py")), run_name="__main__")

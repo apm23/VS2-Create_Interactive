@@ -153,6 +153,12 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 98 lost native right-click/held-block-entrypoint/target-profile/fixture anchors: " + ", ".join(missing))
 
+# The production workflow deliberately reruns Phase 98 after all cumulative phases are
+# installed. On that second pass, later read-only packet telemetry (Phase 140+) is expected
+# to contain names such as ContraptionInteractionPacket. Keep the original whole-source
+# audit on the first pass; on the cumulative re-entry audit only Phase 98's own injected
+# snippets so later telemetry cannot masquerade as a Phase 98 mutation.
+audit_source = source if not cumulative_prepared else replacement + profile_replacement
 for forbidden in [
     'rightClickingOnContraptionsGetsHandledLocally(client',
     '.handlePlayerInteraction(',
@@ -160,7 +166,7 @@ for forbidden in [
     'ContraptionInteractionPacket',
     '.useItemOn(', '.useItem(', '.attack(', 'gameMode.use',
 ]:
-    if forbidden in source:
+    if forbidden in audit_source:
         raise SystemExit("Phase 98 found forbidden interaction dispatch/mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")

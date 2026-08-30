@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -19,18 +20,44 @@ if "fixtureContactAcquireTicks" not in source:
         raise SystemExit("Phase 129 could not find fixture collider normalization field")
     source = source.replace(field_old, field_new, 1)
 
-# Phase 86/87 deliberately wrapped the Phase 67 one-shot guard with the harness/
-# productionSmokeFixture isolation boundary. Patch that final post-isolation form,
-# preserving the boundary while allowing bounded retries only for productionSmokeFixture.
-condition_old = '''            if ((ciHarness || productionSmokeFixture) && !fixtureColliderNormalized) {\n                try {'''
-condition_new = '''            if ((ciHarness || productionSmokeFixture)\n                    && (!fixtureColliderNormalized\n                        || (productionSmokeFixture && !player.onGround() && fixtureContactAcquireTicks < 12))) {\n                if (productionSmokeFixture && !player.onGround()) {\n                    fixtureContactAcquireTicks++;\n                    LOGGER.info(\n                        "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={} attempt={} bounded=true fixture_only=true",\n                        player.tickCount, fixtureContactAcquireTicks);\n                }\n                try {'''
+# Later preparation phases may add timing predicates to the Phase 67/86/87 guard.
+# Match the final guard structurally instead of pinning an exact text form: it must be
+# an if-condition containing fixtureColliderNormalized and immediately enter the same
+# try block. Preserve every existing predicate and only OR in bounded fixture retry.
 if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
-    if condition_old not in source:
-        raise SystemExit("Phase 129 could not find Phase 87 isolated collider condition")
-    source = source.replace(condition_old, condition_new, 1)
+    pattern = re.compile(
+        r'(?P<indent>\s*)if \((?P<cond>[^\n{}]*fixtureColliderNormalized[^\n{}]*)\) \{\n(?P=indent)    try \{'
+    )
+    match = pattern.search(source)
+    if match is None:
+        # Some phases wrap the condition across lines. Use a bounded multiline form,
+        # still requiring fixtureColliderNormalized and the immediately following try.
+        pattern = re.compile(
+            r'(?P<indent>\s*)if \((?P<cond>[\s\S]{0,500}?fixtureColliderNormalized[\s\S]{0,500}?)\) \{\n(?P=indent)    try \{'
+        )
+        match = pattern.search(source)
+    if match is None:
+        raise SystemExit("Phase 129 could not locate final fixture collider guard")
+
+    indent = match.group("indent")
+    cond = match.group("cond").strip()
+    if "productionSmokeFixture" not in cond and "ciHarness" not in cond:
+        raise SystemExit("Phase 129 refused collider guard without fixture isolation boundary")
+
+    replacement = (
+        f'{indent}if (({cond})\n'
+        f'{indent}        || (productionSmokeFixture && !player.onGround() && fixtureContactAcquireTicks < 12)) {{\n'
+        f'{indent}    if (productionSmokeFixture && !player.onGround()) {{\n'
+        f'{indent}        fixtureContactAcquireTicks++;\n'
+        f'{indent}        LOGGER.info(\n'
+        f'{indent}            "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={{}} attempt={{}} bounded=true fixture_only=true",\n'
+        f'{indent}            player.tickCount, fixtureContactAcquireTicks);\n'
+        f'{indent}    }}\n'
+        f'{indent}    try {{'
+    )
+    source = source[:match.start()] + replacement + source[match.end():]
 
 required = [
-    '(ciHarness || productionSmokeFixture)',
     'fixtureContactAcquireTicks < 12',
     'productionSmokeFixture && !player.onGround()',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',
@@ -42,9 +69,5 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 129 lost bounded fixture-contact anchors: " + ", ".join(missing))
 
-# This phase does not introduce a new movement primitive. It only permits the existing
-# productionSmokeFixture-only Phase 67/68 re-positioner to retry during contact setup.
-# Once Create reports onGround, the retry condition becomes false and normal production
-# carry is solely responsible for all samples accepted by the sustained stability gate.
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 129: bounded fixture-only collider reacquisition until genuine Create standing contact; production carry unchanged")
+print("Phase 129: resilient bounded fixture-only collider reacquisition until genuine Create standing contact; production carry unchanged")

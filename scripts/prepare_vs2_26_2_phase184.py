@@ -13,6 +13,9 @@ source = client_probe.read_text(encoding="utf-8")
 # validated support continuity only for the disposable bounded production-smoke walk and only while
 # replay continuity is consecutive and no same-tick native Create application exists. No carry vector
 # is synthesized or clamped; the existing Create-computed/collision-filtered replay remains authoritative.
+# Keep phase81PhysicalSupport text visible in the final Phase85 guard so cumulative Phase132 can still
+# add its independently bounded one-tick grace without mistaking this later continuity patch for a
+# missing support predicate.
 
 marker = "GATE_E_PHASE184_BOUNDED_SUPPORT_CONTINUITY"
 inserted = ""
@@ -56,7 +59,8 @@ if marker not in source:
         raise SystemExit("Phase 184 could not find strict support clause inside Phase161 predicate")
     source = source[:decl_pos] + predicate + source[decl_end + 1:]
 
-    # The final Phase85 replay guard also carried the original Phase81 strict-support requirement.
+    # Widen final Phase85 replay support while retaining the literal Phase81 predicate. Phase132 runs
+    # again in the cumulative Phase98 path and searches this exact final guard before adding grace.
     replay_token = "carryReplayPlayerTick != player.tickCount"
     replay_pos = source.find(replay_token)
     if replay_pos < 0:
@@ -66,9 +70,10 @@ if marker not in source:
     if if_pos < 0 or if_end < 0:
         raise SystemExit("Phase 184 could not bound final Phase85 replay guard")
     final_guard = source[if_pos:if_end + 3]
-    if "phase81PhysicalSupport" in final_guard:
-        final_guard = final_guard.replace("phase81PhysicalSupport", "phase184ReplaySupport", 1)
-    elif "phase184ReplaySupport" not in final_guard:
+    expanded_support = "(phase81PhysicalSupport || phase184BoundedSupportContinuity)"
+    if "phase81PhysicalSupport" in final_guard and "phase184BoundedSupportContinuity" not in final_guard:
+        final_guard = final_guard.replace("phase81PhysicalSupport", expanded_support, 1)
+    elif expanded_support not in final_guard:
         raise SystemExit("Phase 184 could not find Phase81 support in final replay guard")
     source = source[:if_pos] + final_guard + source[if_end + 3:]
 
@@ -81,6 +86,7 @@ required = [
     "carryReplayPlayerTick == player.tickCount - 1",
     "vs2.phase170NativeContactApplicationTick",
     "phase184ReplaySupport && collisionEligible && broadphaseOverlap && player.onGround()",
+    "(phase81PhysicalSupport || phase184BoundedSupportContinuity)",
     "carryReplayPlayerTick != player.tickCount",
     "GATE_E_PHASE85_CARRY_REPLAY",
     "fixture_only=true bounded_continuity=true",

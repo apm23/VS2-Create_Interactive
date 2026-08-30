@@ -31,6 +31,27 @@ if "phase163SupportedActiveHandoff" not in source:
         1,
     )
 
+# #308 still produced multi-block local jumps while the same carriage id remained selected.
+# Add read-only world-frame telemetry next to the existing walk sample so the next real-world
+# smoke can distinguish actual player motion from carriage transform/interpolation movement or
+# a late compatibility replay. Do not weaken the walk proof and do not mutate gameplay state.
+walk_sample_anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
+                                LOGGER.info(
+                                    "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE'''
+walk_sample_diag = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
+                                LOGGER.info(
+                                    "GATE_E_PHASE163_WALK_WORLD_FRAME player_tick={} carriage_id={} walk_carriage_id={} baseline_carriage_id={} rebase_tick={} replay_tick={} player_world={} carriage_world={} local={} local_step={} key_up={} key_down={} on_ground={} broadphase={} read_only=true",
+                                    player.tickCount, phase154Carriage.getId(), phase154WalkCarriageId, carryBaselineCarriageId,
+                                    carryBaselineRebaseTick, carryReplayPlayerTick, player.position(), phase154Carriage.position(),
+                                    phase154Local, phase154Step, client.options.keyUp.isDown(), client.options.keyDown.isDown(),
+                                    player.onGround(), phase154Broadphase);
+                                LOGGER.info(
+                                    "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE'''
+if "GATE_E_PHASE163_WALK_WORLD_FRAME" not in source:
+    if source.count(walk_sample_anchor) != 1:
+        raise SystemExit("Phase 163 expected exactly one Phase154 walk-sample branch for world-frame telemetry")
+    source = source.replace(walk_sample_anchor, walk_sample_diag, 1)
+
 required = [
     "phase163SupportedActiveHandoff",
     "phase154Carriage.getId() == carryBaselineCarriageId",
@@ -38,6 +59,10 @@ required = [
     "GATE_E_PHASE156_WALK_SIBLING_HANDOFF",
     "phase154WalkCarriageId = phase154Carriage.getId()",
     "local_step_reset=true",
+    "GATE_E_PHASE163_WALK_WORLD_FRAME",
+    "player.position()",
+    "phase154Carriage.position()",
+    "carryReplayPlayerTick",
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
 ]
@@ -47,7 +72,7 @@ if missing:
 if "phase163WalkMeasurementCarriageId" in source:
     raise SystemExit("Phase 163 unexpectedly retained stale pinned-carriage measurement")
 
-patch_text = new_handoff + "phase163SupportedActiveHandoff"
+patch_text = new_handoff + "phase163SupportedActiveHandoff" + walk_sample_diag
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
@@ -56,4 +81,4 @@ for forbidden in [
         raise SystemExit("Phase 163 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 163: follows the supported active carry-baseline carriage and resets walk-local telemetry on sibling handoff")
+print("Phase 163: follows supported active carriage and traces read-only walk world-frame discontinuities")

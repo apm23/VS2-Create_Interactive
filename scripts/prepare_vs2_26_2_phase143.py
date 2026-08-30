@@ -7,14 +7,16 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinCreateContraptionInteractionConnectionSendTrace.java"
 mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 
-# Production-world #225 still proved handled native dispatch but emitted no Phase141 marker
-# even after unwrapping ServerboundCustomPayloadPacket at ClientPacketListener.send(Packet).
-# Move the read-only observation one layer lower to Connection.send so we can distinguish an
-# alternate ClientPacketListener overload/path from Create never emitting its C2S payload.
+# Production-world #245 is green for carry, native interaction and authoritative placement,
+# but Phase148 proved the runtime Connection exposes three send overloads while the existing
+# Phase143 trace only watched send(Packet). No Phase143 marker appeared in the green artifact.
+# Observe all runtime send overloads read-only so the next smoke can prove whether the genuine
+# native Create dispatch emits ContraptionInteractionPacket, without changing packet flow.
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import net.minecraft.network.protocol.Packet;
+import org.spongepowered.asm.mixin.Coerce;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -25,6 +27,16 @@ public abstract class MixinCreateContraptionInteractionConnectionSendTrace {
     @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;)V", at = @At("HEAD"), require = 0)
     private void vs2$traceConnectionSend(Packet<?> packet, CallbackInfo ci) {
         vs2$trace(packet, "send1");
+    }
+
+    @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;)V", at = @At("HEAD"), require = 0)
+    private void vs2$traceConnectionSend2(Packet<?> packet, @Coerce Object listener, CallbackInfo ci) {
+        vs2$trace(packet, "send2");
+    }
+
+    @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V", at = @At("HEAD"), require = 0)
+    private void vs2$traceConnectionSend3(Packet<?> packet, @Coerce Object listener, boolean flush, CallbackInfo ci) {
+        vs2$trace(packet, "send3");
     }
 
     private static void vs2$trace(Packet<?> packet, String path) {
@@ -64,6 +76,8 @@ text = java.read_text(encoding="utf-8")
 required = [
     "Connection.class",
     'method = "send(Lnet/minecraft/network/protocol/Packet;)V"',
+    'method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;)V"',
+    'method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;Z)V"',
     "ServerboundCustomPayloadPacket",
     "ContraptionInteractionPacket",
     "GATE_F_PHASE143_CONNECTION_CONTRAPTION_PACKET_SEND",
@@ -76,5 +90,5 @@ for forbidden in ["setPos(", "setDeltaMovement(", ".teleport", "setBlock(", "set
     if forbidden in text:
         raise SystemExit("Phase 143 found forbidden mutation/interception: " + forbidden)
 
-print("Phase 143: traces Create ContraptionInteractionPacket at Connection.send read-only")
+print("Phase 143: traces Create ContraptionInteractionPacket across all runtime Connection.send overloads read-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase144.py")), run_name="__main__")

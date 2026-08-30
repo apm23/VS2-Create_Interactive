@@ -41,6 +41,7 @@ jobs:
           grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'GATE_E_CARRIAGE_LOCAL_CONTINUITY' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'GATE_E_PHASE130_REPLAY_GUARD' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
 
       - name: Reconstruct verified r0v3 train save
         shell: bash
@@ -162,21 +163,40 @@ jobs:
             if python3 - ../production-world-smoke.log <<'PY'
           import math, re, sys
           text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
-          pattern = re.compile(
+          continuity_pattern = re.compile(
               r'GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
               r'[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
               r'[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)')
+          guard_pattern = re.compile(
+              r'GATE_E_PHASE130_REPLAY_GUARD[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
+              r'[^\n]*baseline_captured=(true|false)[^\n]*physical_support=(true|false)'
+              r'[^\n]*collision_eligible=(true|false)[^\n]*broadphase=(true|false)')
+          guards = {
+              (int(m.group(1)), int(m.group(2))): tuple(value == 'true' for value in m.groups()[2:])
+              for m in guard_pattern.finditer(text)
+          }
           samples = []
-          for match in pattern.finditer(text):
+          for match in continuity_pattern.finditer(text):
               tick, carriage = map(int, match.groups()[:2])
               x, y, z = map(float, match.groups()[2:5])
               broadphase, on_ground = match.groups()[5:]
-              samples.append((tick, carriage, x, y, z, broadphase == 'true', on_ground == 'true'))
+              guard = guards.get((tick, carriage))
+              if guard is None:
+                  continue
+              baseline_captured, physical_support, collision_eligible, guard_broadphase = guard
+              samples.append((
+                  tick, carriage, x, y, z,
+                  broadphase == 'true' and guard_broadphase,
+                  on_ground == 'true',
+                  baseline_captured,
+                  physical_support,
+                  collision_eligible,
+              ))
 
           streak = []
           best = []
           for sample in samples:
-              if not sample[5] or not sample[6]:
+              if not all(sample[5:10]):
                   streak = []
                   continue
               if not streak:
@@ -194,7 +214,7 @@ jobs:
           if len(best) >= 5:
               start, end = best[0], best[-1]
               span = math.dist(start[2:5], end[2:5])
-              print(f'PRODUCTION_CARRY carriage_local_stable carriage_id={start[1]} ticks={start[0]}-{end[0]} samples={len(best)} span={span:.9f}')
+              print(f'PRODUCTION_CARRY physical_support_stable carriage_id={start[1]} ticks={start[0]}-{end[0]} samples={len(best)} span={span:.9f}')
               raise SystemExit(0)
           raise SystemExit(1)
           PY
@@ -204,8 +224,8 @@ jobs:
             sleep 1
           done
           if [ "$CARRY" -ne 1 ]; then
-            echo 'Production world did not prove sustained carriage-local carry continuity.'
-            grep -E 'GATE_D_TRAIN_MOVED|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA|GATE_E_PHASE85_CARRY_REPLAY' ../production-world-smoke.log | tail -320 || true
+            echo 'Production world did not prove sustained physical-support carriage-local carry continuity.'
+            grep -E 'GATE_D_TRAIN_MOVED|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA|GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE130_REPLAY_GUARD' ../production-world-smoke.log | tail -320 || true
             exit 1
           fi
 
@@ -235,7 +255,7 @@ jobs:
 
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Production sustained carriage-local carry continuity, Create-native moving-train ray targeting, and native right-click readiness passed.'
+          echo 'Production sustained physical-support carry continuity, Create-native moving-train ray targeting, and native right-click readiness passed.'
 
       - name: Upload production real-world diagnostics
         if: always()

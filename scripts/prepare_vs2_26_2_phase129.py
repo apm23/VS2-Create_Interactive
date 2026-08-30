@@ -19,14 +19,18 @@ if "fixtureContactAcquireTicks" not in source:
         raise SystemExit("Phase 129 could not find fixture collider normalization field")
     source = source.replace(field_old, field_new, 1)
 
-condition_old = '''            if (!fixtureColliderNormalized) {\n                try {'''
-condition_new = '''            if (!fixtureColliderNormalized\n                    || (productionSmokeFixture && !player.onGround() && fixtureContactAcquireTicks < 12)) {\n                if (productionSmokeFixture && !player.onGround()) {\n                    fixtureContactAcquireTicks++;\n                    LOGGER.info(\n                        "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={} attempt={} bounded=true fixture_only=true",\n                        player.tickCount, fixtureContactAcquireTicks);\n                }\n                try {'''
+# Phase 86/87 deliberately wrapped the Phase 67 one-shot guard with the harness/
+# productionSmokeFixture isolation boundary. Patch that final post-isolation form,
+# preserving the boundary while allowing bounded retries only for productionSmokeFixture.
+condition_old = '''            if ((ciHarness || productionSmokeFixture) && !fixtureColliderNormalized) {\n                try {'''
+condition_new = '''            if ((ciHarness || productionSmokeFixture)\n                    && (!fixtureColliderNormalized\n                        || (productionSmokeFixture && !player.onGround() && fixtureContactAcquireTicks < 12))) {\n                if (productionSmokeFixture && !player.onGround()) {\n                    fixtureContactAcquireTicks++;\n                    LOGGER.info(\n                        "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={} attempt={} bounded=true fixture_only=true",\n                        player.tickCount, fixtureContactAcquireTicks);\n                }\n                try {'''
 if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     if condition_old not in source:
-        raise SystemExit("Phase 129 could not find Phase 67 one-shot collider condition")
+        raise SystemExit("Phase 129 could not find Phase 87 isolated collider condition")
     source = source.replace(condition_old, condition_new, 1)
 
 required = [
+    '(ciHarness || productionSmokeFixture)',
     'fixtureContactAcquireTicks < 12',
     'productionSmokeFixture && !player.onGround()',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',

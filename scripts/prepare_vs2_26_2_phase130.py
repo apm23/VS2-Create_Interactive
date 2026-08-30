@@ -132,12 +132,33 @@ if "vs2.productionNativeRightClickCarriageId" not in source:
         raise SystemExit("Phase 130 could not find confirmed native right-click anchor")
     source = source.replace(confirmed_anchor, confirmed_replacement, 1)
 
+# Phase118's exact-sync observer now deliberately delays final marker publication so the
+# normal-key walking fixture can execute. Do not pin the whole surrounding observer shape.
+# Locate the canonical exact-sync marker itself and insert same-carriage correlation directly
+# before its LOGGER call. This remains read-only and survives future telemetry fields/timing.
 if "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION" not in source:
-    exact_sync_anchor = '''                            System.setProperty("vs2.productionNativePlacementClientObserved", "true");\n                            System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");\n                            LOGGER.info(\n                                "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",'''
-    exact_sync_replacement = '''                            System.setProperty("vs2.productionNativePlacementClientObserved", "true");\n                            System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");\n                            String nativeRightClickCarriageIdText = System.getProperty("vs2.productionNativeRightClickCarriageId");\n                            boolean interactionPlacementSameCarriage = nativeRightClickCarriageIdText != null\n                                && nativeRightClickCarriageIdText.equals(Integer.toString(exactCarriageId));\n                            LOGGER.info(\n                                "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION interaction_carriage_id={} placement_carriage_id={} same_carriage={} read_only=true",\n                                nativeRightClickCarriageIdText, exactCarriageId, interactionPlacementSameCarriage);\n                            if (productionSmokeFixture && nativeRightClickCarriageIdText != null && !interactionPlacementSameCarriage) {\n                                throw new IllegalStateException("Production smoke interaction/placement carriage mismatch: interaction="\n                                    + nativeRightClickCarriageIdText + " placement=" + exactCarriageId);\n                            }\n                            LOGGER.info(\n                                "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",'''
-    if exact_sync_anchor not in source:
-        raise SystemExit("Phase 130 could not find exact placement sync anchor")
-    source = source.replace(exact_sync_anchor, exact_sync_replacement, 1)
+    sync_marker = '"GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={}'
+    sync_marker_pos = source.find(sync_marker)
+    if sync_marker_pos < 0 or source.find(sync_marker, sync_marker_pos + 1) >= 0:
+        raise SystemExit("Phase 130 expected one canonical exact placement sync marker")
+    sync_logger_pos = source.rfind("LOGGER.info(", 0, sync_marker_pos)
+    if sync_logger_pos < 0:
+        raise SystemExit("Phase 130 could not locate exact placement sync LOGGER")
+    sync_line_start = source.rfind("\n", 0, sync_logger_pos) + 1
+    sync_indent = source[sync_line_start:sync_logger_pos]
+    correlation_probe = (
+        f'{sync_indent}String nativeRightClickCarriageIdText = System.getProperty("vs2.productionNativeRightClickCarriageId");\n'
+        f'{sync_indent}boolean interactionPlacementSameCarriage = nativeRightClickCarriageIdText != null\n'
+        f'{sync_indent}    && nativeRightClickCarriageIdText.equals(Integer.toString(exactCarriageId));\n'
+        f'{sync_indent}LOGGER.info(\n'
+        f'{sync_indent}    "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION interaction_carriage_id={{}} placement_carriage_id={{}} same_carriage={{}} read_only=true",\n'
+        f'{sync_indent}    nativeRightClickCarriageIdText, exactCarriageId, interactionPlacementSameCarriage);\n'
+        f'{sync_indent}if (productionSmokeFixture && nativeRightClickCarriageIdText != null && !interactionPlacementSameCarriage) {{\n'
+        f'{sync_indent}    throw new IllegalStateException("Production smoke interaction/placement carriage mismatch: interaction="\n'
+        f'{sync_indent}        + nativeRightClickCarriageIdText + " placement=" + exactCarriageId);\n'
+        f'{sync_indent}}}\n'
+    )
+    source = source[:sync_line_start] + correlation_probe + source[sync_line_start:]
 
 required = [
     'GATE_E_PHASE131_SUPPORT_SOURCE',
@@ -171,8 +192,8 @@ if "&& &&" in source:
 for forbidden in ['setBlock(', 'setPos(', 'setDeltaMovement(', '.useItemOn(', '.useItem(', '.attack(']:
     if forbidden in native_only_probe if 'native_only_probe' in locals() else False:
         raise SystemExit("Phase 130 carry de-duplication found forbidden mutation: " + forbidden)
-    if forbidden in exact_sync_replacement if 'exact_sync_replacement' in locals() else False:
+    if forbidden in correlation_probe if 'correlation_probe' in locals() else False:
         raise SystemExit("Phase 130 correlation telemetry found forbidden mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 130: scopes support-loss validation to the active carriage baseline, suppresses duplicate native carry replay, and preserves same-carriage interaction/placement correlation")
+print("Phase 130: scopes support-loss validation to the active carriage baseline, suppresses duplicate native carry replay, and preserves same-carriage interaction/placement correlation at the canonical exact-sync marker")

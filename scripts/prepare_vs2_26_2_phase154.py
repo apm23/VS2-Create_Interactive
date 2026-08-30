@@ -7,11 +7,13 @@ source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #257 proves stationary carriage-local continuity, native Create interaction,
 # and authoritative moving-cell placement. The next safe gap is functional walking: drive the
-# normal client forward key for a short bounded interval only after all existing interaction /
-# placement proof has completed, then verify the player actually changed position in the same
-# moving carriage-local frame without losing ground/support. This is smoke-fixture input only;
-# it does not set player position/velocity, alter collision response, train state, world blocks,
-# or VS2/Create physics.
+# normal client forward key for a short bounded interval after the exact authoritative moving
+# cell is visibly present on the client, then verify the player actually changed position in
+# the same moving carriage-local frame without losing ground/support. Phase118 intentionally
+# delays only its final exact-sync completion marker for eight ticks, giving this normal-key
+# fixture a bounded observation window before the workflow terminates the client. This is
+# smoke-fixture input only; it does not set player position/velocity, alter collision response,
+# train state, world blocks, or VS2/Create physics.
 field_anchor = '''    private static boolean nativeRightClickProbeDispatched;\n'''
 field_insert = field_anchor + '''    private static boolean phase154WalkStarted;\n    private static boolean phase154WalkFinished;\n    private static int phase154WalkStartTick = -1;\n    private static int phase154WalkCarriageId = -1;\n    private static net.minecraft.world.phys.Vec3 phase154WalkStartLocal;\n    private static net.minecraft.world.phys.Vec3 phase154WalkPreviousLocal;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
 if "phase154WalkStarted" not in source:
@@ -21,7 +23,7 @@ if "phase154WalkStarted" not in source:
 
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
 probe = '''            if (productionSmokeFixture
-                    && java.lang.Boolean.getBoolean("vs2.productionNativePlacementExactClientObserved")
+                    && java.lang.Boolean.getBoolean("vs2.productionNativePlacementExactCellPresent")
                     && !phase154WalkFinished) {
                 net.minecraft.world.entity.Entity phase154Carriage = null;
                 if (carryBaselineCarriageId != Integer.MIN_VALUE) {
@@ -49,7 +51,7 @@ probe = '''            if (productionSmokeFixture
                             phase154WalkSupportHealthy = true;
                             client.options.keyUp.setDown(true);
                             LOGGER.info(
-                                "GATE_E_PHASE154_FIXTURE_WALK_START player_tick={} carriage_id={} local_start={} on_ground=true broadphase=true fixture_only=true",
+                                "GATE_E_PHASE154_FIXTURE_WALK_START player_tick={} carriage_id={} local_start={} on_ground=true broadphase=true exact_cell_present=true fixture_only=true",
                                 player.tickCount, phase154WalkCarriageId, phase154WalkStartLocal);
                         } else if (phase154WalkStarted) {
                             if (phase154Carriage.getId() != phase154WalkCarriageId || !phase154SupportNow) {
@@ -103,7 +105,7 @@ required = [
     "GATE_E_PHASE154_FIXTURE_WALK_START",
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
-    "vs2.productionNativePlacementExactClientObserved",
+    "vs2.productionNativePlacementExactCellPresent",
     "vs2.productionFixtureWalkConfirmed",
     "client.options.keyUp.setDown(true)",
     "client.options.keyUp.setDown(false)",
@@ -123,4 +125,4 @@ for forbidden in [
         raise SystemExit("Phase 154 introduced forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 154: drives a bounded fixture-only forward-key walk after authoritative placement proof and verifies same-carriage local movement without support loss")
+print("Phase 154: drives a bounded fixture-only forward-key walk once the authoritative client cell is present and verifies same-carriage local movement without support loss")

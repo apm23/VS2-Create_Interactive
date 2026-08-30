@@ -84,19 +84,17 @@ if "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE" not in source:
     if replay_tick_pos < 0 or source.find(replay_tick_token, replay_tick_pos + 1) >= 0:
         raise SystemExit("Phase 132 expected one final Phase85 replay tick predicate")
 
-    search_start = max(0, replay_tick_pos - 6000)
+    search_start = max(0, replay_tick_pos - 7000)
     prefix = source[search_start:replay_tick_pos]
     candidates = list(re.finditer(r'(?m)^(?P<indent>[ \t]*)if \(', prefix))
     replay_if_pos = None
     replay_indent = None
-    replay_open_end = None
     for candidate in reversed(candidates):
         absolute = search_start + candidate.start()
         segment = source[absolute:replay_tick_pos]
         if "phase81PhysicalSupport" in segment and "collisionEligible" in segment:
             replay_if_pos = absolute
             replay_indent = candidate.group("indent")
-            replay_open_end = replay_tick_pos
             break
     if replay_if_pos is None or replay_indent is None:
         raise SystemExit("Phase 132 could not locate final Phase85 replay guard")
@@ -150,22 +148,19 @@ if "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE" not in source:
         raise SystemExit("Phase 132 failed to widen replay guard with bounded grace")
 
     # Production-world #286 proves the grace predicate itself becomes true at the first
-    # native-support loss (tick 41), but Phase137's stale previous-healthy de-dup predicate
-    # still suppresses Phase85 before it can consume that grace. Let this already-bounded
-    # grace override only that de-dup suppression. All other replay predicates remain intact.
-    native_suppression_pattern = re.compile(
-        r'!\(productionSmoke && explicitCarryCompat && \(\s*'
-        r'Boolean\.parseBoolean\(System\.getProperty\("vs2\.phase134NativeCarryHealthy\." \+ carriage\.getId\(\), "false"\)\)\s*'
-        r'\|\| Integer\.toString\(player\.tickCount - 1\)\.equals\(System\.getProperty\("vs2\.phase134NativeCarryHealthyTick\." \+ carriage\.getId\(\)\)\)\)\)'
-    )
-    suppression_match = native_suppression_pattern.search(guard_rewritten)
-    if suppression_match is None:
-        raise SystemExit("Phase 132 could not find Phase137 native carry de-dup suppression")
-    guard_rewritten = (
-        guard_rewritten[:suppression_match.start()]
-        + "(" + suppression_match.group(0) + " || phase133ReplayGrace)"
-        + guard_rewritten[suppression_match.end():]
-    )
+    # native-support loss, but the final Phase150-expanded native de-dup predicate still
+    # suppresses Phase85 before it can consume that grace. Override only that predicate.
+    suppression_old = '''!(productionSmoke && explicitCarryCompat && (
+                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
+                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
+                                || phase150SupportReacquired))'''
+    suppression_new = '''(!(productionSmoke && explicitCarryCompat && (
+                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
+                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
+                                || phase150SupportReacquired)) || phase133ReplayGrace)'''
+    if suppression_old not in guard_rewritten:
+        raise SystemExit("Phase 132 could not find final Phase150 native carry de-dup suppression")
+    guard_rewritten = guard_rewritten.replace(suppression_old, suppression_new, 1)
     source = source[:replay_if_pos] + guard_rewritten + source[replay_tick_pos:]
 
     assignment = "carryReplayPlayerTick = player.tickCount;"
@@ -197,7 +192,7 @@ required = [
     "(!phase159PreviousNativeHealthy || broadphaseOverlap)",
     "(phase159PreviousNativeHealthy || phase133LastGraceReplayTick != carryReplayPlayerTick)",
     "(phase81PhysicalSupport || phase133ReplayGrace)",
-    "|| phase133ReplayGrace)",
+    "|| phase150SupportReacquired)) || phase133ReplayGrace)",
     "System.setProperty(phase133GraceKey, Integer.toString(player.tickCount))",
     "existing_create_filtered_replay=true",
     "bounded_one_tick=true",
@@ -217,4 +212,4 @@ for marker in ["GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE", "GATE_F_PHASE135_HELD_
             raise SystemExit("Phase 132 found forbidden direct mutation near native held-block probe: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 132: lets the bounded native-loss grace bypass only stale native de-dup suppression while preserving Create-filtered replay")
+print("Phase 132: lets bounded native-loss grace bypass final Phase150 de-dup suppression while preserving Create-filtered replay")

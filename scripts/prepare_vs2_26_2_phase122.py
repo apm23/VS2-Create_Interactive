@@ -37,8 +37,12 @@ probe = anchor + '''
                                                     trackingField = field.name + ":" + value.javaClass.name
                                                     trackingMethod = method.toGenericString()
                                                     trackingCount = when (result) {
-                                                        is java.util.Collection<*> -> result.size
-                                                        is java.lang.Iterable<*> -> result.count()
+                                                        is java.util.Collection<*> -> result.size()
+                                                        is kotlin.collections.Iterable<*> -> {
+                                                            var count = 0
+                                                            for (ignored in result) count++
+                                                            count
+                                                        }
                                                         else -> -2
                                                     }
                                                     break@search

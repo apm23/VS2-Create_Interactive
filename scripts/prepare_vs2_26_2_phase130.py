@@ -44,17 +44,45 @@ if "GATE_E_PHASE131_SUPPORT_SOURCE" not in source:
     )
     source = source[:support_if_pos] + probe + source[support_if_pos:]
 
+# Production-world #164 now proves a real Create-native empty-hand right-click dispatch
+# (handled=true) and authoritative new-cell placement replication in the same run. Keep
+# the next step observational: remember only the entity id used by that confirmed native
+# dispatch, then compare it with the exact carriage id whose new STONE cell reached the
+# client. This prevents future smoke success from combining interaction on one sibling
+# carriage with placement replication on another. No item, block, player, train, or
+# physics state is changed by this correlation telemetry.
+if "vs2.productionNativeRightClickCarriageId" not in source:
+    confirmed_anchor = '''                                                    if (Boolean.TRUE.equals(handled)) {\n                                                        LOGGER.info(\n                                                            "GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED carriage_id={} player_tick={} handled=true target_source=create_native_ray_settled",'''
+    confirmed_replacement = '''                                                    if (Boolean.TRUE.equals(handled)) {\n                                                        System.setProperty("vs2.productionNativeRightClickCarriageId", Integer.toString(carriage.getId()));\n                                                        LOGGER.info(\n                                                            "GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED carriage_id={} player_tick={} handled=true target_source=create_native_ray_settled",'''
+    if confirmed_anchor not in source:
+        raise SystemExit("Phase 130 could not find confirmed native right-click anchor")
+    source = source.replace(confirmed_anchor, confirmed_replacement, 1)
+
+if "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION" not in source:
+    exact_sync_anchor = '''                            System.setProperty("vs2.productionNativePlacementClientObserved", "true");\n                            System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");\n                            LOGGER.info(\n                                "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",'''
+    exact_sync_replacement = '''                            System.setProperty("vs2.productionNativePlacementClientObserved", "true");\n                            System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");\n                            String nativeRightClickCarriageIdText = System.getProperty("vs2.productionNativeRightClickCarriageId");\n                            boolean interactionPlacementSameCarriage = nativeRightClickCarriageIdText != null\n                                && nativeRightClickCarriageIdText.equals(Integer.toString(exactCarriageId));\n                            LOGGER.info(\n                                "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION interaction_carriage_id={} placement_carriage_id={} same_carriage={} read_only=true",\n                                nativeRightClickCarriageIdText, exactCarriageId, interactionPlacementSameCarriage);\n                            LOGGER.info(\n                                "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",'''
+    if exact_sync_anchor not in source:
+        raise SystemExit("Phase 130 could not find exact placement sync anchor")
+    source = source.replace(exact_sync_anchor, exact_sync_replacement, 1)
+
 required = [
     'GATE_E_PHASE131_SUPPORT_SOURCE',
     'simplified_state={}',
     'phase81PhysicalSupport',
     'phase81VerticalGap',
     'simplifiedColliderState',
+    'vs2.productionNativeRightClickCarriageId',
+    'GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION',
+    'interactionPlacementSameCarriage',
     'read_only=true',
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 130 lost physical-support source telemetry: " + ", ".join(missing))
+    raise SystemExit("Phase 130 lost support/correlation telemetry: " + ", ".join(missing))
+
+for forbidden in ['setBlock(', 'setPos(', 'setDeltaMovement(', '.useItemOn(', '.useItem(', '.attack(']:
+    if forbidden in exact_sync_replacement if 'exact_sync_replacement' in locals() else False:
+        raise SystemExit("Phase 130 correlation telemetry found forbidden mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 130: exposes Phase81 simplified-collider support source read-only with structural anchoring; production carry unchanged")
+print("Phase 130: exposes Phase81 support source and correlates confirmed native interaction with exact placement carriage read-only; production carry unchanged")

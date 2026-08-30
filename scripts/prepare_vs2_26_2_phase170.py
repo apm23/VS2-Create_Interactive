@@ -16,10 +16,10 @@ contact_source = contact_trace.read_text(encoding="utf-8")
 # calls and suppress only the fixture recovery when native Create contact was already applied in the
 # same LocalPlayer tick. Production behavior remains unchanged outside productionSmokeFixture.
 
-contact_anchor = '''        Vec3 motion = cir.getReturnValue();
+contact_anchor = '''        net.minecraft.world.phys.Vec3 motion = cir.getReturnValue();
         LOGGER.info(
 '''
-contact_insert = '''        Vec3 motion = cir.getReturnValue();
+contact_insert = '''        net.minecraft.world.phys.Vec3 motion = cir.getReturnValue();
         boolean phase170NativeClientColliderCall = java.lang.StackWalker.getInstance().walk(
             frames -> frames.anyMatch(frame -> frame.getClassName().contains("ContraptionColliderClient")));
         net.minecraft.client.player.LocalPlayer phase170Player = net.minecraft.client.Minecraft.getInstance().player;
@@ -34,7 +34,7 @@ contact_insert = '''        Vec3 motion = cir.getReturnValue();
 '''
 if "GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION" not in contact_source:
     if contact_source.count(contact_anchor) != 1:
-        raise SystemExit("Phase 170 expected exactly one Phase168 contact-motion log anchor")
+        raise SystemExit("Phase 170 expected exactly one Phase168 fully-qualified contact-motion log anchor")
     contact_source = contact_source.replace(contact_anchor, contact_insert, 1)
 
 old_decl = "boolean phase161SupportedLocomotionNativeLoss = productionSmoke && explicitCarryCompat"
@@ -134,6 +134,7 @@ contact_required = [
     "vs2.phase170NativeContactApplicationTick",
     "vs2.phase170NativeContactApplicationCarriageId",
     "java.lang.StackWalker",
+    "net.minecraft.world.phys.Vec3 motion = cir.getReturnValue()",
     "read_only=true",
 ]
 contact_missing = [token for token in contact_required if token not in contact_source]

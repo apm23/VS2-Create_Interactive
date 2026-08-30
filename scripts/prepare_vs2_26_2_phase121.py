@@ -34,8 +34,8 @@ probe = anchor + '''
                                             if (!(candidateBlocks instanceof java.util.Map<?, ?> candidateMap)) continue;
                                             Object candidateEntry = candidateMap.get(exactPos);
                                             if (candidateEntry == null) continue;
-                                            Object candidateState = candidateEntry.getClass().getMethod("state").invoke(candidateEntry);
-                                            matches.add(candidateEntity.getId() + ":" + String.valueOf(candidateState));
+                                            Object scannedState = candidateEntry.getClass().getMethod("state").invoke(candidateEntry);
+                                            matches.add(candidateEntity.getId() + ":" + String.valueOf(scannedState));
                                         } catch (ReflectiveOperationException ignoredCandidate) {
                                             // Non-contraption client entity; read-only scan intentionally skips it.
                                         }

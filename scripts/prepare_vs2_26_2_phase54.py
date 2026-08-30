@@ -64,3 +64,4 @@ runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase99.py")), run
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase101.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase102.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase103.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase133.py")), run_name="__main__")

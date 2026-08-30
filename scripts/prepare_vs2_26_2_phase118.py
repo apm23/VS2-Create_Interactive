@@ -13,6 +13,11 @@ source = client_probe.read_text(encoding="utf-8")
 # directly so replication observation cannot be skipped by sibling-carriage iteration.
 # Keep this exact observer on its own completion flag: Phase 113's generic observer may
 # see the same STONE first, but that must not suppress the stronger exact id/cell proof.
+# Production-world #259 then proved the workflow can consume this exact-sync marker and
+# terminate the client before the bounded normal-key walking fixture receives another tick.
+# Record exact cell presence immediately, but publish the existing exact-sync completion
+# marker only after eight client ticks. This is observation timing only: the replicated
+# block is not changed and no player/train/physics state is mutated.
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
 probe = '''            if (productionSmokeFixture
                     && java.lang.Boolean.getBoolean("vs2.productionNativePlacementMutationSucceeded")
@@ -49,10 +54,26 @@ probe = '''            if (productionSmokeFixture
                             exactState, net.minecraft.world.level.block.Blocks.STONE.defaultBlockState());
                         if (exactSynced) {
                             System.setProperty("vs2.productionNativePlacementClientObserved", "true");
-                            System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");
-                            LOGGER.info(
-                                "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",
-                                exactCarriageId, player.tickCount, exactPos, exactEntity != null, exactEntry != null, exactState);
+                            System.setProperty("vs2.productionNativePlacementExactCellPresent", "true");
+                            String exactFirstTickText = System.getProperty("vs2.productionNativePlacementExactCellFirstTick");
+                            int exactFirstTick;
+                            if (exactFirstTickText == null) {
+                                exactFirstTick = player.tickCount;
+                                System.setProperty("vs2.productionNativePlacementExactCellFirstTick", Integer.toString(exactFirstTick));
+                            } else {
+                                exactFirstTick = Integer.parseInt(exactFirstTickText);
+                            }
+                            if (player.tickCount >= exactFirstTick + 8) {
+                                System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");
+                                LOGGER.info(
+                                    "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true observation_delay_ticks={} read_only=true",
+                                    exactCarriageId, player.tickCount, exactPos, exactEntity != null, exactEntry != null, exactState,
+                                    player.tickCount - exactFirstTick);
+                            } else if (player.tickCount == exactFirstTick || player.tickCount % 3 == 0) {
+                                LOGGER.info(
+                                    "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_PENDING carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true exact_cell_present=true publish_delayed=true first_tick={} read_only=true",
+                                    exactCarriageId, player.tickCount, exactPos, exactEntity != null, exactEntry != null, exactState, exactFirstTick);
+                            }
                         } else if (player.tickCount % 10 == 0) {
                             LOGGER.info(
                                 "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_PENDING carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=false read_only=true",
@@ -68,10 +89,17 @@ probe = '''            if (productionSmokeFixture
 
 ''' + anchor
 
-if "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC" not in source:
-    if anchor not in source:
-        raise SystemExit("Phase 118 could not find Gate E client-state anchor")
-    source = source.replace(anchor, probe, 1)
+if "vs2.productionNativePlacementExactCellPresent" not in source:
+    if "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC" in source:
+        start = source.find('            if (productionSmokeFixture\n                    && java.lang.Boolean.getBoolean("vs2.productionNativePlacementMutationSucceeded")')
+        end = source.find(anchor, start)
+        if start < 0 or end < 0:
+            raise SystemExit("Phase 118 could not replace existing exact client replication observer")
+        source = source[:start] + probe[:-len(anchor)] + source[end:]
+    else:
+        if anchor not in source:
+            raise SystemExit("Phase 118 could not find Gate E client-state anchor")
+        source = source.replace(anchor, probe, 1)
 
 required = [
     'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC',
@@ -79,8 +107,11 @@ required = [
     'exactLevel.getEntity(exactCarriageId)',
     'vs2.productionNativePlacementMutationSucceeded',
     'vs2.productionNativePlacementSyncInvoked',
+    'vs2.productionNativePlacementExactCellPresent',
+    'vs2.productionNativePlacementExactCellFirstTick',
     'vs2.productionNativePlacementExactClientObserved',
-    'synced=true read_only=true',
+    'player.tickCount >= exactFirstTick + 8',
+    'synced=true observation_delay_ticks={}',
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -94,7 +125,7 @@ for forbidden in [
         raise SystemExit("Phase 118 found forbidden client mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 118: resolves the exact published client carriage id with an independent exact-sync completion flag; read-only replication telemetry only")
+print("Phase 118: resolves exact client carriage replication immediately and delays only the final sync marker eight ticks so bounded normal-key walking can be observed; read-only replication timing only")
 
 # Run the production-smoke-only collider recovery after all earlier fixture transforms
 # have been installed, so it patches the final generated Gate E source without changing

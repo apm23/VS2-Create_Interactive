@@ -61,6 +61,7 @@ public abstract class MixinCreateNewContraptionCellReplication {
                 new StructureTemplate.StructureBlockInfo(localPos.immutable(), newState, null);
             writable.put(localPos.immutable(), info);
 
+            boolean resetInvoked = false;
             try {
                 contraption.getClass().getMethod("invalidateColliders").invoke(contraption);
             } catch (ReflectiveOperationException ignored) {
@@ -70,10 +71,14 @@ public abstract class MixinCreateNewContraptionCellReplication {
                 if (!method.getName().equals("resetClientContraption") || method.getParameterCount() != 1) continue;
                 if (!method.getParameterTypes()[0].isInstance(contraption)) continue;
                 method.invoke(this, contraption);
+                resetInvoked = true;
                 break;
             }
             System.out.println("VS2_CREATE_NEW_CELL_REPLICATION entity_id=" + entityId
                 + " local_pos=" + localPos + " state=" + newState + " inserted=true");
+            System.out.println("VS2_CREATE_NEW_CELL_REPLICATION_PROVEN entity_id=" + entityId
+                + " local_pos=" + localPos + " state=" + newState
+                + " inserted=true reset_invoked=" + resetInvoked + " packet_authoritative=true");
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // Compatibility is intentionally fail-open: never crash Create/VS2 for an optional seam.
         }
@@ -96,6 +101,8 @@ required = [
     'writable.put(localPos.immutable(), info)',
     'resetClientContraption',
     'VS2_CREATE_NEW_CELL_REPLICATION',
+    'VS2_CREATE_NEW_CELL_REPLICATION_PROVEN',
+    'packet_authoritative=true',
 ]
 text = java.read_text(encoding="utf-8")
 missing = [token for token in required if token not in text]
@@ -106,6 +113,6 @@ for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', '.useIt
     if forbidden in text:
         raise SystemExit("Phase 128 found forbidden player/train mutation: " + forbidden)
 
-print("Phase 128: production compat fills Create Fly client new-cell replication gap from authoritative block-change packets")
+print("Phase 128: production compat fills Create Fly client new-cell replication gap from authoritative block-change packets and emits explicit replication proof telemetry")
 
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase129.py")), run_name="__main__")

@@ -48,6 +48,7 @@ settled_replacement = settled_anchor + '''
                                                     carriage.getId(), player.tickCount, settledExactNativeRightClickEntrypoint,
                                                     settledExactNativeRightClickEntrypoint && settledCreateNativeRayReady);
                                                 if (productionSmokeFixture
+                                                        && player.tickCount >= 30
                                                         && settledExactNativeRightClickEntrypoint
                                                         && player.getMainHandItem().isEmpty()
                                                         && !nativeRightClickProbeDispatched) {
@@ -162,6 +163,7 @@ required = [
     'readiness_source=create_native_ray_settled',
     'boolean settledCreateNativeRayReady',
     'productionSmokeFixture',
+    'player.tickCount >= 30',
     'java.lang.reflect.Modifier.isStatic(candidate.getModifiers())',
     'settledExactRightClickMethod.invoke(',
     'Boolean.TRUE.equals(handled)',
@@ -185,4 +187,4 @@ for forbidden in [
         raise SystemExit("Phase 101 found forbidden direct placement/physics/data mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 101: confirmed native moving-train interaction and inventories the actual carriage Contraption mutation surface read-only before any block-placement experiment")
+print("Phase 101: defers native moving-train interaction probing until tick 30 so carry continuity is measured first, while preserving the same read-only mutation-surface inventory")

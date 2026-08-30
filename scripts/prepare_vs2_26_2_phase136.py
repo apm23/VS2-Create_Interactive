@@ -86,3 +86,4 @@ print("Phase 136: arms ServerPlayer STONE only after client interaction readines
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase137.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase138.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase139.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase140.py")), run_name="__main__")

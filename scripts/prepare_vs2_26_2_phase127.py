@@ -15,9 +15,13 @@ source = client_probe.read_text(encoding="utf-8")
 # a transient startup-only stable window before native carry stops at tick 21 while the
 # same carriage still reports physical support. Start authoritative continuity sampling at
 # tick 20 so that startup acceleration alone cannot satisfy the sustained-carry workflow.
-# This remains read-only; no gameplay, collision, train, or physics state changes.
+# Production-world #228 then proved the previous tick-40 telemetry ceiling can end exactly
+# during a sibling-carriage handoff: three perfect same-frame samples were observed before
+# the handoff, while later zero-drift carry evidence occurred after continuity telemetry had
+# stopped. Extend this read-only observation window to tick 80 without changing carry,
+# collision, player motion, train state, or VS2 physics.
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
-probe = '''            if (productionSmokeFixture && player.tickCount >= 20 && player.tickCount <= 40) {
+probe = '''            if (productionSmokeFixture && player.tickCount >= 20 && player.tickCount <= 80) {
                 net.minecraft.world.entity.Entity localFrameCarriage = null;
                 if (carryBaselineCarriageId != Integer.MIN_VALUE) {
                     net.minecraft.world.entity.Entity baselineEntity = client.level.getEntity(carryBaselineCarriageId);
@@ -74,7 +78,7 @@ if "baseline_frame={}" not in source:
 
 required = [
     'GATE_E_CARRIAGE_LOCAL_CONTINUITY',
-    'player.tickCount >= 20 && player.tickCount <= 40',
+    'player.tickCount >= 20 && player.tickCount <= 80',
     'client.level.getEntity(carryBaselineCarriageId)',
     'localFrameCarriage.getId() == carryBaselineCarriageId',
     'toLocalVector',
@@ -91,6 +95,6 @@ for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', 'setBlo
         raise SystemExit("Phase 127 found forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 127: samples carriage-local continuity after the startup acceleration window; read-only sibling-carriage telemetry fix")
+print("Phase 127: samples carriage-local continuity through tick 80; read-only sibling-carriage telemetry fix")
 
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase128.py")), run_name="__main__")

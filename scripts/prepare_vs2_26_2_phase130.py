@@ -46,12 +46,17 @@ if "GATE_E_PHASE131_SUPPORT_SOURCE" not in source:
         f'{support_indent}    }} catch (NumberFormatException ignored) {{\n'
         f'{support_indent}        productionSmokeSupportLossTicks = 0;\n'
         f'{support_indent}    }}\n'
-        f'{support_indent}    productionSmokeSupportLossTicks = phase81PhysicalSupport ? 0 : productionSmokeSupportLossTicks + 1;\n'
+        f'{support_indent}    boolean productionSmokeSupportTrackedCarriage = !carryBaselineCaptured\n'
+        f'{support_indent}        || carryBaselineCarriageId == carriage.getId();\n'
+        f'{support_indent}    productionSmokeSupportLossTicks = !productionSmokeSupportTrackedCarriage || phase81PhysicalSupport\n'
+        f'{support_indent}        ? 0 : productionSmokeSupportLossTicks + 1;\n'
         f'{support_indent}    System.setProperty("vs2.productionSmokeSupportLossTicks", Integer.toString(productionSmokeSupportLossTicks));\n'
         f'{support_indent}    LOGGER.info(\n'
-        f'{support_indent}        "GATE_E_PHASE131_SUPPORT_STREAK player_tick={{}} carriage_id={{}} physical_support={{}} consecutive_loss_ticks={{}} broadphase={{}} on_ground={{}} fixture_only=true",\n'
-        f'{support_indent}        player.tickCount, carriage.getId(), phase81PhysicalSupport, productionSmokeSupportLossTicks, broadphaseOverlap, player.onGround());\n'
-        f'{support_indent}    if (productionSmokeSupportLossTicks >= 3 && broadphaseOverlap && player.onGround()) {{\n'
+        f'{support_indent}        "GATE_E_PHASE131_SUPPORT_STREAK player_tick={{}} carriage_id={{}} physical_support={{}} consecutive_loss_ticks={{}} broadphase={{}} on_ground={{}} tracked_carriage={{}} baseline_carriage_id={{}} fixture_only=true",\n'
+        f'{support_indent}        player.tickCount, carriage.getId(), phase81PhysicalSupport, productionSmokeSupportLossTicks, broadphaseOverlap, player.onGround(),\n'
+        f'{support_indent}        productionSmokeSupportTrackedCarriage, carryBaselineCarriageId);\n'
+        f'{support_indent}    if (productionSmokeSupportTrackedCarriage && productionSmokeSupportLossTicks >= 3\n'
+        f'{support_indent}            && broadphaseOverlap && player.onGround()) {{\n'
         f'{support_indent}        throw new IllegalStateException("Production smoke rejected unsupported carriage-local carry continuity after "\n'
         f'{support_indent}            + productionSmokeSupportLossTicks + " consecutive ticks");\n'
         f'{support_indent}    }}\n'
@@ -138,6 +143,9 @@ required = [
     'GATE_E_PHASE131_SUPPORT_SOURCE',
     'GATE_E_PHASE131_SUPPORT_STREAK',
     'vs2.productionSmokeSupportLossTicks',
+    'productionSmokeSupportTrackedCarriage',
+    'carryBaselineCarriageId == carriage.getId()',
+    'tracked_carriage={}',
     'Production smoke rejected unsupported carriage-local carry continuity',
     'GATE_E_PHASE132_NATIVE_CARRY_ONLY',
     'manual_replay_suppressed=true',
@@ -167,4 +175,4 @@ for forbidden in ['setBlock(', 'setPos(', 'setDeltaMovement(', '.useItemOn(', '.
         raise SystemExit("Phase 130 correlation telemetry found forbidden mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 130: structurally suppresses duplicate manual replay when Create native carry is active, rejects unsupported smoke continuity, and preserves same-carriage interaction/placement correlation")
+print("Phase 130: scopes support-loss validation to the active carriage baseline, suppresses duplicate native carry replay, and preserves same-carriage interaction/placement correlation")

@@ -15,6 +15,7 @@ source = client_probe.read_text(encoding="utf-8")
 # is introduced here.
 
 measurement_marker = '''double phase134DriftZ = phase134NativePlayerDz - phase134CarriageDz;\n'''
+measurement_publish = ""
 if "vs2.phase161CarriageMotionSq." not in source:
     if source.count(measurement_marker) != 1:
         raise SystemExit("Phase 161 expected exactly one Phase137 native-balance measurement site")
@@ -28,6 +29,8 @@ System.setProperty("vs2.phase161MeasurementTick." + carriage.getId(), Integer.to
 '''
     source = source.replace(measurement_marker, measurement_publish, 1)
 
+selector = ""
+widened = ""
 if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
@@ -139,11 +142,14 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 161 lost scoped under-carry recovery anchors: " + ", ".join(missing))
 
+# Audit only text this phase itself can insert. Scanning the cumulative source produced a
+# false positive on historical fixture-only player.setPos code from earlier phases.
+phase161_inserted = measurement_publish + selector + widened
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
 ]:
-    if forbidden in source[source.find("vs2.phase161CarriageMotionSq.") - 800:]:
+    if forbidden in phase161_inserted:
         raise SystemExit("Phase 161 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")

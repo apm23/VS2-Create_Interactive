@@ -152,11 +152,15 @@ server_probe.write_text(server, encoding="utf-8")
 
 print("Phase 100: synchronized the test-only integrated-server fixture in the exact carriage-local frame and blocked sibling-carriage fallback; no production gameplay, train, or physics mutation")
 
-# Keep the native interaction experiment chained after deterministic fixture sync.
-phase101 = Path(__file__).with_name("prepare_vs2_26_2_phase101.py")
-exec(compile(phase101.read_text(encoding="utf-8"), str(phase101), "exec"))
+# A caller that only needs Phase 100's synchronization prerequisite can suppress the
+# descendant interaction chain. This avoids recursive 100 -> 101 -> ... -> 108 -> 100
+# execution when world/client smoke enters the later cumulative chain through Phase 108.
+if not globals().get("PHASE100_PREREQUISITE_ONLY", False):
+    # Keep the native interaction experiment chained after deterministic fixture sync.
+    phase101 = Path(__file__).with_name("prepare_vs2_26_2_phase101.py")
+    exec(compile(phase101.read_text(encoding="utf-8"), str(phase101), "exec"))
 
-# Resolve the exact client-published carriage entity after Phase 100 has installed its
-# local-frame fixture block. Phase 104 is production-smoke-fixture-only.
-phase104 = Path(__file__).with_name("prepare_vs2_26_2_phase104.py")
-exec(compile(phase104.read_text(encoding="utf-8"), str(phase104), "exec"))
+    # Resolve the exact client-published carriage entity after Phase 100 has installed its
+    # local-frame fixture block. Phase 104 is production-smoke-fixture-only.
+    phase104 = Path(__file__).with_name("prepare_vs2_26_2_phase104.py")
+    exec(compile(phase104.read_text(encoding="utf-8"), str(phase104), "exec"))

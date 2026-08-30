@@ -13,6 +13,12 @@ source = client_probe.read_text(encoding="utf-8")
 # disposable walk, and only when the immediately previous tick actually replayed and this tick has
 # no native Create application. Do not depend on cumulative predicate whitespace/order: later
 # phases have legitimately reshaped the declaration several times.
+#
+# Production-world #361 then proved the real carriage stays grounded, broadphase-overlapping, and
+# strict-physical-support healthy through the bounded acquisition window, while Phase154 never
+# emits WALK_START. Expose the existing Phase158 walk-start predicate inputs read-only so the next
+# real-world run can distinguish a stale native-health handshake from support scheduling without
+# weakening any movement/collision/physics guard.
 
 inserted = ""
 if "GATE_E_PHASE180_CONSECUTIVE_NATIVE_LOSS_RECOVERY" not in source:
@@ -35,7 +41,6 @@ if "GATE_E_PHASE180_CONSECUTIVE_NATIVE_LOSS_RECOVERY" not in source:
             "Phase 180 expected exactly one previous-native healthy-tick continuity expression inside Phase161 predicate, found "
             + str(len(healthy_matches)))
 
-    healthy_clause = healthy_matches[0].group(0)
     continuity_clause = '''(Integer.toString(player.tickCount - 1).equals(System.getProperty(
                 "vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
                 || (phase161FixtureWalkWindow
@@ -65,8 +70,27 @@ if "GATE_E_PHASE180_CONSECUTIVE_NATIVE_LOSS_RECOVERY" not in source:
     source = source[:line_start] + log + source[line_start:]
     inserted += log
 
+if "GATE_E_PHASE180_WALK_START_GATE" not in source:
+    walk_gate = '''                        if (!phase154WalkStarted && phase154SupportNow && phase81PhysicalSupport && phase158FreshNativeCarry) {'''
+    if source.count(walk_gate) != 1:
+        raise SystemExit("Phase 180 expected exactly one Phase158 walk-start predicate")
+    diagnostic = '''                        if (!phase154WalkStarted && productionSmokeFixture) {
+                            LOGGER.info(
+                                "GATE_E_PHASE180_WALK_START_GATE player_tick={} carriage_id={} support_now={} strict_physical_support={} fresh_native_carry={} native_health={} native_health_tick={} exact_cell_present={} fixture_only=true read_only=true",
+                                player.tickCount, phase154Carriage.getId(), phase154SupportNow, phase81PhysicalSupport,
+                                phase158FreshNativeCarry,
+                                Boolean.parseBoolean(System.getProperty(
+                                    "vs2.phase134NativeCarryHealthy." + phase154Carriage.getId(), "false")),
+                                System.getProperty("vs2.phase134NativeCarryHealthyTick." + phase154Carriage.getId(), "missing"),
+                                java.lang.Boolean.getBoolean("vs2.productionNativePlacementExactCellPresent"));
+                        }
+''' + walk_gate
+    source = source.replace(walk_gate, diagnostic, 1)
+    inserted += diagnostic
+
 required = [
     "GATE_E_PHASE180_CONSECUTIVE_NATIVE_LOSS_RECOVERY",
+    "GATE_E_PHASE180_WALK_START_GATE",
     "phase161SupportedLocomotionNativeLoss",
     "phase161FixtureWalkWindow",
     "carryReplayPlayerTick == player.tickCount - 1",
@@ -74,14 +98,18 @@ required = [
     "phase179ActiveContactMotionAvailable",
     "!phase179CurrentNativeHealthy",
     "phase81PhysicalSupport && collisionEligible && broadphaseOverlap && player.onGround()",
+    "phase154SupportNow && phase81PhysicalSupport && phase158FreshNativeCarry",
+    "vs2.phase134NativeCarryHealthy.",
+    "vs2.phase134NativeCarryHealthyTick.",
     "GATE_E_PHASE85_CARRY_REPLAY",
     "existing_create_filtered_replay=true",
     "fixture_only=true",
     "bounded_continuity=true",
+    "read_only=true",
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 180 lost bounded consecutive native-loss recovery anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 180 lost bounded recovery/start-gate telemetry anchors: " + ", ".join(missing))
 
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
@@ -92,4 +120,4 @@ for forbidden in [
         raise SystemExit("Phase 180 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 180: whitespace-tolerantly extends existing Create-filtered fixture recovery across consecutive native-loss walk ticks")
+print("Phase 180: extends bounded native-loss recovery and exposes read-only walk-start gate state")

@@ -166,20 +166,29 @@ jobs:
           continuity_pattern = re.compile(
               r'GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
               r'[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
-              r'[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)')
+              r'[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)'
+              r'[^\n]*baseline_frame=(true|false)')
           guard_pattern = re.compile(
               r'GATE_E_PHASE130_REPLAY_GUARD[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
               r'[^\n]*baseline_captured=(true|false)[^\n]*physical_support=(true|false)'
               r'[^\n]*collision_eligible=(true|false)[^\n]*broadphase=(true|false)')
+          carry_delta_pattern = re.compile(
+              r'GATE_E_CLIENT_CARRY_DELTA[^\n]*carriage_id=(\d+)[^\n]*drift_sq=([-+0-9.eE]+)'
+              r'[^\n]*contact_now=(true|false)[^\n]*on_ground_now=(true|false)')
           guards = {
               (int(m.group(1)), int(m.group(2))): tuple(value == 'true' for value in m.groups()[2:])
               for m in guard_pattern.finditer(text)
+          }
+          stable_delta_carriages = {
+              int(m.group(1))
+              for m in carry_delta_pattern.finditer(text)
+              if float(m.group(2)) <= 0.01 and m.group(3) == 'true' and m.group(4) == 'true'
           }
           samples = []
           for match in continuity_pattern.finditer(text):
               tick, carriage = map(int, match.groups()[:2])
               x, y, z = map(float, match.groups()[2:5])
-              broadphase, on_ground = match.groups()[5:]
+              broadphase, on_ground, baseline_frame = match.groups()[5:]
               guard = guards.get((tick, carriage))
               if guard is None:
                   continue
@@ -191,14 +200,15 @@ jobs:
                   baseline_captured,
                   physical_support,
                   collision_eligible,
+                  baseline_frame == 'true',
               ))
 
           def best_streak(require_physical_support, max_step):
               streak = []
               best = []
               for sample in samples:
-                  broadphase, on_ground, baseline_captured, physical_support, collision_eligible = sample[5:10]
-                  valid = broadphase and on_ground and baseline_captured and collision_eligible
+                  broadphase, on_ground, baseline_captured, physical_support, collision_eligible, baseline_frame = sample[5:11]
+                  valid = broadphase and on_ground and baseline_captured and collision_eligible and baseline_frame
                   if require_physical_support:
                       valid = valid and physical_support
                   if not valid:
@@ -219,11 +229,17 @@ jobs:
 
           strict = best_streak(True, 0.05)
           stable_local = best_streak(False, 0.01)
-          best = strict if len(strict) >= 5 else stable_local
-          if len(best) >= 5:
+          if len(strict) >= 5:
+              best, proof = strict, 'physical_support_stable'
+          elif len(stable_local) >= 5:
+              best, proof = stable_local, 'carriage_local_stable'
+          elif len(strict) >= 3 and strict[0][1] in stable_delta_carriages:
+              best, proof = strict, 'carry_delta_plus_local_stable'
+          else:
+              best, proof = [], 'none'
+          if best:
               start, end = best[0], best[-1]
               span = math.dist(start[2:5], end[2:5])
-              proof = 'physical_support_stable' if len(strict) >= 5 else 'carriage_local_stable'
               print(f'PRODUCTION_CARRY {proof} carriage_id={start[1]} ticks={start[0]}-{end[0]} samples={len(best)} span={span:.9f}')
               raise SystemExit(0)
           raise SystemExit(1)

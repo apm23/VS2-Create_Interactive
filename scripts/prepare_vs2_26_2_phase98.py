@@ -45,7 +45,9 @@ if "GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT" not in source:
         raise SystemExit("Phase 98 could not find Phase 97 deep native-ray anchor")
     source = source.replace(anchor, replacement, 1)
 
-# Profile the exact native target and main hand read-only.
+# Profile the exact native target and main hand read-only. Also inventory the exact
+# vanilla client held-item placement entrypoint so the next fixture can exercise the
+# player's normal block-use path instead of mutating the contraption map directly.
 profile_anchor = '''                                                                            nativeRayState = "hit=" + nativeHit.getBlockPos().toShortString()
                                                                                 + ";face=" + nativeHit.getDirection()
                                                                                 + ";target_match=" + nativeHit.getBlockPos().equals(syntheticContraptionHit.getBlockPos())
@@ -72,7 +74,32 @@ profile_replacement = profile_anchor + '''
                                                                             LOGGER.info(
                                                                                 "GATE_F_INTERACTION_TARGET_PROFILE carriage_id={} player_tick={} target_block={} target_face={} state={} main_hand_empty={} main_hand={}",
                                                                                 carriage.getId(), player.tickCount, nativeHit.getBlockPos(), nativeHit.getDirection(),
-                                                                                targetStateProfile, player.getMainHandItem().isEmpty(), player.getMainHandItem());'''
+                                                                                targetStateProfile, player.getMainHandItem().isEmpty(), player.getMainHandItem());
+                                                                            boolean exactHeldBlockUseEntrypoint = false;
+                                                                            String heldBlockUseSignature = "missing";
+                                                                            Object gameModeObject = client.gameMode;
+                                                                            if (gameModeObject != null) {
+                                                                                for (java.lang.reflect.Method candidate : gameModeObject.getClass().getMethods()) {
+                                                                                    Class<?>[] params = candidate.getParameterTypes();
+                                                                                    if (candidate.getName().equals("useItemOn")
+                                                                                            && params.length == 3
+                                                                                            && params[0].getSimpleName().equals("LocalPlayer")
+                                                                                            && params[1].getSimpleName().equals("InteractionHand")
+                                                                                            && params[2].getSimpleName().equals("BlockHitResult")) {
+                                                                                        exactHeldBlockUseEntrypoint = true;
+                                                                                        heldBlockUseSignature = candidate.getName() + "("
+                                                                                            + params[0].getSimpleName() + ","
+                                                                                            + params[1].getSimpleName() + ","
+                                                                                            + params[2].getSimpleName() + "):"
+                                                                                            + candidate.getReturnType().getSimpleName();
+                                                                                        break;
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            LOGGER.info(
+                                                                                "GATE_F_PLAYER_BLOCK_PLACEMENT_ENTRYPOINT carriage_id={} player_tick={} exact={} signature={} target_ready={} main_hand_empty={} read_only=true",
+                                                                                carriage.getId(), player.tickCount, exactHeldBlockUseEntrypoint, heldBlockUseSignature,
+                                                                                nativeHit.getBlockPos() != null, player.getMainHandItem().isEmpty());'''
 if "GATE_F_INTERACTION_TARGET_PROFILE" not in source:
     if profile_anchor not in source:
         raise SystemExit("Phase 98 could not find Phase 97 native-hit profile anchor")
@@ -107,19 +134,23 @@ if not cumulative_prepared:
 required = [
     'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT',
     'GATE_F_INTERACTION_TARGET_PROFILE',
+    'GATE_F_PLAYER_BLOCK_PLACEMENT_ENTRYPOINT',
     'candidate.getName().equals("rightClickingOnContraptionsGetsHandledLocally")',
+    'candidate.getName().equals("useItemOn")',
     'params[0].getSimpleName().equals("Minecraft")',
     'params[1].getSimpleName().equals("InteractionHand")',
+    'params[2].getSimpleName().equals("BlockHitResult")',
     'nativeRayState.contains("target_match=true;face_match=true")',
     'getContraptionMethod.invoke(carriage)',
     'blockMap.get(nativeHit.getBlockPos())',
     'player.getMainHandItem().isEmpty()',
+    'read_only=true',
 ]
 if not cumulative_prepared:
     required.append('(productionSmokeFixture && player.tickCount >= 14)')
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 98 lost native right-click/target-profile/fixture anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 98 lost native right-click/held-block-entrypoint/target-profile/fixture anchors: " + ", ".join(missing))
 
 for forbidden in [
     'rightClickingOnContraptionsGetsHandledLocally(client',
@@ -150,6 +181,6 @@ if not cumulative_prepared:
 server_probe.write_text(server, encoding="utf-8")
 
 if cumulative_prepared:
-    print("Phase 98: cumulative Phase 130 already prepared; retained existing native interaction telemetry without reapplying obsolete fixed-tick fixture guards")
+    print("Phase 98: cumulative Phase 130 already prepared; retained existing native interaction/held-block entrypoint telemetry without reapplying obsolete fixed-tick fixture guards")
 else:
-    print("Phase 98: retained read-only native interaction profiling and narrowed the one-shot production fixture to tick 14 after startup discontinuity; no interaction dispatch or gameplay mutation")
+    print("Phase 98: retained read-only native interaction/held-block entrypoint profiling and narrowed the one-shot production fixture to tick 14 after startup discontinuity; no interaction dispatch or gameplay mutation")

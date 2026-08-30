@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -67,3 +68,5 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 123: traces Create Fly client block-change handler ownership read-only; no packet, block, player, train, or physics mutation")
+
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase124.py")), run_name="__main__")

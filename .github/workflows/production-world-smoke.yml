@@ -351,9 +351,24 @@ jobs:
 
           PLACEMENT_SYNC_READY=0
           for i in $(seq 1 60); do
-            if grep -Eq 'VS2_CREATE_CELL_REPLICATION_CONFIRMED.*state=Block\{minecraft:stone\}.*state_match=true.*packet_authoritative=true' ../production-world-smoke.log \
-              && grep -Eq 'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC.*state=Block\{minecraft:stone\}.*synced=true' ../production-world-smoke.log; then
-              echo 'PRODUCTION_PLACEMENT authoritative_moving_cell_synced'
+            if python3 - ../production-world-smoke.log <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+          targets = re.findall(
+              r'GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED[^\n]*carriage_id=(\d+)[^\n]*empty_local=(BlockPos\{x=-?\d+, y=-?\d+, z=-?\d+\})',
+              text,
+          )
+          replications = set(re.findall(
+              r'VS2_CREATE_CELL_REPLICATION_CONFIRMED[^\n]*entity_id=(\d+)[^\n]*local_pos=(BlockPos\{x=-?\d+, y=-?\d+, z=-?\d+\})[^\n]*state=Block\{minecraft:stone\}[^\n]*entry_present=true[^\n]*state_match=true[^\n]*packet_authoritative=true',
+              text,
+          ))
+          for target in targets:
+              if target in replications:
+                  print(f'PRODUCTION_PLACEMENT authoritative_moving_cell_synced carriage_id={target[0]} local_pos={target[1]} source=packet_authoritative')
+                  raise SystemExit(0)
+          raise SystemExit(1)
+          PY
+            then
               PLACEMENT_SYNC_READY=1
               break
             fi
@@ -362,7 +377,7 @@ jobs:
             sleep 1
           done
           if [ "$PLACEMENT_SYNC_READY" -ne 1 ]; then
-            echo 'Production world did not prove authoritative new-cell placement replication on the moving carriage.'
+            echo 'Production world did not prove authoritative new-cell placement replication on the exact published moving-carriage target.'
             grep -E 'VS2_CREATE_CELL_REPLICATION_CONFIRMED|GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED|GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC' ../production-world-smoke.log | tail -160 || true
             exit 1
           fi

@@ -43,20 +43,20 @@ if "GATE_E_PHASE161_SUPPORTED_LOCOMOTION_NATIVE_LOSS_REPLAY" not in source:
     )
     source = source[:replay_if_pos] + selector + source[replay_if_pos:]
 
+    # Phase150 and later replay-guard patches may add predicates around the native de-dup
+    # expression. Do not require their whole formatting to match byte-for-byte. The stable
+    # semantic seam owned by Phase132 is the final phase133ReplayGrace escape hatch inside
+    # this one, already-identified Phase85 guard. Widen only that tail, and require it once.
     replay_tick_pos = source.find(replay_tick_token, replay_if_pos + len(selector))
     replay_if_pos = source.rfind("if (", 0, replay_tick_pos)
     guard_segment = source[replay_if_pos:replay_tick_pos]
-    suppression_old = '''(!(productionSmoke && explicitCarryCompat && (
-                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
-                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
-                                || phase150SupportReacquired)) || phase133ReplayGrace)'''
-    suppression_new = '''(!(productionSmoke && explicitCarryCompat && (
-                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
-                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
-                                || phase150SupportReacquired)) || phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)'''
-    if suppression_old not in guard_segment:
-        raise SystemExit("Phase 161 could not find final Phase132/150 native carry de-dup suppression")
-    guard_segment = guard_segment.replace(suppression_old, suppression_new, 1)
+    grace_tail = "|| phase133ReplayGrace)"
+    widened_tail = "|| phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)"
+    if guard_segment.count(grace_tail) != 1:
+        raise SystemExit(
+            "Phase 161 expected exactly one Phase133 replay-grace tail in the final Phase85 guard"
+        )
+    guard_segment = guard_segment.replace(grace_tail, widened_tail, 1)
     source = source[:replay_if_pos] + guard_segment + source[replay_tick_pos:]
 
 required = [
@@ -83,7 +83,7 @@ for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
 ]:
-    if forbidden in selector or forbidden in suppression_new:
+    if forbidden in selector or forbidden in widened_tail:
         raise SystemExit("Phase 161 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")

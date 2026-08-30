@@ -11,9 +11,13 @@ source = client_probe.read_text(encoding="utf-8")
 # nearest carriage and reported ids 7/10. That made the workflow compare local positions
 # in different moving frames even while the actual carry delta reached zero. Prefer the
 # already-active carry baseline carriage for continuity telemetry, falling back to nearest
-# only before that baseline exists. No gameplay, collision, train, or physics state changes.
+# only before that baseline exists. Production-world #177 then proved ticks 14-20 can form
+# a transient startup-only stable window before native carry stops at tick 21 while the
+# same carriage still reports physical support. Start authoritative continuity sampling at
+# tick 20 so that startup acceleration alone cannot satisfy the sustained-carry workflow.
+# This remains read-only; no gameplay, collision, train, or physics state changes.
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
-probe = '''            if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 40) {
+probe = '''            if (productionSmokeFixture && player.tickCount >= 20 && player.tickCount <= 40) {
                 net.minecraft.world.entity.Entity localFrameCarriage = null;
                 if (carryBaselineCarriageId != Integer.MIN_VALUE) {
                     net.minecraft.world.entity.Entity baselineEntity = client.level.getEntity(carryBaselineCarriageId);
@@ -57,6 +61,8 @@ probe = '''            if (productionSmokeFixture && player.tickCount >= 14 && p
 if "baseline_frame={}" not in source:
     if "GATE_E_CARRIAGE_LOCAL_CONTINUITY" in source:
         start = source.find('            if (productionSmokeFixture && player.tickCount >= 14')
+        if start < 0:
+            start = source.find('            if (productionSmokeFixture && player.tickCount >= 20')
         end = source.find(anchor, start)
         if start < 0 or end < 0:
             raise SystemExit("Phase 127 could not replace existing continuity telemetry block")
@@ -68,7 +74,7 @@ if "baseline_frame={}" not in source:
 
 required = [
     'GATE_E_CARRIAGE_LOCAL_CONTINUITY',
-    'player.tickCount >= 14 && player.tickCount <= 40',
+    'player.tickCount >= 20 && player.tickCount <= 40',
     'client.level.getEntity(carryBaselineCarriageId)',
     'localFrameCarriage.getId() == carryBaselineCarriageId',
     'toLocalVector',
@@ -85,6 +91,6 @@ for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', 'setBlo
         raise SystemExit("Phase 127 found forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 127: traces carriage-local continuity in the active carry baseline frame; read-only sibling-carriage telemetry fix")
+print("Phase 127: samples carriage-local continuity after the startup acceleration window; read-only sibling-carriage telemetry fix")
 
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase128.py")), run_name="__main__")

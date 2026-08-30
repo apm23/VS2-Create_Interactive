@@ -5,12 +5,11 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 server_probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
 server = server_probe.read_text(encoding="utf-8")
 
-# Keep ServerPlayer holding the disposable STONE until the client-side native held-block
-# invocation actually completes. Production-world #199 proved the server tick clock can
-# run far ahead of the render thread: timer-based restore happened seconds before dispatch.
-# A same-JVM system-property handshake plus a short 5-server-tick grace keeps packet handling
-# causal while remaining fixture-only. No direct placement, movement, train, or VS2 physics change.
-
+# Arm ServerPlayer only after the client explicitly enters the interaction phase.
+# Production-world #201 showed server-tick-based arming still happens too early and can
+# perturb the movement-measurement window. The same-JVM request is emitted by Phase101
+# only once the client has a settled native ray at tick >=30. Restore remains gated by
+# held-block dispatch completion plus five server ticks. Fixture-only, no direct placement.
 vars_anchor = '''        var playerOnEnvelopeAtStart = false
 '''
 vars_insert = vars_anchor + '''        var phase138OriginalMainHand: net.minecraft.world.item.ItemStack? = null
@@ -19,21 +18,22 @@ vars_insert = vars_anchor + '''        var phase138OriginalMainHand: net.minecra
         var phase138DispatchCompletedAtServerTick: Long? = null
 '''
 if "phase138OriginalMainHand" not in server:
-    if vars_anchor not in server:
-        raise SystemExit("Phase 136 could not find GateD fixture-state variable anchor")
+    if vars_anchor not in server: raise SystemExit("Phase 136 could not find GateD fixture-state variable anchor")
     server = server.replace(vars_anchor, vars_insert, 1)
 
 throttle = '''            if (ticks % 20L != 0L) return@register
 '''
 sync = '''            val phase138Player = server.playerList.players.firstOrNull()
             if (java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && phase138Player != null) {
-                if (!phase138ServerHandArmed && phase138Player.tickCount >= 28) {
+                if (!phase138ServerHandArmed
+                        && java.lang.Boolean.getBoolean("vs2.productionHeldBlockServerArmRequested")) {
                     phase138OriginalMainHand = phase138Player.mainHandItem.copy()
                     phase138Player.setItemSlot(
                         net.minecraft.world.entity.EquipmentSlot.MAINHAND,
                         net.minecraft.world.item.ItemStack(net.minecraft.world.level.block.Blocks.STONE, 1))
                     phase138ServerHandArmed = true
-                    logger.info("GATE_D_PHASE138_SERVER_HELD_BLOCK_SYNC player_tick={} item=stone armed=true fixture_only=true",
+                    System.setProperty("vs2.productionHeldBlockServerArmed", "true")
+                    logger.info("GATE_D_PHASE138_SERVER_HELD_BLOCK_SYNC player_tick={} item=stone armed=true request_observed=true fixture_only=true",
                         phase138Player.tickCount)
                 }
                 if (phase138ServerHandArmed
@@ -58,28 +58,27 @@ sync = '''            val phase138Player = server.playerList.players.firstOrNull
             if (ticks % 20L != 0L) return@register
 '''
 if "GATE_D_PHASE138_SERVER_HELD_BLOCK_SYNC" not in server:
-    if throttle not in server:
-        raise SystemExit("Phase 136 could not find recurring GateD throttle")
+    if throttle not in server: raise SystemExit("Phase 136 could not find recurring GateD throttle")
     server = server.replace(throttle, sync, 1)
+elif "vs2.productionHeldBlockServerArmRequested" not in server:
+    old = '''                if (!phase138ServerHandArmed && phase138Player.tickCount >= 28) {
+'''
+    new = '''                if (!phase138ServerHandArmed
+                        && java.lang.Boolean.getBoolean("vs2.productionHeldBlockServerArmRequested")) {
+'''
+    if old not in server: raise SystemExit("Phase 136 could not find old server-tick arming condition")
+    server = server.replace(old, new, 1)
+    armed_line = '''                    phase138ServerHandArmed = true
+'''
+    server = server.replace(armed_line, armed_line + '''                    System.setProperty("vs2.productionHeldBlockServerArmed", "true")
+''', 1)
+    server = server.replace('item=stone armed=true fixture_only=true', 'item=stone armed=true request_observed=true fixture_only=true', 1)
 
-required = [
-    "GATE_D_PHASE138_SERVER_HELD_BLOCK_SYNC",
-    "phase138OriginalMainHand = phase138Player.mainHandItem.copy()",
-    "Blocks.STONE, 1",
-    "EquipmentSlot.MAINHAND",
-    "phase138Player.tickCount >= 28",
-    "vs2.productionHeldBlockNativeDispatchCompleted",
-    "phase138CompletedTick + 5L",
-    "after_dispatch_grace=true",
-    "fixture_only=true",
-]
+required = ["GATE_D_PHASE138_SERVER_HELD_BLOCK_SYNC","vs2.productionHeldBlockServerArmRequested","vs2.productionHeldBlockServerArmed","vs2.productionHeldBlockNativeDispatchCompleted","phase138CompletedTick + 5L","fixture_only=true"]
 missing = [token for token in required if token not in server]
-if missing:
-    raise SystemExit("Phase 136 lost server held-block handshake anchors: " + ", ".join(missing))
-
+if missing: raise SystemExit("Phase 136 lost request/restore handshake anchors: " + ", ".join(missing))
 for forbidden in ["setPos(", "setDeltaMovement(", ".teleport", "setBlock(", "setSchedule", "setTrain", "setVelocity"]:
-    if forbidden in sync:
-        raise SystemExit("Phase 136 found forbidden movement/world/train mutation: " + forbidden)
+    if forbidden in sync: raise SystemExit("Phase 136 found forbidden mutation: " + forbidden)
 
 server_probe.write_text(server, encoding="utf-8")
-print("Phase 136: holds ServerPlayer STONE until native client dispatch completion plus five server ticks, then restores; fixture-only")
+print("Phase 136: arms ServerPlayer STONE only after client interaction readiness request, then restores after native dispatch plus five server ticks")

@@ -17,6 +17,11 @@ mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 # can distinguish native replication from the compatibility fallback without mutating state.
 # Phase 149 additionally emits the exact published target proof at this authoritative packet
 # handler, avoiding the older reflective observer race while preserving the same semantics.
+# Production-world #264 then proved this authoritative packet path can publish exact sync
+# while Phase154 still sees exact_cell_present=false, because the packet observer set the
+# historical completion flags but not the newer walk-fixture readiness flag. Bridge that
+# telemetry state here at the exact authoritative target only; no block/player/train state
+# or collision/physics behavior is changed.
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
@@ -56,9 +61,16 @@ public abstract class MixinCreateNewContraptionCellReplication {
             if (entityId == expectedCarriage && expectedPos.equals(localPos) && newState.is(Blocks.STONE)) {
                 System.setProperty("vs2.productionNativePlacementClientObserved", "true");
                 System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");
+                System.setProperty("vs2.productionNativePlacementExactCellPresent", "true");
+                Minecraft exactMinecraft = Minecraft.getInstance();
+                if (System.getProperty("vs2.productionNativePlacementExactCellFirstTick") == null
+                        && exactMinecraft.player != null) {
+                    System.setProperty("vs2.productionNativePlacementExactCellFirstTick",
+                        Integer.toString(exactMinecraft.player.tickCount));
+                }
                 System.out.println("GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id=" + entityId
                     + " empty_local=" + localPos + " state=" + newState
-                    + " synced=true packet_authoritative=true source=" + path);
+                    + " synced=true packet_authoritative=true exact_cell_present=true source=" + path);
             }
         } catch (RuntimeException ignored) {
             // Telemetry is fail-open and never changes packet handling or gameplay state.
@@ -159,6 +171,9 @@ required = [
     'vs2$reportExactPublishedTarget',
     'path=vs2_new_cell_fallback',
     'packet_authoritative=true',
+    'vs2.productionNativePlacementExactCellPresent',
+    'vs2.productionNativePlacementExactCellFirstTick',
+    'exact_cell_present=true',
 ]
 text = java.read_text(encoding="utf-8")
 missing = [token for token in required if token not in text]
@@ -169,6 +184,6 @@ for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', '.useIt
     if forbidden in text:
         raise SystemExit("Phase 128 found forbidden player/train mutation: " + forbidden)
 
-print("Phase 128/149: production compat fills Create Fly client new-cell replication gap and proves exact published target at the authoritative packet handler")
+print("Phase 128/149: production compat fills Create Fly client new-cell replication gap, bridges authoritative exact-cell telemetry into the walk fixture, and proves exact published target")
 
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase129.py")), run_name="__main__")

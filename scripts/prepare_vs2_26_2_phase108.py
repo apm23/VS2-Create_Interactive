@@ -61,7 +61,17 @@ for forbidden in ['Math.min(', 'Math.max(', 'clamp(', 'setPos(', 'setDeltaMoveme
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 108: delayed Create-filtered carry replay for two ticks after sibling-carriage baseline handoff; no vector clamp, teleport, train control, or VS2 physics change")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase105.py")), run_name="__main__")
-# Phase 109 depends on the authoritative exact-carriage resolver and ServerLevel no-op
-# canary installed by Phase 104 -> Phase 106. Enter through Phase 104 rather than calling
-# Phase 109 directly; Phase 104 already chains Phase 106 and then Phase 109 onward.
+
+# Phase 104 rewrites the local-frame synchronization block installed by Phase 100.
+# world/client smoke can reach Phase 108 without production-world's later explicit
+# Phase 98 pass, so install only Phase 100's prerequisite edits here and suppress its
+# descendant chain to avoid a 100 -> 101 -> ... -> 108 recursion cycle.
+runpy.run_path(
+    str(Path(__file__).with_name("prepare_vs2_26_2_phase100.py")),
+    init_globals={"PHASE100_PREREQUISITE_ONLY": True},
+    run_name="__main__",
+)
+
+# Phase 104 then installs the exact-carriage resolver, chains Phase 106, and advances
+# into Phase 109+ with all prerequisites present.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase104.py")), run_name="__main__")

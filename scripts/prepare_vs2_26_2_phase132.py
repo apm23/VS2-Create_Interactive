@@ -6,38 +6,35 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #182 proved the exact vanilla held-block entrypoint exists and the
-# Create-native moving-contraption right-click handler is already handled=true with an
-# empty hand. Exercise the same native Create handler once with a disposable STONE stack
-# in the production smoke fixture only. Restore the original main-hand stack immediately
-# after invocation. This is a bounded functional probe, not production inventory/carry/
-# physics behavior, and it does not directly mutate the contraption block map.
+# Production-world #186 proved the empty-hand Create native dispatch reaches handled=true,
+# while the earlier Phase132 held-block marker never executed. Bind the disposable STONE
+# probe directly to that confirmed handled=true branch so the probe cannot silently attach
+# to an inactive duplicate invocation site. Restore the main hand in finally. This remains
+# fixture-only and does not directly mutate the contraption map, train state, or physics.
 if "GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE" not in source:
-    anchor = '''                                                    Object handled = settledExactRightClickMethod.invoke(
-                                                        null, client, net.minecraft.world.InteractionHand.MAIN_HAND);
-                                                    LOGGER.info(
-                                                        "GATE_F_NATIVE_RIGHT_CLICK_PROBE carriage_id={} player_tick={} invoked=true handled={} hand_empty_after={} readiness_source=create_native_ray_settled",
-                                                        carriage.getId(), player.tickCount, handled, player.getMainHandItem().isEmpty());'''
+    anchor = '''                                                    if (Boolean.TRUE.equals(handled)) {
+                                                        System.setProperty("vs2.productionNativeRightClickCarriageId", Integer.toString(carriage.getId()));'''
     if anchor not in source:
-        raise SystemExit("Phase 132 could not find confirmed native right-click invocation anchor")
-    replacement = anchor + '''
-                                                    net.minecraft.world.item.ItemStack phase132OriginalMainHand = player.getMainHandItem().copy();
-                                                    net.minecraft.world.item.ItemStack phase132ProbeStack = new net.minecraft.world.item.ItemStack(net.minecraft.world.level.block.Blocks.STONE, 1);
-                                                    Object phase132HeldBlockHandled = null;
-                                                    String phase132HeldBlockError = "none";
-                                                    try {
-                                                        player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, phase132ProbeStack);
-                                                        phase132HeldBlockHandled = settledExactRightClickMethod.invoke(
-                                                            null, client, net.minecraft.world.InteractionHand.MAIN_HAND);
-                                                    } catch (ReflectiveOperationException | RuntimeException phase132Exception) {
-                                                        phase132HeldBlockError = phase132Exception.getClass().getSimpleName();
-                                                    } finally {
-                                                        player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, phase132OriginalMainHand);
-                                                    }
-                                                    LOGGER.info(
-                                                        "GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE carriage_id={} player_tick={} invoked=true item=stone handled={} error={} restored_main_hand={} fixture_only=true",
-                                                        carriage.getId(), player.tickCount, phase132HeldBlockHandled, phase132HeldBlockError,
-                                                        player.getMainHandItem());'''
+        raise SystemExit("Phase 132 could not find confirmed handled=true native right-click branch")
+    replacement = '''                                                    if (Boolean.TRUE.equals(handled)) {
+                                                        net.minecraft.world.item.ItemStack phase132OriginalMainHand = player.getMainHandItem().copy();
+                                                        net.minecraft.world.item.ItemStack phase132ProbeStack = new net.minecraft.world.item.ItemStack(net.minecraft.world.level.block.Blocks.STONE, 1);
+                                                        Object phase132HeldBlockHandled = null;
+                                                        String phase132HeldBlockError = "none";
+                                                        try {
+                                                            player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, phase132ProbeStack);
+                                                            phase132HeldBlockHandled = settledExactRightClickMethod.invoke(
+                                                                null, client, net.minecraft.world.InteractionHand.MAIN_HAND);
+                                                        } catch (ReflectiveOperationException | RuntimeException phase132Exception) {
+                                                            phase132HeldBlockError = phase132Exception.getClass().getSimpleName();
+                                                        } finally {
+                                                            player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, phase132OriginalMainHand);
+                                                        }
+                                                        LOGGER.info(
+                                                            "GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE carriage_id={} player_tick={} invoked=true item=stone handled={} error={} restored_main_hand={} confirmed_branch=true fixture_only=true",
+                                                            carriage.getId(), player.tickCount, phase132HeldBlockHandled, phase132HeldBlockError,
+                                                            player.getMainHandItem());
+                                                        System.setProperty("vs2.productionNativeRightClickCarriageId", Integer.toString(carriage.getId()));'''
     source = source.replace(anchor, replacement, 1)
 
 # Production-world #185 proved the previous harness fix reached genuine Create contact
@@ -127,6 +124,7 @@ required = [
     "settledExactRightClickMethod.invoke(",
     "EquipmentSlot.MAINHAND",
     "phase132OriginalMainHand",
+    "confirmed_branch=true",
     "fixture_only=true",
     "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE",
     "phase133ReplayGrace",
@@ -148,4 +146,4 @@ for forbidden in ["setBlock(", ".put(", ".remove(", "player.setPos(", "player.se
         raise SystemExit("Phase 132 found forbidden direct mutation near native held-block probe: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 132: probes native held-block interaction and adds one bounded post-support Create-filtered carry replay grace; no new vector/teleport/physics path")
+print("Phase 132: binds native held-block probe to confirmed handled=true dispatch and preserves one bounded post-support Create-filtered carry replay grace")

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import re
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -125,3 +126,4 @@ if missing:
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 129: bounded fixture acquisition plus read-only post-acquisition Phase85 guard telemetry; production carry unchanged")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase130.py")), run_name="__main__")

@@ -61,3 +61,7 @@ for forbidden in ['Math.min(', 'Math.max(', 'clamp(', 'setPos(', 'setDeltaMoveme
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 108: delayed Create-filtered carry replay for two ticks after sibling-carriage baseline handoff; no vector clamp, teleport, train control, or VS2 physics change")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase105.py")), run_name="__main__")
+# Keep the cumulative smoke preparation chain advancing past Phase 108. The world/client
+# workflows intentionally enter through Phase 54, so without this link Phase 109+ scripts
+# exist in the repository but are never applied to the runtime under test.
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase109.py")), run_name="__main__")

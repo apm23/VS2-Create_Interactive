@@ -25,7 +25,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: Require confirmed player-held block native dispatch
+      - name: Require confirmed player-held block native dispatch and placement sync
         shell: bash
         run: |
           set -euo pipefail
@@ -36,4 +36,11 @@ jobs:
             grep -E 'GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED|GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE|GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED|GATE_F_PLAYER_BLOCK_PLACEMENT_ENTRYPOINT' "$LOG" | tail -160 || true
             exit 1
           fi
+          if ! grep -Eq 'VS2_CREATE_CELL_REPLICATION_CONFIRMED.*state=Block\{minecraft:stone\}.*state_match=true.*packet_authoritative=true' "$LOG" \
+            || ! grep -Eq 'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC.*state=Block\{minecraft:stone\}.*synced=true' "$LOG"; then
+            echo 'Production world did not prove authoritative held-block placement replication to the exact moving client carriage cell.'
+            grep -E 'VS2_CREATE_CELL_REPLICATION_CONFIRMED|GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED|GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC|GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED' "$LOG" | tail -200 || true
+            exit 1
+          fi
           echo 'PRODUCTION_INTERACTION held_block_native_dispatch_confirmed'
+          echo 'PRODUCTION_PLACEMENT held_block_authoritative_sync_confirmed'

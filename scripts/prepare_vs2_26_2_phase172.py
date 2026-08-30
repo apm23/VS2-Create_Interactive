@@ -7,59 +7,39 @@ contact_trace = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin
 source = client_probe.read_text(encoding="utf-8")
 contact_source = contact_trace.read_text(encoding="utf-8")
 
-# Production-world #330 reached the real train and proved carry, native handled right-click, and
-# packet-authoritative new-cell replication. During the bounded one-pulse walk, native Create carry
-# disappeared on alternating ticks: Phase161 recovery succeeded on ticks with a same-tick balance
-# measurement, but the immediately following no-measurement tick drifted by exactly carriage motion.
-# In the disposable production smoke fixture only, permit the already-measured material under-carry
-# result to remain valid for one additional tick when Phase170 proves no native Create application
-# happened this tick. This changes recovery eligibility only; Phase85 remains the sole producer of
-# the existing Create-computed/collision-filtered carry vector. No new movement vector or physics
-# behavior is introduced outside the fixture.
-anchor = '''        boolean phase170FixtureWalkRecoveryWindow = phase170FixtureWalkActive
-            && !phase170NativeContactAppliedThisTick;
-        boolean phase161SupportedLocomotionNativeLoss = productionSmoke && explicitCarryCompat'''
-replacement = '''        boolean phase170FixtureWalkRecoveryWindow = phase170FixtureWalkActive
-            && !phase170NativeContactAppliedThisTick;
-        boolean phase172PreviousMeasurement = Integer.toString(player.tickCount - 1).equals(
-            System.getProperty("vs2.phase161MeasurementTick." + carriage.getId()));
-        boolean phase172FixturePreviousUndercarry = phase170FixtureWalkRecoveryWindow
-            && phase172PreviousMeasurement
-            && Double.isFinite(phase161CarriageMotionSq) && Double.isFinite(phase161NativeCarryProjection)
-            && phase161CarriageMotionSq > 1.0E-8
-            && phase161NativeCarryProjection < phase161CarriageMotionSq * 0.75;
-        boolean phase161SupportedLocomotionNativeLoss = productionSmoke && explicitCarryCompat'''
+# Production-world #331 isolated the first walk-frame discontinuity to Create itself: active
+# carriage 5 applied its exact 2.9776-block native contact motion, then sibling carriage 7 applied
+# another 6.0569-block native contact motion in the same LocalPlayer tick, yielding the measured
+# 9.0345-block player delta. Before changing production behavior, prove the minimal hypothesis in
+# the disposable production smoke fixture: once the walk's active carriage has already supplied a
+# native contact motion in a tick, suppress only a later non-active sibling contact motion in that
+# same tick. No vector is synthesized or clamped; the active Create-computed motion remains intact.
+# Outside productionSmokeFixture this phase does not alter Create/VS2 movement behavior.
+
+walk_anchor = '''                            phase154WalkCarriageId = phase154Carriage.getId();\n                            phase154WalkStartLocal = phase154Local;'''
+walk_replacement = '''                            phase154WalkCarriageId = phase154Carriage.getId();\n                            System.setProperty("vs2.phase172WalkActiveCarriageId", Integer.toString(phase154WalkCarriageId));\n                            phase154WalkStartLocal = phase154Local;'''
 inserted = ""
-if "phase172FixturePreviousUndercarry" not in source:
-    if source.count(anchor) != 1:
-        raise SystemExit("Phase 172 expected exactly one Phase170 recovery-window declaration")
-    source = source.replace(anchor, replacement, 1)
-    inserted += replacement
+if "vs2.phase172WalkActiveCarriageId" not in source:
+    if source.count(walk_anchor) != 1:
+        raise SystemExit("Phase 172 expected exactly one Phase154 active-carriage start anchor")
+    source = source.replace(walk_anchor, walk_replacement, 1)
+    inserted += walk_replacement
 
-    decl_pos = source.find("boolean phase161SupportedLocomotionNativeLoss =")
-    decl_end = source.find(";", decl_pos)
-    if decl_pos < 0 or decl_end < 0:
-        raise SystemExit("Phase 172 could not bound Phase161 recovery predicate")
-    predicate = source[decl_pos:decl_end + 1]
-    old = "&& phase161MeasuredUndercarry;"
-    new = "&& (phase161MeasuredUndercarry || phase172FixturePreviousUndercarry);"
-    if predicate.count(old) != 1:
-        raise SystemExit("Phase 172 expected exactly one Phase161 undercarry terminal predicate")
-    predicate = predicate.replace(old, new, 1)
-    source = source[:decl_pos] + predicate + source[decl_end + 1:]
-    inserted += new
+inject_old = '''@Inject(method = "getContactPointMotion", at = @At("RETURN"), remap = false, require = 0)'''
+inject_new = '''@Inject(method = "getContactPointMotion", at = @At("RETURN"), remap = false, require = 0, cancellable = true)'''
+if "cancellable = true" not in contact_source:
+    if contact_source.count(inject_old) != 1:
+        raise SystemExit("Phase 172 expected exactly one contact-motion RETURN injection")
+    contact_source = contact_source.replace(inject_old, inject_new, 1)
+    inserted += inject_new
 
-    marker = '''        if (phase170FixtureWalkActive && phase170NativeContactAppliedThisTick) {'''
-    log = '''        if (phase172FixturePreviousUndercarry && !phase161MeasuredUndercarry) {
-            LOGGER.info(
-                "GATE_E_PHASE172_PREVIOUS_TICK_UNDERCARRY_RECOVERY player_tick={} carriage_id={} previous_measurement=true native_application_this_tick=false strict_support_required=true fixture_only=true",
-                player.tickCount, carriage.getId());
-        }
-'''
-    if source.count(marker) != 1:
-        raise SystemExit("Phase 172 expected exactly one Phase170 accounting log anchor")
-    source = source.replace(marker, log + marker, 1)
-    inserted += log
+contact_anchor = '''        if (phase170NativeClientColliderCall && phase170Player != null && motion.lengthSqr() > 1.0E-8) {\n            System.setProperty("vs2.phase170NativeContactApplicationTick", Integer.toString(phase170Player.tickCount));\n            System.setProperty("vs2.phase170NativeContactApplicationCarriageId", Integer.toString(self.getId()));'''
+contact_replacement = '''        if (phase170NativeClientColliderCall && phase170Player != null && motion.lengthSqr() > 1.0E-8) {\n            String phase172ActiveCarriageId = System.getProperty("vs2.phase172WalkActiveCarriageId");\n            boolean phase172FixtureWalkActive = java.lang.Boolean.getBoolean("vs2.productionSmokeFixture")\n                && phase172ActiveCarriageId != null;\n            boolean phase172ActiveAlreadyAppliedThisTick = phase172FixtureWalkActive\n                && Integer.toString(phase170Player.tickCount).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                && phase172ActiveCarriageId.equals(System.getProperty("vs2.phase170NativeContactApplicationCarriageId"));\n            boolean phase172DuplicateSiblingNativeCarry = phase172ActiveAlreadyAppliedThisTick\n                && !phase172ActiveCarriageId.equals(Integer.toString(self.getId()));\n            if (phase172DuplicateSiblingNativeCarry) {\n                LOGGER.info(\n                    "GATE_E_PHASE172_DUPLICATE_SIBLING_NATIVE_CARRY_SUPPRESSED player_tick={} active_carriage_id={} sibling_carriage_id={} sibling_motion={} active_already_applied=true fixture_only=true hypothesis_guard=true",\n                    phase170Player.tickCount, phase172ActiveCarriageId, self.getId(), motion);\n                cir.setReturnValue(net.minecraft.world.phys.Vec3.ZERO);\n                return;\n            }\n            System.setProperty("vs2.phase170NativeContactApplicationTick", Integer.toString(phase170Player.tickCount));\n            System.setProperty("vs2.phase170NativeContactApplicationCarriageId", Integer.toString(self.getId()));'''
+if "GATE_E_PHASE172_DUPLICATE_SIBLING_NATIVE_CARRY_SUPPRESSED" not in contact_source:
+    if contact_source.count(contact_anchor) != 1:
+        raise SystemExit("Phase 172 expected exactly one Phase170 native-application publication block")
+    contact_source = contact_source.replace(contact_anchor, contact_replacement, 1)
+    inserted += contact_replacement
 
 required_client = [
     "GATE_E_CARRIAGE_LOCAL_CONTINUITY",
@@ -67,19 +47,25 @@ required_client = [
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
     "GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED",
     "GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED",
-    "GATE_E_PHASE170_NATIVE_CONTACT_SUPPRESSES_RECOVERY",
-    "phase172FixturePreviousUndercarry",
-    "GATE_E_PHASE172_PREVIOUS_TICK_UNDERCARRY_RECOVERY",
-    "phase161MeasuredUndercarry || phase172FixturePreviousUndercarry",
+    "vs2.phase172WalkActiveCarriageId",
 ]
 required_contact = [
     "GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION",
     "GATE_E_PHASE171_CARRIAGE_FRAME_STEP",
+    "GATE_E_PHASE172_DUPLICATE_SIBLING_NATIVE_CARRY_SUPPRESSED",
+    "phase172ActiveAlreadyAppliedThisTick",
+    "phase172DuplicateSiblingNativeCarry",
+    "cir.setReturnValue(net.minecraft.world.phys.Vec3.ZERO)",
+    "cancellable = true",
+    "fixture_only=true",
 ]
 missing = [token for token in required_client if token not in source] + [token for token in required_contact if token not in contact_source]
 if missing:
-    raise SystemExit("Phase 172 lost bounded recovery/proof anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 172 lost duplicate-native-carry proof anchors: " + ", ".join(missing))
 
+# The only mutation introduced here is cancellation of a proven duplicate sibling return value in
+# the disposable fixture. It must not reposition the player, invent a carry vector, mutate trains,
+# blocks/world state, inventory, or VS2 physics.
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -88,4 +74,5 @@ for forbidden in [
         raise SystemExit("Phase 172 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 172: bridges one-tick fixture undercarry telemetry gaps without changing carry vectors or production physics")
+contact_trace.write_text(contact_source, encoding="utf-8")
+print("Phase 172: fixture-only proof suppresses a second sibling native Create carry after active-carriage carry already applied in the same tick")

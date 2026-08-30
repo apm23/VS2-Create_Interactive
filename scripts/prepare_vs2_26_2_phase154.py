@@ -9,20 +9,58 @@ source = client_probe.read_text(encoding="utf-8")
 # and authoritative moving-cell placement. The next safe gap is functional walking: drive the
 # normal client forward key for a short bounded interval after the exact authoritative moving
 # cell is visibly present on the client, then verify the player actually changed position in
-# the same moving carriage-local frame without losing ground/support. Phase118 intentionally
-# delays only its final exact-sync completion marker for eight ticks, giving this normal-key
-# fixture a bounded observation window before the workflow terminates the client. This is
-# smoke-fixture input only; it does not set player position/velocity, alter collision response,
-# train state, world blocks, or VS2/Create physics.
+# the same moving carriage-local frame without losing ground/support. Production-world #263
+# then exposed a pre-walk regression: carriage-local Y decays while onGround remains true and
+# the player subsequently exits broadphase before exact placement is reached. Capture a bounded
+# per-tick baseline-carriage trace before any walk input so the next run can distinguish native
+# carry/contact loss from the later walk fixture. This telemetry is read-only and does not alter
+# player position/velocity, collision response, train state, world blocks, or VS2/Create physics.
 field_anchor = '''    private static boolean nativeRightClickProbeDispatched;\n'''
-field_insert = field_anchor + '''    private static boolean phase154WalkStarted;\n    private static boolean phase154WalkFinished;\n    private static int phase154WalkStartTick = -1;\n    private static int phase154WalkCarriageId = -1;\n    private static net.minecraft.world.phys.Vec3 phase154WalkStartLocal;\n    private static net.minecraft.world.phys.Vec3 phase154WalkPreviousLocal;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
+field_insert = field_anchor + '''    private static boolean phase154WalkStarted;\n    private static boolean phase154WalkFinished;\n    private static int phase154WalkStartTick = -1;\n    private static int phase154WalkCarriageId = -1;\n    private static net.minecraft.world.phys.Vec3 phase154WalkStartLocal;\n    private static net.minecraft.world.phys.Vec3 phase154WalkPreviousLocal;\n    private static boolean phase154WalkSupportHealthy = true;\n    private static net.minecraft.world.phys.Vec3 phase154PreWalkPreviousLocal;\n    private static int phase154PreWalkPreviousTick = -1;\n'''
 if "phase154WalkStarted" not in source:
     if field_anchor not in source:
         raise SystemExit("Phase 154 could not find fixture field anchor")
     source = source.replace(field_anchor, field_insert, 1)
+elif "phase154PreWalkPreviousLocal" not in source:
+    existing_field = '''    private static boolean phase154WalkSupportHealthy = true;\n'''
+    if existing_field not in source:
+        raise SystemExit("Phase 154 could not find existing walk field tail")
+    source = source.replace(existing_field, existing_field + '''    private static net.minecraft.world.phys.Vec3 phase154PreWalkPreviousLocal;\n    private static int phase154PreWalkPreviousTick = -1;\n''', 1)
 
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
 probe = '''            if (productionSmokeFixture
+                    && player.tickCount >= 14 && player.tickCount <= 50
+                    && carryBaselineCarriageId != Integer.MIN_VALUE) {
+                net.minecraft.world.entity.Entity phase154PreWalkCarriage = client.level.getEntity(carryBaselineCarriageId);
+                if (phase154PreWalkCarriage != null
+                        && "create:carriage_contraption".equals(
+                            net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(phase154PreWalkCarriage.getType()).toString())) {
+                    try {
+                        java.lang.reflect.Method phase154PreWalkToLocal = phase154PreWalkCarriage.getClass().getMethod(
+                            "toLocalVector", net.minecraft.world.phys.Vec3.class, float.class);
+                        net.minecraft.world.phys.Vec3 phase154PreWalkLocal = (net.minecraft.world.phys.Vec3) phase154PreWalkToLocal.invoke(
+                            phase154PreWalkCarriage, player.position(), 0.0f);
+                        double phase154PreWalkStep = phase154PreWalkPreviousLocal == null
+                            || phase154PreWalkPreviousTick + 1 != player.tickCount
+                            ? 0.0 : phase154PreWalkLocal.distanceTo(phase154PreWalkPreviousLocal);
+                        boolean phase154PreWalkBroadphase = phase154PreWalkCarriage.getBoundingBox().inflate(2.0)
+                            .expandTowards(0.0, 32.0, 0.0).intersects(player.getBoundingBox());
+                        LOGGER.info(
+                            "GATE_E_PHASE154_PRE_WALK_TRACE player_tick={} carriage_id={} local={} local_step={} player_delta={} on_ground={} broadphase={} exact_cell_present={} walk_started={} read_only=true",
+                            player.tickCount, phase154PreWalkCarriage.getId(), phase154PreWalkLocal, phase154PreWalkStep,
+                            player.getDeltaMovement(), player.onGround(), phase154PreWalkBroadphase,
+                            java.lang.Boolean.getBoolean("vs2.productionNativePlacementExactCellPresent"), phase154WalkStarted);
+                        phase154PreWalkPreviousLocal = phase154PreWalkLocal;
+                        phase154PreWalkPreviousTick = player.tickCount;
+                    } catch (ReflectiveOperationException | RuntimeException phase154PreWalkException) {
+                        LOGGER.info(
+                            "GATE_E_PHASE154_PRE_WALK_TRACE player_tick={} carriage_id={} error={} read_only=true",
+                            player.tickCount, phase154PreWalkCarriage.getId(), phase154PreWalkException.getClass().getSimpleName());
+                    }
+                }
+            }
+
+            if (productionSmokeFixture
                     && java.lang.Boolean.getBoolean("vs2.productionNativePlacementExactCellPresent")
                     && !phase154WalkFinished) {
                 net.minecraft.world.entity.Entity phase154Carriage = null;
@@ -95,13 +133,21 @@ probe = '''            if (productionSmokeFixture
             }
 
 ''' + anchor
-if "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED" not in source:
+if "GATE_E_PHASE154_PRE_WALK_TRACE" not in source or "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED" not in source:
     if anchor not in source:
         raise SystemExit("Phase 154 could not find Gate E client-state anchor")
+    if "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED" in source:
+        raise SystemExit("Phase 154 found old walk probe without pre-walk trace; regenerate from pristine cumulative source")
     source = source.replace(anchor, probe, 1)
 
 required = [
     "phase154WalkStarted",
+    "phase154PreWalkPreviousLocal",
+    "GATE_E_PHASE154_PRE_WALK_TRACE",
+    "player.tickCount >= 14 && player.tickCount <= 50",
+    "player.getDeltaMovement()",
+    "exact_cell_present={}",
+    "walk_started={}",
     "GATE_E_PHASE154_FIXTURE_WALK_START",
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
@@ -115,7 +161,7 @@ required = [
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 154 lost bounded walk-fixture anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 154 lost bounded walk/pre-walk telemetry anchors: " + ", ".join(missing))
 
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
@@ -125,4 +171,4 @@ for forbidden in [
         raise SystemExit("Phase 154 introduced forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 154: drives a bounded fixture-only forward-key walk once the authoritative client cell is present and verifies same-carriage local movement without support loss")
+print("Phase 154: traces pre-walk baseline-carriage loss read-only, then drives bounded fixture-only forward-key walking only after exact authoritative cell presence")

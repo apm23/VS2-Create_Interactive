@@ -40,6 +40,21 @@ if "GATE_E_PHASE131_SUPPORT_SOURCE" not in source:
         f'{support_indent}    LOGGER.info(\n'
         f'{support_indent}        "GATE_E_PHASE131_SUPPORT_SOURCE player_tick={{}} carriage_id={{}} physical_support={{}} vertical_gap={{}} simplified_state={{}} read_only=true",\n'
         f'{support_indent}        player.tickCount, carriage.getId(), phase81PhysicalSupport, phase81VerticalGap, simplifiedColliderState);\n'
+        f'{support_indent}    int productionSmokeSupportLossTicks;\n'
+        f'{support_indent}    try {{\n'
+        f'{support_indent}        productionSmokeSupportLossTicks = Integer.parseInt(System.getProperty("vs2.productionSmokeSupportLossTicks", "0"));\n'
+        f'{support_indent}    }} catch (NumberFormatException ignored) {{\n'
+        f'{support_indent}        productionSmokeSupportLossTicks = 0;\n'
+        f'{support_indent}    }}\n'
+        f'{support_indent}    productionSmokeSupportLossTicks = phase81PhysicalSupport ? 0 : productionSmokeSupportLossTicks + 1;\n'
+        f'{support_indent}    System.setProperty("vs2.productionSmokeSupportLossTicks", Integer.toString(productionSmokeSupportLossTicks));\n'
+        f'{support_indent}    LOGGER.info(\n'
+        f'{support_indent}        "GATE_E_PHASE131_SUPPORT_STREAK player_tick={{}} carriage_id={{}} physical_support={{}} consecutive_loss_ticks={{}} broadphase={{}} on_ground={{}} fixture_only=true",\n'
+        f'{support_indent}        player.tickCount, carriage.getId(), phase81PhysicalSupport, productionSmokeSupportLossTicks, broadphaseOverlap, player.onGround());\n'
+        f'{support_indent}    if (productionSmokeSupportLossTicks >= 3 && broadphaseOverlap && player.onGround()) {{\n'
+        f'{support_indent}        throw new IllegalStateException("Production smoke rejected unsupported carriage-local carry continuity after "\n'
+        f'{support_indent}            + productionSmokeSupportLossTicks + " consecutive ticks");\n'
+        f'{support_indent}    }}\n'
         f'{support_indent}}}\n\n'
     )
     source = source[:support_if_pos] + probe + source[support_if_pos:]
@@ -67,6 +82,9 @@ if "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION" not in source:
 
 required = [
     'GATE_E_PHASE131_SUPPORT_SOURCE',
+    'GATE_E_PHASE131_SUPPORT_STREAK',
+    'vs2.productionSmokeSupportLossTicks',
+    'Production smoke rejected unsupported carriage-local carry continuity',
     'simplified_state={}',
     'phase81PhysicalSupport',
     'phase81VerticalGap',
@@ -86,4 +104,4 @@ for forbidden in ['setBlock(', 'setPos(', 'setDeltaMovement(', '.useItemOn(', '.
         raise SystemExit("Phase 130 correlation telemetry found forbidden mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 130: exposes Phase81 support source and enforces same-carriage confirmed native interaction/placement correlation in the production smoke fixture; production carry unchanged")
+print("Phase 130: rejects unsupported production-smoke carry false positives and enforces same-carriage confirmed native interaction/placement correlation; production carry unchanged")

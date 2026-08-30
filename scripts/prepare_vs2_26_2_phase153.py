@@ -15,10 +15,15 @@ source = client_probe.read_text(encoding="utf-8")
 # path reaches handled=true, but unlike the direct Phase152 path it still left the disposable
 # client fixture STONE in hand. Clear only that client fixture hand after handled dispatch so
 # both native-dispatch paths expose the same postcondition; the authoritative server hand
-# remains independently guarded/restored by Phase136. The downstream held-block gate consumes
-# the canonical NATIVE_RIGHT_CLICK_PROBE + NATIVE_RIGHT_CLICK_CONFIRMED pair, so assert both
-# markers remain present in the generated source. This is fixture-only handshake logic:
-# no movement, collision, train, world/contraption, schedule, or VS2 physics mutation.
+# remains independently guarded/restored by Phase136.
+#
+# Production-world #340 proved a pending ray can be stale by the time the server arm becomes
+# visible: tick 19 had an exact Create ray, tick 20 was a MISS, and the retry returned
+# handled=false. Do not consume the global one-shot dispatch/completion latch for that
+# unhandled attempt. This leaves the authoritative server arm alive and permits a later fresh
+# exact settled ray (the same run observed fresh exact rays again at ticks 30/31) to use the
+# normal Phase152 path. This is fixture-only handshake state; no movement, collision, train,
+# world/contraption, schedule, or VS2 physics mutation is introduced.
 field_anchor = '''    private static boolean nativeRightClickProbeDispatched;\n'''
 field_insert = field_anchor + '''    private static java.lang.reflect.Method phase153PendingHeldBlockRightClickMethod;\n    private static int phase153PendingHeldBlockCarriageId = -1;\n    private static int phase153PendingHeldBlockRayTick = -1;\n'''
 if "phase153PendingHeldBlockRightClickMethod" not in source:
@@ -58,7 +63,6 @@ retry = '''                    if (productionSmokeFixture
                             && Boolean.getBoolean("vs2.productionHeldBlockServerArmed")
                             && !nativeRightClickProbeDispatched) {
                         try {
-                            nativeRightClickProbeDispatched = true;
                             boolean phase153ClientMirrorInjected = !player.getMainHandItem().is(net.minecraft.world.level.block.Blocks.STONE.asItem());
                             if (phase153ClientMirrorInjected) {
                                 player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND,
@@ -66,17 +70,18 @@ retry = '''                    if (productionSmokeFixture
                             }
                             Object phase153Handled = phase153PendingHeldBlockRightClickMethod.invoke(
                                 null, client, net.minecraft.world.InteractionHand.MAIN_HAND);
-                            System.setProperty("vs2.productionHeldBlockNativeDispatchCompleted", "true");
                             if (Boolean.TRUE.equals(phase153Handled)) {
+                                nativeRightClickProbeDispatched = true;
+                                System.setProperty("vs2.productionHeldBlockNativeDispatchCompleted", "true");
                                 player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND,
                                     net.minecraft.world.item.ItemStack.EMPTY);
                             }
                             LOGGER.info(
-                                "GATE_F_NATIVE_RIGHT_CLICK_PROBE carriage_id={} player_tick={} invoked=true handled={} hand_empty_after={} readiness_source=server_arm_retry server_held_block_armed=true pending_ray_tick={} phase153_retry=true fixture_hand_cleared_after_handled=true",
+                                "GATE_F_NATIVE_RIGHT_CLICK_PROBE carriage_id={} player_tick={} invoked=true handled={} hand_empty_after={} readiness_source=server_arm_retry server_held_block_armed=true pending_ray_tick={} phase153_retry=true fixture_hand_cleared_after_handled=true retry_remains_open_after_unhandled=true",
                                 localFrameCarriage.getId(), player.tickCount, phase153Handled, player.getMainHandItem().isEmpty(), phase153PendingHeldBlockRayTick);
                             LOGGER.info(
-                                "GATE_F_PHASE153_SERVER_ARM_RETRY_DISPATCH carriage_id={} player_tick={} pending_ray_tick={} invoked=true handled={} client_mirror_injected={} item_after={} fixture_only=true",
-                                localFrameCarriage.getId(), player.tickCount, phase153PendingHeldBlockRayTick, phase153Handled, phase153ClientMirrorInjected, player.getMainHandItem());
+                                "GATE_F_PHASE153_SERVER_ARM_RETRY_DISPATCH carriage_id={} player_tick={} pending_ray_tick={} invoked=true handled={} client_mirror_injected={} item_after={} one_shot_consumed={} fixture_only=true",
+                                localFrameCarriage.getId(), player.tickCount, phase153PendingHeldBlockRayTick, phase153Handled, phase153ClientMirrorInjected, player.getMainHandItem(), Boolean.TRUE.equals(phase153Handled));
                             if (Boolean.TRUE.equals(phase153Handled)) {
                                 LOGGER.info(
                                     "GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED carriage_id={} player_tick={} handled=true target_source=server_arm_retry",
@@ -114,6 +119,7 @@ required = [
     "player.onGround()",
     "nativeRightClickProbeDispatched",
     "fixture_hand_cleared_after_handled=true",
+    "retry_remains_open_after_unhandled=true",
     "ItemStack.EMPTY",
 ]
 missing = [token for token in required if token not in source]
@@ -125,5 +131,5 @@ for forbidden in ["player.setPos(", "player.setDeltaMovement(", ".teleport", "se
         raise SystemExit("Phase 153 introduced forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 153: retries the single-tick exact Create ray after authoritative server arm on same-carriage stable support, clears only the disposable client fixture hand after handled dispatch, and preserves canonical downstream gate markers")
+print("Phase 153: retries a pending exact Create ray after authoritative server arm without consuming the one-shot latch on handled=false, then permits a later fresh exact ray; fixture handshake only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase154.py")), run_name="__main__")

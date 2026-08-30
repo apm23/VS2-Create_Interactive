@@ -32,6 +32,8 @@ jobs:
         run: |
           set -euo pipefail
           for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase131.py
+          ! grep -q '&& &&' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'boolean productionSmoke = Boolean.getBoolean("vs2.productionSmoke");' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'boolean ciHarness = Boolean.getBoolean("vs2.gateD")' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q '!productionSmoke' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java

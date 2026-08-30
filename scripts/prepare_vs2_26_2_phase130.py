@@ -60,7 +60,7 @@ if "vs2.productionNativeRightClickCarriageId" not in source:
 
 if "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION" not in source:
     exact_sync_anchor = '''                            System.setProperty("vs2.productionNativePlacementClientObserved", "true");\n                            System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");\n                            LOGGER.info(\n                                "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",'''
-    exact_sync_replacement = '''                            System.setProperty("vs2.productionNativePlacementClientObserved", "true");\n                            System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");\n                            String nativeRightClickCarriageIdText = System.getProperty("vs2.productionNativeRightClickCarriageId");\n                            boolean interactionPlacementSameCarriage = nativeRightClickCarriageIdText != null\n                                && nativeRightClickCarriageIdText.equals(Integer.toString(exactCarriageId));\n                            LOGGER.info(\n                                "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION interaction_carriage_id={} placement_carriage_id={} same_carriage={} read_only=true",\n                                nativeRightClickCarriageIdText, exactCarriageId, interactionPlacementSameCarriage);\n                            LOGGER.info(\n                                "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",'''
+    exact_sync_replacement = '''                            System.setProperty("vs2.productionNativePlacementClientObserved", "true");\n                            System.setProperty("vs2.productionNativePlacementExactClientObserved", "true");\n                            String nativeRightClickCarriageIdText = System.getProperty("vs2.productionNativeRightClickCarriageId");\n                            boolean interactionPlacementSameCarriage = nativeRightClickCarriageIdText != null\n                                && nativeRightClickCarriageIdText.equals(Integer.toString(exactCarriageId));\n                            LOGGER.info(\n                                "GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION interaction_carriage_id={} placement_carriage_id={} same_carriage={} read_only=true",\n                                nativeRightClickCarriageIdText, exactCarriageId, interactionPlacementSameCarriage);\n                            if (productionSmokeFixture && nativeRightClickCarriageIdText != null && !interactionPlacementSameCarriage) {\n                                throw new IllegalStateException("Production smoke interaction/placement carriage mismatch: interaction="\n                                    + nativeRightClickCarriageIdText + " placement=" + exactCarriageId);\n                            }\n                            LOGGER.info(\n                                "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} player_tick={} empty_local={} entity_present={} entry_present={} state={} synced=true read_only=true",'''
     if exact_sync_anchor not in source:
         raise SystemExit("Phase 130 could not find exact placement sync anchor")
     source = source.replace(exact_sync_anchor, exact_sync_replacement, 1)
@@ -74,6 +74,7 @@ required = [
     'vs2.productionNativeRightClickCarriageId',
     'GATE_F_INTERACTION_PLACEMENT_CARRIAGE_CORRELATION',
     'interactionPlacementSameCarriage',
+    'Production smoke interaction/placement carriage mismatch',
     'read_only=true',
 ]
 missing = [token for token in required if token not in source]
@@ -85,4 +86,4 @@ for forbidden in ['setBlock(', 'setPos(', 'setDeltaMovement(', '.useItemOn(', '.
         raise SystemExit("Phase 130 correlation telemetry found forbidden mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 130: exposes Phase81 support source and correlates confirmed native interaction with exact placement carriage read-only; production carry unchanged")
+print("Phase 130: exposes Phase81 support source and enforces same-carriage confirmed native interaction/placement correlation in the production smoke fixture; production carry unchanged")

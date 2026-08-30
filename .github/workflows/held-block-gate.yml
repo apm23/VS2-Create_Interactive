@@ -31,15 +31,21 @@ jobs:
           set -euo pipefail
           LOG=diagnostics/production-world-smoke.log
           test -f "$LOG"
-          if ! grep -Eq 'GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED.*invoked=true.*item=stone.*handled=true.*error=none.*confirmed_branch=true.*fixture_only=true' "$LOG"; then
-            echo 'Production world did not prove held-block STONE dispatch through the confirmed Create moving-contraption handler.'
-            grep -E 'GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED|GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE|GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED|GATE_F_PLAYER_BLOCK_PLACEMENT_ENTRYPOINT' "$LOG" | tail -160 || true
+          if ! grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_PROBE.*invoked=true.*handled=true.*hand_empty_after=true.*readiness_source=(executed_settled_native_ray|server_arm_retry).*server_held_block_armed=true' "$LOG" \
+            || ! grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED.*handled=true' "$LOG"; then
+            echo 'Production world did not prove current canonical held-block native Create dispatch.'
+            grep -E 'GATE_F_NATIVE_RIGHT_CLICK_PROBE|GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED|GATE_F_PHASE152_EXECUTED_SITE_HELD_BLOCK_DISPATCH|GATE_F_PHASE153_SERVER_ARM_RETRY_DISPATCH|GATE_F_PLAYER_BLOCK_PLACEMENT_ENTRYPOINT' "$LOG" | tail -200 || true
+            exit 1
+          fi
+          if ! grep -Eq 'GATE_F_PLAYER_BLOCK_PLACEMENT_ENTRYPOINT.*exact=true.*target_ready=true' "$LOG"; then
+            echo 'Production world did not expose the exact player block-placement entrypoint for the moving contraption target.'
+            grep -E 'GATE_F_PLAYER_BLOCK_PLACEMENT_ENTRYPOINT|GATE_F_NATIVE_RIGHT_CLICK_PROBE|GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED' "$LOG" | tail -160 || true
             exit 1
           fi
           if ! grep -Eq 'VS2_CREATE_CELL_REPLICATION_CONFIRMED.*state=Block\{minecraft:stone\}.*state_match=true.*packet_authoritative=true' "$LOG" \
             || ! grep -Eq 'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC.*state=Block\{minecraft:stone\}.*synced=true' "$LOG"; then
             echo 'Production world did not prove authoritative held-block placement replication to the exact moving client carriage cell.'
-            grep -E 'VS2_CREATE_CELL_REPLICATION_CONFIRMED|GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED|GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC|GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED' "$LOG" | tail -200 || true
+            grep -E 'VS2_CREATE_CELL_REPLICATION_CONFIRMED|GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED|GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC|GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED' "$LOG" | tail -200 || true
             exit 1
           fi
           echo 'PRODUCTION_INTERACTION held_block_native_dispatch_confirmed'

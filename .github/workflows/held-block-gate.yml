@@ -1,0 +1,39 @@
+name: held-block-gate
+
+on:
+  workflow_run:
+    workflows: ["production-world-smoke"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  held-block-native-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require source production-world success
+        shell: bash
+        run: test '${{ github.event.workflow_run.conclusion }}' = 'success'
+
+      - name: Download production-world diagnostics
+        uses: actions/download-artifact@v5
+        with:
+          name: vs2-production-real-train-world-smoke-log
+          path: diagnostics
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Require confirmed player-held block native dispatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=diagnostics/production-world-smoke.log
+          test -f "$LOG"
+          if ! grep -Eq 'GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED.*invoked=true.*item=stone.*handled=true.*error=none.*confirmed_branch=true.*fixture_only=true' "$LOG"; then
+            echo 'Production world did not prove held-block STONE dispatch through the confirmed Create moving-contraption handler.'
+            grep -E 'GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED|GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE|GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED|GATE_F_PLAYER_BLOCK_PLACEMENT_ENTRYPOINT' "$LOG" | tail -160 || true
+            exit 1
+          fi
+          echo 'PRODUCTION_INTERACTION held_block_native_dispatch_confirmed'

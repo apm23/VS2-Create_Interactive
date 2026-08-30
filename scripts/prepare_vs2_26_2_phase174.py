@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -11,23 +12,32 @@ source = client_probe.read_text(encoding="utf-8")
 # that marker only to recognize the validated local fallback; native right-click has a
 # separate mandatory gate afterwards. Restore the read-only contract marker at the exact
 # point where syntheticFieldsMatch is known. No interaction is dispatched here.
-anchor = '''                                                            syntheticContraptionHit.isInside(), syntheticContraptionHit.getType());
-                                                        roundtripState = "face=" + localFace
-'''
-replacement = '''                                                            syntheticContraptionHit.isInside(), syntheticContraptionHit.getType());
-                                                        if (syntheticFieldsMatch) {
-                                                            LOGGER.info(
-                                                                "GATE_F_INTERACTION_DISPATCH_CANDIDATE carriage_id={} player_tick={} exact_handle_player_interaction=true source=validated_exact_local_hit read_only=true",
-                                                                carriage.getId(), player.tickCount);
-                                                        }
-                                                        roundtripState = "face=" + localFace
-'''
 inserted = ""
-if "source=validated_exact_local_hit read_only=true" not in source:
-    if source.count(anchor) != 1:
-        raise SystemExit("Phase 174 expected exactly one validated synthetic-hit anchor")
-    source = source.replace(anchor, replacement, 1)
-    inserted = replacement
+marker = "source=validated_exact_local_hit read_only=true"
+if marker not in source:
+    pattern = re.compile(
+        r'(?P<indent>[ \t]*)LOGGER\.info\(\s*\n'
+        r'(?P=indent)[ \t]+"GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED[^\n]*\n'
+        r'.*?syntheticContraptionHit\.getType\(\)\);',
+        re.DOTALL,
+    )
+    matches = list(pattern.finditer(source))
+    if len(matches) != 1:
+        raise SystemExit(
+            f"Phase 174 expected exactly one synthetic-hit log statement, found {len(matches)}"
+        )
+    match = matches[0]
+    indent = match.group("indent")
+    addition = (
+        "\n"
+        + indent + "if (syntheticFieldsMatch) {\n"
+        + indent + "    LOGGER.info(\n"
+        + indent + "        \"GATE_F_INTERACTION_DISPATCH_CANDIDATE carriage_id={} player_tick={} exact_handle_player_interaction=true source=validated_exact_local_hit read_only=true\",\n"
+        + indent + "        carriage.getId(), player.tickCount);\n"
+        + indent + "}"
+    )
+    source = source[:match.end()] + addition + source[match.end():]
+    inserted = addition
 
 required = [
     "GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED",

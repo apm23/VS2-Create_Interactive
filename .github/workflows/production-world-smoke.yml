@@ -362,9 +362,13 @@ jobs:
               r'VS2_CREATE_CELL_REPLICATION_CONFIRMED[^\n]*entity_id=(\d+)[^\n]*local_pos=(BlockPos\{x=-?\d+, y=-?\d+, z=-?\d+\})[^\n]*state=Block\{minecraft:stone\}[^\n]*entry_present=true[^\n]*state_match=true[^\n]*packet_authoritative=true',
               text,
           ))
+          walk_confirmed = re.search(
+              r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*on_ground=true[^\n]*broadphase=true[^\n]*support_healthy=true[^\n]*confirmed=true[^\n]*fixture_only=true',
+              text,
+          ) is not None
           for target in targets:
-              if target in replications:
-                  print(f'PRODUCTION_PLACEMENT authoritative_moving_cell_synced carriage_id={target[0]} local_pos={target[1]} source=packet_authoritative')
+              if target in replications and walk_confirmed:
+                  print(f'PRODUCTION_PLACEMENT authoritative_moving_cell_synced_after_walk carriage_id={target[0]} local_pos={target[1]} source=packet_authoritative')
                   raise SystemExit(0)
           raise SystemExit(1)
           PY
@@ -377,14 +381,14 @@ jobs:
             sleep 1
           done
           if [ "$PLACEMENT_SYNC_READY" -ne 1 ]; then
-            echo 'Production world did not prove authoritative new-cell placement replication on the exact published moving-carriage target.'
-            grep -E 'VS2_CREATE_CELL_REPLICATION_CONFIRMED|GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED|GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC' ../production-world-smoke.log | tail -160 || true
+            echo 'Production world did not prove authoritative new-cell placement replication plus bounded supported walking on the exact published moving-carriage target.'
+            grep -E 'VS2_CREATE_CELL_REPLICATION_CONFIRMED|GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED|GATE_E_PHASE154_FIXTURE_WALK_(START|SAMPLE|CONFIRMED)|GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC' ../production-world-smoke.log | tail -240 || true
             exit 1
           fi
 
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Production sustained carriage-local carry continuity, interaction targeting/entrypoint, confirmed native dispatch when available, and authoritative moving-carriage placement replication passed.'
+          echo 'Production sustained carriage-local carry continuity, interaction targeting/entrypoint, confirmed native dispatch when available, authoritative moving-carriage placement replication, and bounded supported walking passed.'
 
       - name: Upload production real-world diagnostics
         if: always()

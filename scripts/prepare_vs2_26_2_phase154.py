@@ -7,10 +7,10 @@ source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #265 and walk-gate #8 prove bounded normal-key walking can displace the
 # player while remaining grounded and inside one moving Create carriage frame. Strengthen
-# that functional proof from five to twenty ticks before moving on to less-bounded movement.
-# Capture the existing bounded pre-walk trace as before. This fixture uses only the vanilla
-# forward key and does not alter player position/velocity, collision response, train state,
-# world blocks, or VS2/Create physics.
+# that functional proof from five to twenty ticks. Phase128 now publishes authoritative
+# exact-cell readiness but deliberately defers the historical placement completion marker;
+# publish that marker only after this walk succeeds so production-world keeps the client
+# alive for the complete movement proof. No player/train/physics behavior is changed.
 field_anchor = '''    private static boolean nativeRightClickProbeDispatched;\n'''
 field_insert = field_anchor + '''    private static boolean phase154WalkStarted;\n    private static boolean phase154WalkFinished;\n    private static int phase154WalkStartTick = -1;\n    private static int phase154WalkCarriageId = -1;\n    private static net.minecraft.world.phys.Vec3 phase154WalkStartLocal;\n    private static net.minecraft.world.phys.Vec3 phase154WalkPreviousLocal;\n    private static boolean phase154WalkSupportHealthy = true;\n    private static net.minecraft.world.phys.Vec3 phase154PreWalkPreviousLocal;\n    private static int phase154PreWalkPreviousTick = -1;\n'''
 if "phase154WalkStarted" not in source:
@@ -115,6 +115,11 @@ probe = '''            if (productionSmokeFixture
                                     player.tickCount, phase154Carriage.getId(), phase154WalkStartLocal, phase154Local,
                                     phase154LocalDistance, player.tickCount - phase154WalkStartTick, player.onGround(), phase154Broadphase,
                                     phase154WalkSupportHealthy, phase154Confirmed);
+                                if (phase154Confirmed) {
+                                    LOGGER.info(
+                                        "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id={} state=Block{{minecraft:stone}} synced=true packet_authoritative=true released_after_walk=true duration_ticks={}",
+                                        phase154Carriage.getId(), player.tickCount - phase154WalkStartTick);
+                                }
                             }
                         }
                     } catch (ReflectiveOperationException | RuntimeException phase154Exception) {
@@ -147,6 +152,9 @@ required = [
     "GATE_E_PHASE154_FIXTURE_WALK_START",
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
+    "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC",
+    "released_after_walk=true",
+    "state=Block{{minecraft:stone}}",
     "vs2.productionNativePlacementExactCellPresent",
     "vs2.productionFixtureWalkConfirmed",
     "client.options.keyUp.setDown(true)",
@@ -169,4 +177,4 @@ for forbidden in [
         raise SystemExit("Phase 154 introduced forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 154: traces pre-walk baseline-carriage continuity, then drives a twenty-tick fixture-only forward-key walk after exact authoritative cell presence")
+print("Phase 154: runs twenty-tick fixture-only forward-key walking and releases placement completion only after supported same-carriage movement succeeds")

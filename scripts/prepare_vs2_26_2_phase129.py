@@ -6,13 +6,12 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #133 showed a harness race rather than a production carry failure:
-# the one-shot simplified-collider normalization ran while the train was moving several
-# blocks per client tick, so the carriage outran the fixture before Create could promote
-# LocalPlayer to genuine contact/onGround. Re-acquire the same real Create simplified
-# collider for a small bounded setup window, but only while genuine onGround contact is
-# still absent. The production carry proof already requires on_ground=true, so none of
-# these assisted acquisition ticks can satisfy the sustained stability gate.
+# Production-world #137 proved that vanilla onGround is not a valid completion signal
+# for Create contact acquisition: onGround stayed true while Create contact expired and
+# the moving carriage outran the LocalPlayer. Keep the archived-world setup deterministic
+# by reacquiring the real simplified collider for exactly twelve bounded fixture ticks,
+# regardless of vanilla onGround. Carry proof is explicitly delayed until that assisted
+# setup window is over, so no repositioned sample can satisfy the production stability gate.
 field_old = '''    private static boolean fixtureColliderNormalized;\n'''
 field_new = '''    private static boolean fixtureColliderNormalized;\n    private static int fixtureContactAcquireTicks;\n'''
 if "fixtureContactAcquireTicks" not in source:
@@ -30,8 +29,6 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     )
     match = pattern.search(source)
     if match is None:
-        # Some phases wrap the condition across lines. Use a bounded multiline form,
-        # still requiring fixtureColliderNormalized and the immediately following try.
         pattern = re.compile(
             r'(?P<indent>\s*)if \((?P<cond>[\s\S]{0,500}?fixtureColliderNormalized[\s\S]{0,500}?)\) \{\n(?P=indent)    try \{'
         )
@@ -46,8 +43,8 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
 
     replacement = (
         f'{indent}if (({cond})\n'
-        f'{indent}        || (productionSmokeFixture && !player.onGround() && fixtureContactAcquireTicks < 12)) {{\n'
-        f'{indent}    if (productionSmokeFixture && !player.onGround()) {{\n'
+        f'{indent}        || (productionSmokeFixture && fixtureContactAcquireTicks < 12)) {{\n'
+        f'{indent}    if (productionSmokeFixture && fixtureContactAcquireTicks < 12) {{\n'
         f'{indent}        fixtureContactAcquireTicks++;\n'
         f'{indent}        LOGGER.info(\n'
         f'{indent}            "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={{}} attempt={{}} bounded=true fixture_only=true",\n'
@@ -57,17 +54,30 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     )
     source = source[:match.start()] + replacement + source[match.end():]
 
+# Phase 127 continuity telemetry must only observe unassisted production carry. Extend
+# its observation tail slightly, but suppress every sample until all twelve fixture-only
+# acquisition attempts are complete. This prevents the setup repositions from making the
+# sustained carriage-local gate pass artificially.
+continuity_old = 'if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 32) {'
+continuity_new = 'if (productionSmokeFixture && fixtureContactAcquireTicks >= 12 && player.tickCount >= 14 && player.tickCount <= 40) {'
+if continuity_new not in source:
+    if continuity_old not in source:
+        raise SystemExit("Phase 129 could not isolate Phase 127 continuity proof from fixture acquisition")
+    source = source.replace(continuity_old, continuity_new, 1)
+
 required = [
-    'fixtureContactAcquireTicks < 12',
-    'productionSmokeFixture && !player.onGround()',
+    'productionSmokeFixture && fixtureContactAcquireTicks < 12',
+    'fixtureContactAcquireTicks >= 12',
+    'player.tickCount <= 40',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',
     'bounded=true fixture_only=true',
     'GATE_E_FIXTURE_COLLIDER_NEAREST_FALLBACK',
     'GATE_E_FIXTURE_COLLIDER_REPOSITIONED',
+    'GATE_E_CARRIAGE_LOCAL_CONTINUITY',
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 129 lost bounded fixture-contact anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 129 lost bounded fixture-contact/carry-proof anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 129: resilient bounded fixture-only collider reacquisition until genuine Create standing contact; production carry unchanged")
+print("Phase 129: bounded 12-tick fixture contact acquisition, then unassisted carriage-local carry proof; production carry unchanged")

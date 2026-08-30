@@ -16,7 +16,7 @@ java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import net.minecraft.network.protocol.Packet;
-import org.spongepowered.asm.mixin.Coerce;
+import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

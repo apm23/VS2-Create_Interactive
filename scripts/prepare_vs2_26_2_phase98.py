@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 server_probe = ROOT / "fabric/src/main/kotlin/org/valkyrienskies/mod/fabric/common/GateDProbe.kt"
 source = client_probe.read_text(encoding="utf-8")
+cumulative_prepared = "GATE_E_PHASE130_REPLAY_GUARD" in source
 
 # Production-world #41 proved sustained carry plus a stable Create-native ray target,
 # and Phase 97 proved that target matches the independently-derived local block/face.
@@ -44,12 +45,7 @@ if "GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT" not in source:
         raise SystemExit("Phase 98 could not find Phase 97 deep native-ray anchor")
     source = source.replace(anchor, replacement, 1)
 
-# Production-world #44 proved the delayed fixture restores sustained carry and that
-# Create's native ray, our independently-derived synthetic target, and the exact
-# high-level right-click entrypoint all agree on a moving carriage block. Before any
-# dispatch experiment, profile that exact native target and the player's main hand so
-# we know whether the fixture is pointing at inert structure or an interactive block.
-# Reflection only reads contraption block metadata; it never invokes interaction code.
+# Profile the exact native target and main hand read-only.
 profile_anchor = '''                                                                            nativeRayState = "hit=" + nativeHit.getBlockPos().toShortString()
                                                                                 + ";face=" + nativeHit.getDirection()
                                                                                 + ";target_match=" + nativeHit.getBlockPos().equals(syntheticContraptionHit.getBlockPos())
@@ -82,33 +78,31 @@ if "GATE_F_INTERACTION_TARGET_PROFILE" not in source:
         raise SystemExit("Phase 98 could not find Phase 97 native-hit profile anchor")
     source = source.replace(profile_anchor, profile_replacement, 1)
 
-# Production-world #45 showed tick >=20 is too late on a slower client: Create had
-# already advanced from carriage id 2 through ids 7/8/10 before LocalPlayer fixture
-# normalization, so the train moved away while server/client fixture timing diverged.
-# The startup discontinuity itself is already complete by the transition after player
-# tick 12. Start the one-shot production fixture at tick 14 instead: after the startup
-# jump, but before sustained travel can outrun the client fixture. Normal CI and all
-# production gameplay paths remain unchanged and the fixture still runs only once.
+# On the first cumulative pass, narrow the production-only fixture to tick 14. A later
+# explicit production-world Phase 98 pass can occur after Phase 130 has structurally
+# rewritten these guards; in that state the Phase 98 telemetry is already installed and
+# the fixed-tick guard must not be searched/reapplied.
 old_client_fixture_20 = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 20)) && !fixtureClientNormalized'
 new_client_fixture = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 14)) && !fixtureClientNormalized'
 old_client_fixture = 'if ((ciHarness || productionSmokeFixture) && !fixtureClientNormalized'
 old_collider_fixture_20 = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 20)) && !fixtureColliderNormalized'
 new_collider_fixture = 'if ((ciHarness || (productionSmokeFixture && player.tickCount >= 14)) && !fixtureColliderNormalized'
 old_collider_fixture = 'if ((ciHarness || productionSmokeFixture) && !fixtureColliderNormalized'
-if new_client_fixture not in source:
-    if old_client_fixture_20 in source:
-        source = source.replace(old_client_fixture_20, new_client_fixture, 1)
-    elif old_client_fixture in source:
-        source = source.replace(old_client_fixture, new_client_fixture, 1)
-    else:
-        raise SystemExit("Phase 98 could not find production client fixture guard")
-if new_collider_fixture not in source:
-    if old_collider_fixture_20 in source:
-        source = source.replace(old_collider_fixture_20, new_collider_fixture, 1)
-    elif old_collider_fixture in source:
-        source = source.replace(old_collider_fixture, new_collider_fixture, 1)
-    else:
-        raise SystemExit("Phase 98 could not find production collider fixture guard")
+if not cumulative_prepared:
+    if new_client_fixture not in source:
+        if old_client_fixture_20 in source:
+            source = source.replace(old_client_fixture_20, new_client_fixture, 1)
+        elif old_client_fixture in source:
+            source = source.replace(old_client_fixture, new_client_fixture, 1)
+        else:
+            raise SystemExit("Phase 98 could not find production client fixture guard")
+    if new_collider_fixture not in source:
+        if old_collider_fixture_20 in source:
+            source = source.replace(old_collider_fixture_20, new_collider_fixture, 1)
+        elif old_collider_fixture in source:
+            source = source.replace(old_collider_fixture, new_collider_fixture, 1)
+        else:
+            raise SystemExit("Phase 98 could not find production collider fixture guard")
 
 required = [
     'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT',
@@ -120,8 +114,9 @@ required = [
     'getContraptionMethod.invoke(carriage)',
     'blockMap.get(nativeHit.getBlockPos())',
     'player.getMainHandItem().isEmpty()',
-    '(productionSmokeFixture && player.tickCount >= 14)',
 ]
+if not cumulative_prepared:
+    required.append('(productionSmokeFixture && player.tickCount >= 14)')
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 98 lost native right-click/target-profile/fixture anchors: " + ", ".join(missing))
@@ -142,15 +137,19 @@ server = server_probe.read_text(encoding="utf-8")
 old_server_fixture_20 = 'if ((!java.lang.Boolean.getBoolean("vs2.productionSmoke") || (java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 20)) && !fixturePlayerChecked) {'
 new_server_fixture = 'if ((!java.lang.Boolean.getBoolean("vs2.productionSmoke") || (java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 14)) && !fixturePlayerChecked) {'
 old_server_fixture = 'if ((!java.lang.Boolean.getBoolean("vs2.productionSmoke") || java.lang.Boolean.getBoolean("vs2.productionSmokeFixture")) && !fixturePlayerChecked) {'
-if new_server_fixture not in server:
-    if old_server_fixture_20 in server:
-        server = server.replace(old_server_fixture_20, new_server_fixture, 1)
-    elif old_server_fixture in server:
-        server = server.replace(old_server_fixture, new_server_fixture, 1)
-    else:
-        raise SystemExit("Phase 98 could not find production server fixture guard")
-if 'java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 14' not in server:
-    raise SystemExit("Phase 98 lost narrowed production server fixture anchor")
+if not cumulative_prepared:
+    if new_server_fixture not in server:
+        if old_server_fixture_20 in server:
+            server = server.replace(old_server_fixture_20, new_server_fixture, 1)
+        elif old_server_fixture in server:
+            server = server.replace(old_server_fixture, new_server_fixture, 1)
+        else:
+            raise SystemExit("Phase 98 could not find production server fixture guard")
+    if 'java.lang.Boolean.getBoolean("vs2.productionSmokeFixture") && player.tickCount >= 14' not in server:
+        raise SystemExit("Phase 98 lost narrowed production server fixture anchor")
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 98: retained read-only native interaction profiling and narrowed the one-shot production fixture to tick 14 after startup discontinuity; no interaction dispatch or gameplay mutation")
+if cumulative_prepared:
+    print("Phase 98: cumulative Phase 130 already prepared; retained existing native interaction telemetry without reapplying obsolete fixed-tick fixture guards")
+else:
+    print("Phase 98: retained read-only native interaction profiling and narrowed the one-shot production fixture to tick 14 after startup discontinuity; no interaction dispatch or gameplay mutation")

@@ -184,11 +184,18 @@ jobs:
               for m in carry_delta_pattern.finditer(text)
               if float(m.group(2)) <= 0.01 and m.group(3) == 'true' and m.group(4) == 'true'
           }
+          raw_samples = []
           samples = []
           for match in continuity_pattern.finditer(text):
               tick, carriage = map(int, match.groups()[:2])
               x, y, z = map(float, match.groups()[2:5])
               broadphase, on_ground, baseline_frame = match.groups()[5:]
+              raw_samples.append((
+                  tick, carriage, x, y, z,
+                  broadphase == 'true',
+                  on_ground == 'true',
+                  baseline_frame == 'true',
+              ))
               guard = guards.get((tick, carriage))
               if guard is None:
                   continue
@@ -227,14 +234,39 @@ jobs:
                       best = list(streak)
               return best
 
+          def best_raw_streak(max_step):
+              streak = []
+              best = []
+              for sample in raw_samples:
+                  broadphase, on_ground, baseline_frame = sample[5:8]
+                  valid = broadphase and on_ground and baseline_frame
+                  if not valid:
+                      streak = []
+                      continue
+                  if not streak:
+                      streak = [sample]
+                  else:
+                      prev = streak[-1]
+                      local_step = math.dist(sample[2:5], prev[2:5])
+                      if sample[0] == prev[0] + 1 and sample[1] == prev[1] and local_step <= max_step:
+                          streak.append(sample)
+                      else:
+                          streak = [sample]
+                  if len(streak) > len(best):
+                      best = list(streak)
+              return best
+
           strict = best_streak(True, 0.05)
           stable_local = best_streak(False, 0.01)
+          raw_stable_local = best_raw_streak(0.01)
           if len(strict) >= 5:
               best, proof = strict, 'physical_support_stable'
           elif len(stable_local) >= 5:
               best, proof = stable_local, 'carriage_local_stable'
           elif len(strict) >= 3 and strict[0][1] in stable_delta_carriages:
               best, proof = strict, 'carry_delta_plus_local_stable'
+          elif len(raw_stable_local) >= 3 and raw_stable_local[0][1] in stable_delta_carriages:
+              best, proof = raw_stable_local, 'direct_continuity_plus_carry_delta'
           else:
               best, proof = [], 'none'
           if best:

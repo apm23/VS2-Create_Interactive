@@ -11,10 +11,10 @@ source = client_probe.read_text(encoding="utf-8")
 # player stayed grounded and broadphase-visible, but carriage-7 local X jumped by 20.3218 blocks.
 # Before changing any carry or handoff behavior, correlate a failed walk frame with the exact
 # same-tick native-contact carriage and its current local coordinate/broadphase. Read-only only.
-anchor = '''                            phase154WalkPreviousLocal = phase154Local;
-                            if (player.tickCount <= phase154WalkStartTick + 20) {'''
-insert = '''                            phase154WalkPreviousLocal = phase154Local;
-                            if (!phase154WalkSupportHealthy
+# Later cumulative phases can insert accounting between phase154WalkPreviousLocal and the sample
+# branch, so anchor on the durable sample-window branch itself rather than historical adjacency.
+anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {'''
+insert = '''                            if (!phase154WalkSupportHealthy
                                     && Integer.toString(player.tickCount).equals(System.getProperty(
                                         "vs2.phase170NativeContactApplicationTick"))) {
                                 int phase177NativeCarriageId = Integer.getInteger(
@@ -51,12 +51,13 @@ insert = '''                            phase154WalkPreviousLocal = phase154Loca
                                         player.tickCount, phase154Carriage.getId(), phase177NativeCarriageId);
                                 }
                             }
-                            if (player.tickCount <= phase154WalkStartTick + 20) {'''
+''' + anchor
 
 inserted = ""
 if "GATE_E_PHASE177_FAILED_WALK_NATIVE_FRAME" not in source:
-    if source.count(anchor) != 1:
-        raise SystemExit(f"Phase 177 expected exactly one post-Phase156 walk-sample anchor, found {source.count(anchor)}")
+    count = source.count(anchor)
+    if count != 1:
+        raise SystemExit(f"Phase 177 expected exactly one durable walk sample-window anchor, found {count}")
     source = source.replace(anchor, insert, 1)
     inserted = insert
 
@@ -70,6 +71,7 @@ required = [
     "native_broadphase={}",
     "diagnostic_state_only=true",
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
+    "phase154WalkStartTick + 20",
 ]
 missing = [token for token in required if token not in source]
 if missing:

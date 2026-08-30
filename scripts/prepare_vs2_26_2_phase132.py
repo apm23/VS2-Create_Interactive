@@ -73,8 +73,11 @@ if "GATE_F_PHASE135_HELD_BLOCK_NATIVE_CONFIRMED" not in source:
 # following tick lost the simplified-collider/broadphase support predicate while Create's
 # own contact state and onGround were still true. Do not create a new carry vector and do
 # not allow an unsupported replay streak. Permit exactly one recovery replay immediately
-# after a physically-supported replay, then require strict support again. This handles a
-# one-tick moving-frame handoff without turning stale baseline identity into carry authority.
+# after a physically-supported replay, then require strict support again. Run #283 further
+# proved the first loss tick may follow healthy native carry rather than a compatibility
+# replay. Accept that one transition only when the previous tick has an authoritative healthy
+# native sample and broadphase still overlaps. Phase85 remains the only source of the replay
+# vector and still applies Create collision filtering.
 if "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
@@ -110,15 +113,25 @@ if "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE" not in source:
         f'{replay_indent}}} catch (NumberFormatException ignored) {{\n'
         f'{replay_indent}    phase133LastGraceReplayTick = Integer.MIN_VALUE;\n'
         f'{replay_indent}}}\n'
+        f'{replay_indent}boolean phase159PreviousNativeHealthy = Boolean.parseBoolean(System.getProperty(\n'
+        f'{replay_indent}    "vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))\n'
+        f'{replay_indent}    && Integer.toString(player.tickCount - 1).equals(System.getProperty(\n'
+        f'{replay_indent}        "vs2.phase134NativeCarryHealthyTick." + carriage.getId()));\n'
         f'{replay_indent}boolean phase133ReplayGrace = productionSmoke && explicitCarryCompat\n'
         f'{replay_indent}    && carryBaselineCaptured && carryBaselineCarriageId == carriage.getId()\n'
         f'{replay_indent}    && !phase81PhysicalSupport && player.onGround()\n'
-        f'{replay_indent}    && carryReplayPlayerTick == player.tickCount - 1\n'
-        f'{replay_indent}    && phase133LastGraceReplayTick != carryReplayPlayerTick;\n'
+        f'{replay_indent}    && (carryReplayPlayerTick == player.tickCount - 1 || phase159PreviousNativeHealthy)\n'
+        f'{replay_indent}    && (!phase159PreviousNativeHealthy || broadphaseOverlap)\n'
+        f'{replay_indent}    && (phase159PreviousNativeHealthy || phase133LastGraceReplayTick != carryReplayPlayerTick);\n'
         f'{replay_indent}if (phase133ReplayGrace) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
-        f'{replay_indent}        "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE carriage_id={{}} player_tick={{}} previous_replay_tick={{}} strict_support=false bounded_one_tick=true",\n'
-        f'{replay_indent}        carriage.getId(), player.tickCount, carryReplayPlayerTick);\n'
+        f'{replay_indent}        "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE carriage_id={{}} player_tick={{}} previous_replay_tick={{}} previous_native_healthy={{}} strict_support=false bounded_one_tick=true",\n'
+        f'{replay_indent}        carriage.getId(), player.tickCount, carryReplayPlayerTick, phase159PreviousNativeHealthy);\n'
+        f'{replay_indent}    if (phase159PreviousNativeHealthy) {{\n'
+        f'{replay_indent}        LOGGER.info(\n'
+        f'{replay_indent}            "GATE_E_PHASE159_NATIVE_LOSS_REPLAY_GRACE carriage_id={{}} player_tick={{}} previous_native_tick={{}} broadphase=true grounded=true bounded_one_tick=true existing_create_filtered_replay=true",\n'
+        f'{replay_indent}            carriage.getId(), player.tickCount, player.tickCount - 1);\n'
+        f'{replay_indent}    }}\n'
         f'{replay_indent}}}\n\n'
     )
     source = source[:replay_if_pos] + grace_probe + source[replay_if_pos:]
@@ -161,9 +174,13 @@ required = [
     "fixture_only=true",
     "GATE_E_PHASE133_ONE_TICK_REPLAY_GRACE",
     "phase133ReplayGrace",
-    "phase133LastGraceReplayTick != carryReplayPlayerTick",
+    "phase159PreviousNativeHealthy",
+    "GATE_E_PHASE159_NATIVE_LOSS_REPLAY_GRACE",
+    "(!phase159PreviousNativeHealthy || broadphaseOverlap)",
+    "(phase159PreviousNativeHealthy || phase133LastGraceReplayTick != carryReplayPlayerTick)",
     "(phase81PhysicalSupport || phase133ReplayGrace)",
     "System.setProperty(phase133GraceKey, Integer.toString(player.tickCount))",
+    "existing_create_filtered_replay=true",
     "bounded_one_tick=true",
 ]
 missing = [token for token in required if token not in source]
@@ -181,4 +198,4 @@ for marker in ["GATE_F_PHASE132_HELD_BLOCK_NATIVE_PROBE", "GATE_F_PHASE135_HELD_
             raise SystemExit("Phase 132 found forbidden direct mutation near native held-block probe: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 132: binds held-block probing to the executed native confirmation branch and preserves one bounded post-support Create-filtered carry replay grace")
+print("Phase 132: preserves bounded Create-filtered replay grace across either prior replay or one authoritative native-carry loss tick")

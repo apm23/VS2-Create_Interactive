@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -24,20 +25,24 @@ if "GATE_E_PHASE180_CONSECUTIVE_NATIVE_LOSS_RECOVERY" not in source:
         raise SystemExit("Phase 180 could not bound Phase161 supported-loss declaration")
     predicate = source[decl_pos:decl_end + 1]
 
-    healthy_clause = '''Integer.toString(player.tickCount - 1).equals(System.getProperty(
-                "vs2.phase134NativeCarryHealthyTick." + carriage.getId()))'''
-    if predicate.count(healthy_clause) != 1:
+    healthy_pattern = re.compile(
+        r'Integer\.toString\(player\.tickCount\s*-\s*1\)\.equals\(System\.getProperty\(\s*'
+        r'"vs2\.phase134NativeCarryHealthyTick\."\s*\+\s*carriage\.getId\(\)\s*\)\)'
+    )
+    healthy_matches = list(healthy_pattern.finditer(predicate))
+    if len(healthy_matches) != 1:
         raise SystemExit(
-            "Phase 180 expected exactly one previous-native healthy-tick continuity clause inside Phase161 predicate, found "
-            + str(predicate.count(healthy_clause)))
+            "Phase 180 expected exactly one previous-native healthy-tick continuity expression inside Phase161 predicate, found "
+            + str(len(healthy_matches)))
 
+    healthy_clause = healthy_matches[0].group(0)
     continuity_clause = '''(Integer.toString(player.tickCount - 1).equals(System.getProperty(
                 "vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
                 || (phase161FixtureWalkWindow
                     && carryReplayPlayerTick == player.tickCount - 1
                     && !Integer.toString(player.tickCount).equals(System.getProperty(
                         "vs2.phase170NativeContactApplicationTick"))))'''
-    predicate = predicate.replace(healthy_clause, continuity_clause, 1)
+    predicate = healthy_pattern.sub(continuity_clause, predicate, count=1)
     source = source[:decl_pos] + predicate + source[decl_end + 1:]
     inserted += continuity_clause
 
@@ -87,4 +92,4 @@ for forbidden in [
         raise SystemExit("Phase 180 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 180: structurally extends existing Create-filtered fixture recovery across consecutive native-loss walk ticks")
+print("Phase 180: whitespace-tolerantly extends existing Create-filtered fixture recovery across consecutive native-loss walk ticks")

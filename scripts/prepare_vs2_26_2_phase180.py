@@ -13,11 +13,15 @@ source = client_probe.read_text(encoding="utf-8")
 # but allow a consecutive fixture-walk native-loss tick to inherit eligibility from a replay that
 # actually ran on the immediately preceding tick. A same-tick native Create application still wins.
 # This is bounded smoke-fixture recovery continuity only; it adds no new movement/vector/physics path.
+# Phase179 inserts a tick-fresh !phase179CurrentNativeHealthy clause immediately before the
+# previous-native continuity check, so Phase180 must anchor on that cumulative predicate shape.
 
-old = '''&& Integer.toString(player.tickCount - 1).equals(System.getProperty(
+old = '''&& !phase179CurrentNativeHealthy
+            && Integer.toString(player.tickCount - 1).equals(System.getProperty(
                 "vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
             && (phase161MeasuredUndercarry || (phase170FixtureWalkRecoveryWindow && phase179ActiveContactMotionAvailable))'''
-new = '''&& (Integer.toString(player.tickCount - 1).equals(System.getProperty(
+new = '''&& !phase179CurrentNativeHealthy
+            && (Integer.toString(player.tickCount - 1).equals(System.getProperty(
                 "vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
                 || (phase161FixtureWalkWindow
                     && carryReplayPlayerTick == player.tickCount - 1
@@ -29,7 +33,7 @@ inserted = ""
 if "GATE_E_PHASE180_CONSECUTIVE_NATIVE_LOSS_RECOVERY" not in source:
     count = source.count(old)
     if count != 1:
-        raise SystemExit(f"Phase 180 expected exactly one Phase179 previous-native continuity clause, found {count}")
+        raise SystemExit(f"Phase 180 expected exactly one cumulative Phase179 continuity clause, found {count}")
     source = source.replace(old, new, 1)
     inserted = new
 
@@ -59,6 +63,7 @@ required = [
     "carryReplayPlayerTick == player.tickCount - 1",
     "vs2.phase170NativeContactApplicationTick",
     "phase179ActiveContactMotionAvailable",
+    "!phase179CurrentNativeHealthy",
     "phase81PhysicalSupport && collisionEligible && broadphaseOverlap && player.onGround()",
     "GATE_E_PHASE85_CARRY_REPLAY",
     "existing_create_filtered_replay=true",

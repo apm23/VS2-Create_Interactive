@@ -64,6 +64,25 @@ if "GATE_E_PHASE158_WALK_NATIVE_READY" not in source:
         raise SystemExit("Phase 158 expected exactly one Phase154 walk-start guard")
     source = source.replace(walk_start_old, walk_start_new, 1)
 
+# Production-world #282 proves the bounded recovery itself is now reachable, but also exposes
+# a distinct duplicate-replay edge at a legitimate sibling-carriage handoff. Tick 34 rebases
+# the active baseline 7 -> 4 with strict support and native observation; tick 35 then applies
+# a 4.004-block Create-filtered compatibility replay on that freshly rebased carriage, producing
+# a 4.649-block carriage-local jump while the player is still grounded/broadphase-supported.
+# Give native carry one complete post-rebase tick before compatibility replay may resume. This
+# only suppresses duplicate replay on the rebase tick and its immediate successor; genuine loss
+# can recover from the second post-rebase tick onward. No new movement vector or physics change.
+replay_guard_old = '''carryBaselineCarriageId == carriage.getId()
+                            && carryReplayPlayerTick != player.tickCount'''
+replay_guard_new = '''carryBaselineCarriageId == carriage.getId()
+                            && (carryBaselineRebaseTick == Integer.MIN_VALUE
+                                || player.tickCount - carryBaselineRebaseTick >= 2)
+                            && carryReplayPlayerTick != player.tickCount'''
+if "player.tickCount - carryBaselineRebaseTick >= 2" not in source:
+    if source.count(replay_guard_old) != 1:
+        raise SystemExit("Phase 158 expected exactly one active-baseline carry replay predicate")
+    source = source.replace(replay_guard_old, replay_guard_new, 1)
+
 required = [
     "phase150SupportReacquired",
     "GATE_E_PHASE85_CARRY_REPLAY",
@@ -79,6 +98,8 @@ required = [
     "phase134DriftSq <= 0.5625",
     "GATE_E_PHASE158_LOCOMOTION_HEALTH_REJECT",
     "compatibility_recovery_allowed=true",
+    "carryBaselineRebaseTick == Integer.MIN_VALUE",
+    "player.tickCount - carryBaselineRebaseTick >= 2",
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -91,8 +112,8 @@ for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
 ]:
-    if forbidden in health_new or forbidden in walk_start_new:
+    if forbidden in health_new or forbidden in walk_start_new or forbidden in replay_guard_new:
         raise SystemExit("Phase 158 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 158: starts walk only after fresh native carry, bounds locomotion health hold, and permits existing Create-filtered compat recovery on genuine carry loss")
+print("Phase 158: starts walk only after fresh native carry, bounds locomotion recovery, and suppresses duplicate replay for one full tick after sibling handoff")

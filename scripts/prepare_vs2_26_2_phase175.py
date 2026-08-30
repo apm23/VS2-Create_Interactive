@@ -28,9 +28,10 @@ if "phase175_same_tick_native_dedup" not in source:
         raise SystemExit("Phase 175 could not mark the deduplicated legacy replay guard")
     source = source.replace(marker_anchor, marker_replacement, 1)
 
+# The Phase170 application log itself lives in the separate contact-trace mixin. The probe
+# consumes the shared system-property seam, so validate only anchors that belong to this file.
 required = [
     "GATE_E_PHASE80_REPLAY_MOTION",
-    "GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION",
     "vs2.phase170NativeContactApplicationTick",
     "productionSmokeFixture",
     "phase175_same_tick_native_dedup",

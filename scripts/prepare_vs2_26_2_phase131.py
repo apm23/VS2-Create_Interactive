@@ -6,9 +6,10 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
+adaptive_suppression = '!(productionSmoke && explicitCarryCompat && Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false")))'
 if "&& &&" in source:
     raise SystemExit("Phase 131 found duplicate conjunction after Phase130")
-if "!(productionSmoke && explicitCarryCompat)" not in source:
+if "!(productionSmoke && explicitCarryCompat)" not in source and adaptive_suppression not in source:
     raise SystemExit("Phase 131 lost production carry replay suppression predicate")
 if "carryReplayPlayerTick != player.tickCount" not in source:
     raise SystemExit("Phase 131 lost original replay tick predicate")
@@ -21,12 +22,12 @@ if "carryReplayPlayerTick != player.tickCount" not in source:
 # suppressed while that signal is healthy. No new vector, clamp, teleport, or physics path
 # is introduced: this only re-enables the already validated Create-computed/filtered replay
 # when native Create carry demonstrably failed to advance the supported LocalPlayer.
-adaptive_suppression = '!(productionSmoke && explicitCarryCompat && Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false")))'
-source = source.replace(
-    '!(productionSmoke && explicitCarryCompat)',
-    adaptive_suppression,
-    1,
-)
+if adaptive_suppression not in source:
+    source = source.replace(
+        '!(productionSmoke && explicitCarryCompat)',
+        adaptive_suppression,
+        1,
+    )
 
 # Production-world #173 proved the support-loss exception is a CI harness blocker:
 # it deliberately crashes the client before the workflow's independent sustained-carry
@@ -154,4 +155,4 @@ for forbidden in ['player.setPos(', 'player.setDeltaMovement(', '.move(', '.tele
         raise SystemExit("Phase 131 active-support carry health found forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 131: adapts Create-filtered replay suppression to measured native carry health while preserving nonfatal support diagnostics")
+print("Phase 131: idempotently adapts Create-filtered replay suppression to measured native carry health while preserving nonfatal support diagnostics")

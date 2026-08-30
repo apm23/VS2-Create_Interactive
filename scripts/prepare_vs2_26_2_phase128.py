@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -106,3 +107,5 @@ for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', '.useIt
         raise SystemExit("Phase 128 found forbidden player/train mutation: " + forbidden)
 
 print("Phase 128: production compat fills Create Fly client new-cell replication gap from authoritative block-change packets")
+
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase129.py")), run_name="__main__")

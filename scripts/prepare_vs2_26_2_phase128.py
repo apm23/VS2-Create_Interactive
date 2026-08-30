@@ -13,11 +13,14 @@ mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 # not already present; the fixture-only insertion immediately makes the exact client cell
 # visible. Install the narrow compatibility fix at the client handler RETURN: only add a
 # previously-missing, non-air cell that arrived in Create's own block-change packet.
+# Also report when Create's native handler already populated the exact cell, so world smoke
+# can distinguish native replication from the compatibility fallback without mutating state.
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.Objects;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
@@ -53,7 +56,23 @@ public abstract class MixinCreateNewContraptionCellReplication {
             Object contraption = entity.getClass().getMethod("getContraption").invoke(entity);
             if (contraption == null) return;
             Object blocksObject = contraption.getClass().getMethod("getBlocks").invoke(contraption);
-            if (!(blocksObject instanceof Map<?, ?> blocks) || blocks.containsKey(localPos)) return;
+            if (!(blocksObject instanceof Map<?, ?> blocks)) return;
+
+            Object nativeEntry = blocks.get(localPos);
+            if (nativeEntry != null) {
+                Object nativeState = null;
+                try {
+                    nativeState = nativeEntry.getClass().getMethod("state").invoke(nativeEntry);
+                } catch (ReflectiveOperationException ignored) {
+                    // Telemetry only; preserve Create's native result even if value shape changes.
+                }
+                boolean stateMatch = Objects.equals(nativeState, newState);
+                System.out.println("VS2_CREATE_CELL_REPLICATION_CONFIRMED entity_id=" + entityId
+                    + " local_pos=" + localPos + " state=" + newState
+                    + " path=create_native entry_present=true state_match=" + stateMatch
+                    + " packet_authoritative=true");
+                return;
+            }
 
             @SuppressWarnings("unchecked")
             Map<Object, Object> writable = (Map<Object, Object>) (Map<?, ?>) blocks;
@@ -79,6 +98,10 @@ public abstract class MixinCreateNewContraptionCellReplication {
             System.out.println("VS2_CREATE_NEW_CELL_REPLICATION_PROVEN entity_id=" + entityId
                 + " local_pos=" + localPos + " state=" + newState
                 + " inserted=true reset_invoked=" + resetInvoked + " packet_authoritative=true");
+            System.out.println("VS2_CREATE_CELL_REPLICATION_CONFIRMED entity_id=" + entityId
+                + " local_pos=" + localPos + " state=" + newState
+                + " path=vs2_new_cell_fallback entry_present=true state_match=true"
+                + " packet_authoritative=true");
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // Compatibility is intentionally fail-open: never crash Create/VS2 for an optional seam.
         }
@@ -96,12 +119,15 @@ mixin_json.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 required = [
     'targets = "com.zurrtum.create.client.AllHandle"',
     'method = "onContraptionBlockChanged"',
-    'blocks.containsKey(localPos)',
+    'blocks.get(localPos)',
+    'path=create_native',
     'new StructureTemplate.StructureBlockInfo',
     'writable.put(localPos.immutable(), info)',
     'resetClientContraption',
     'VS2_CREATE_NEW_CELL_REPLICATION',
     'VS2_CREATE_NEW_CELL_REPLICATION_PROVEN',
+    'VS2_CREATE_CELL_REPLICATION_CONFIRMED',
+    'path=vs2_new_cell_fallback',
     'packet_authoritative=true',
 ]
 text = java.read_text(encoding="utf-8")
@@ -113,6 +139,6 @@ for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', '.useIt
     if forbidden in text:
         raise SystemExit("Phase 128 found forbidden player/train mutation: " + forbidden)
 
-print("Phase 128: production compat fills Create Fly client new-cell replication gap from authoritative block-change packets and emits explicit replication proof telemetry")
+print("Phase 128: production compat fills Create Fly client new-cell replication gap and distinguishes native vs fallback authoritative packet replication")
 
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase129.py")), run_name="__main__")

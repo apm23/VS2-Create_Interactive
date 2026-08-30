@@ -59,21 +59,50 @@ if "GATE_E_PHASE131_SUPPORT_SOURCE" not in source:
     )
     source = source[:support_if_pos] + probe + source[support_if_pos:]
 
-# Production-world #167 exposed the actual movement bug in the compatibility seam.
-# At tick 17 Create's native ContraptionCollider had already advanced LocalPlayer by the
-# carriage contact motion while the player remained exactly on the simplified support.
-# Phase85 then replayed that same full contact motion a second time, moving local feet from
-# the valid support cell to ~8 blocks beyond it. The same double-application repeated when
-# contact was reacquired. Keep the useful native contact lease refresh, but suppress only
-# the manual Phase85 setPos replay in explicit production compatibility mode. CI historical
-# hypothesis runs remain unchanged. This removes a duplicate application; it does not invent
-# a velocity, teleport target, collision response, or train/physics workaround.
+# Production-world #167 exposed duplicate movement application: Create native carry had
+# already advanced LocalPlayer while Phase85 replayed the same Create-computed contact
+# motion again. Later cumulative phases rewrite the replay guard (notably sibling-carriage
+# handoff settling), so do not pin its exact text. Locate the unique final replay predicate
+# structurally, add a production-only suppression predicate there, and emit read-only proof
+# immediately before that guard. Contact registration/lease refresh remains untouched.
 if "GATE_E_PHASE132_NATIVE_CARRY_ONLY" not in source:
-    replay_guard = '''            if ((carryBaselineCaptured || explicitCarryCompat)\n                && phase81PhysicalSupport\n                && carryReplayPlayerTick != player.tickCount\n                && player.onGround()\n                && collisionEligible\n                && broadphaseOverlap) {'''
-    replay_guard_replacement = '''            if (productionSmoke && explicitCarryCompat && phase81PhysicalSupport\n                && collisionEligible && broadphaseOverlap) {\n                LOGGER.info(\n                    "GATE_E_PHASE132_NATIVE_CARRY_ONLY carriage_id={} player_tick={} physical_support=true manual_replay_suppressed=true contact_refresh_preserved=true",\n                    carriage.getId(), player.tickCount);\n            }\n\n            if ((carryBaselineCaptured || explicitCarryCompat)\n                && phase81PhysicalSupport\n                && !(productionSmoke && explicitCarryCompat)\n                && carryReplayPlayerTick != player.tickCount\n                && player.onGround()\n                && collisionEligible\n                && broadphaseOverlap) {'''
-    if replay_guard not in source:
-        raise SystemExit("Phase 130 could not find final Phase85 replay guard for production de-duplication")
-    source = source.replace(replay_guard, replay_guard_replacement, 1)
+    replay_tick_token = "carryReplayPlayerTick != player.tickCount"
+    replay_tick_pos = source.find(replay_tick_token)
+    if replay_tick_pos < 0 or source.find(replay_tick_token, replay_tick_pos + 1) >= 0:
+        raise SystemExit("Phase 130 expected one final Phase85 replay tick predicate")
+
+    search_start = max(0, replay_tick_pos - 5000)
+    prefix = source[search_start:replay_tick_pos]
+    candidates = list(re.finditer(r'(?m)^(?P<indent>[ \t]*)if \(', prefix))
+    replay_if_pos = None
+    replay_indent = None
+    for candidate in reversed(candidates):
+        absolute = search_start + candidate.start()
+        segment = source[absolute:replay_tick_pos]
+        if "phase81PhysicalSupport" in segment and "collisionEligible" in segment:
+            replay_if_pos = absolute
+            replay_indent = candidate.group("indent")
+            break
+    if replay_if_pos is None or replay_indent is None:
+        raise SystemExit("Phase 130 could not locate structural final Phase85 replay guard")
+
+    native_only_probe = (
+        f'{replay_indent}if (productionSmoke && explicitCarryCompat && phase81PhysicalSupport\n'
+        f'{replay_indent}        && collisionEligible && broadphaseOverlap) {{\n'
+        f'{replay_indent}    LOGGER.info(\n'
+        f'{replay_indent}        "GATE_E_PHASE132_NATIVE_CARRY_ONLY carriage_id={{}} player_tick={{}} physical_support=true manual_replay_suppressed=true contact_refresh_preserved=true",\n'
+        f'{replay_indent}        carriage.getId(), player.tickCount);\n'
+        f'{replay_indent}}}\n\n'
+    )
+    source = source[:replay_if_pos] + native_only_probe + source[replay_if_pos:]
+
+    replay_tick_pos = source.find(replay_tick_token, replay_if_pos + len(native_only_probe))
+    replay_line_start = source.rfind("\n", 0, replay_tick_pos) + 1
+    replay_line_indent = source[replay_line_start:replay_tick_pos]
+    if "&&" not in replay_line_indent:
+        raise SystemExit("Phase 130 final replay tick predicate lost conjunction shape")
+    suppression_line = replay_line_indent.replace("&& ", "&& !(productionSmoke && explicitCarryCompat)\n" + replay_line_indent + "&& ", 1)
+    source = source[:replay_line_start] + suppression_line + source[replay_tick_pos + len(replay_tick_token):]
 
 # Production-world #164 now proves a real Create-native empty-hand right-click dispatch
 # (handled=true) and authoritative new-cell placement replication in the same run. Keep
@@ -119,11 +148,11 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 130 lost support/carry-dedup/correlation telemetry: " + ", ".join(missing))
 
-for forbidden in ['setBlock(', 'setDeltaMovement(', '.useItemOn(', '.useItem(', '.attack(']:
-    if forbidden in replay_guard_replacement if 'replay_guard_replacement' in locals() else False:
+for forbidden in ['setBlock(', 'setPos(', 'setDeltaMovement(', '.useItemOn(', '.useItem(', '.attack(']:
+    if forbidden in native_only_probe if 'native_only_probe' in locals() else False:
         raise SystemExit("Phase 130 carry de-duplication found forbidden mutation: " + forbidden)
     if forbidden in exact_sync_replacement if 'exact_sync_replacement' in locals() else False:
         raise SystemExit("Phase 130 correlation telemetry found forbidden mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 130: suppresses duplicate manual replay when Create native carry is active, rejects unsupported smoke continuity, and preserves same-carriage interaction/placement correlation")
+print("Phase 130: structurally suppresses duplicate manual replay when Create native carry is active, rejects unsupported smoke continuity, and preserves same-carriage interaction/placement correlation")

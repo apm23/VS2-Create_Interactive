@@ -68,21 +68,31 @@ source = source.replace(
 # Production-world #138 still lost carry immediately after the bounded fixture window.
 # Do not alter movement yet: trace every predicate that can suppress the already-validated
 # Create-computed/filtered Phase85 replay, including sibling-carriage rebase settling.
-# Anchor from the unique replay-tick term backwards to the nearest carryBaseline guard;
-# later phases are allowed to add predicates/indentation without breaking preparation.
+# The final replay guard has been rewritten by several cumulative phases, so anchor on
+# the unique replay-tick predicate and select the nearest preceding if-block that still
+# contains the physical-support predicate. This keeps telemetry resilient without making
+# the preparation chain depend on the exact textual order of replay predicates.
 if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
     if replay_tick_pos < 0:
         raise SystemExit("Phase 129 could not locate Phase85 replay tick predicate")
-    search_start = max(0, replay_tick_pos - 2500)
-    replay_if_pos = source.rfind("if (carryBaselineCaptured", search_start, replay_tick_pos)
-    if replay_if_pos < 0:
-        raise SystemExit("Phase 129 could not locate enclosing Phase85 carryBaseline guard")
-    line_start = source.rfind("\n", 0, replay_if_pos) + 1
-    replay_indent = source[line_start:replay_if_pos]
-    if replay_indent.strip():
-        raise SystemExit("Phase 129 found malformed Phase85 replay indentation")
+
+    search_start = max(0, replay_tick_pos - 5000)
+    prefix = source[search_start:replay_tick_pos]
+    candidates = list(re.finditer(r'(?m)^(?P<indent>[ \t]*)if \(', prefix))
+    replay_match = None
+    for candidate in reversed(candidates):
+        absolute = search_start + candidate.start()
+        segment = source[absolute:replay_tick_pos]
+        if "phase81PhysicalSupport" in segment:
+            replay_match = candidate
+            replay_if_pos = absolute
+            break
+    if replay_match is None:
+        raise SystemExit("Phase 129 could not locate structural Phase85 replay guard")
+
+    replay_indent = replay_match.group("indent")
     replay_probe = (
         f'{replay_indent}if (productionSmokeFixture && fixtureContactAcquireTicks >= 12 '
         f'&& player.tickCount >= 14 && player.tickCount <= 40) {{\n'
@@ -94,7 +104,7 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
         f'{replay_indent}        carryReplayPlayerTick);\n'
         f'{replay_indent}}}\n\n'
     )
-    source = source[:line_start] + replay_probe + source[line_start:]
+    source = source[:replay_if_pos] + replay_probe + source[replay_if_pos:]
 
 required = [
     'fixtureContactAcquireTicks < 12',

@@ -5,56 +5,58 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #222 proved the exact handshake can receive only one settled native-ray
-# sample in a run, so requiring two adjacent samples still races the valid interaction window.
-# The Phase101 handshake already executes inside settledCreateNativeRayReady=true. Arm on that
-# current exact settled ray, then let the authoritative server handshake complete; dispatch can
-# occur on any later current settled ray while armed. Fixture synchronization only: no movement,
-# collision, train, world, inventory, or physics mutation is introduced here.
-arm_anchor = '''                                                if (productionSmokeFixture && player.tickCount >= 30
+# Production-world #223 proved the old Phase101 arm-request guard still attaches to an
+# inactive duplicate interaction site: the executed settled-ray entrypoint logged
+# target_match_ready=true, but no ARM_REQUEST marker followed. Bind the request directly
+# to the exact readiness_source=create_native_ray_settled LOGGER site that executed in #223.
+# This only publishes the same-JVM fixture handshake flag; it does not move the player,
+# mutate a contraption/world cell, alter inventory, train state, collision, or VS2 physics.
+entry_anchor = '''                                                LOGGER.info(
+                                                    "GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT carriage_id={} player_tick={} exact={} target_match_ready={} readiness_source=create_native_ray_settled",
+                                                    carriage.getId(), player.tickCount, settledExactNativeRightClickEntrypoint,
+                                                    settledExactNativeRightClickEntrypoint && settledCreateNativeRayReady);'''
+entry_insert = entry_anchor + '''
+                                                if (productionSmokeFixture
+                                                        && settledCreateNativeRayReady
                                                         && settledExactNativeRightClickEntrypoint
-                                                        && !Boolean.getBoolean("vs2.productionHeldBlockServerArmRequested")) {'''
-arm_insert = '''                                                boolean productionSettledNativeRayHandshakeReady = true;
-                                                if (productionSmokeFixture && productionSettledNativeRayHandshakeReady
-                                                        && settledExactNativeRightClickEntrypoint
-                                                        && !Boolean.getBoolean("vs2.productionHeldBlockServerArmRequested")) {'''
-if "productionSettledNativeRayHandshakeReady" not in source:
-    if arm_anchor not in source:
-        raise SystemExit("Phase 142 could not find exact Phase101 arm-request guard")
-    source = source.replace(arm_anchor, arm_insert, 1)
+                                                        && !Boolean.getBoolean("vs2.productionHeldBlockServerArmRequested")) {
+                                                    System.setProperty("vs2.productionHeldBlockServerArmRequested", "true");
+                                                    LOGGER.info("GATE_F_SERVER_HELD_BLOCK_ARM_REQUEST carriage_id={} player_tick={} requested=true fixture_only=true readiness_source=executed_settled_native_ray",
+                                                        carriage.getId(), player.tickCount);
+                                                }'''
+if "readiness_source=executed_settled_native_ray" not in source:
+    if entry_anchor not in source:
+        raise SystemExit("Phase 142 could not find executed settled native-ray entrypoint log")
+    source = source.replace(entry_anchor, entry_insert, 1)
 
-region_start = source.find("boolean productionSettledNativeRayHandshakeReady")
+# Keep the later legacy handshake guard non-blocking if it exists. The new executed-site
+# request above is authoritative; the property check makes any duplicate request impossible.
+old = "productionSmokeFixture && player.tickCount >= 30"
+region_start = source.find("GATE_F_SERVER_HELD_BLOCK_ARM_REQUEST")
 region_end = source.find("GATE_F_CONTRAPTION_MUTATION_SURFACE", region_start)
-if region_start < 0 or region_end < 0:
-    raise SystemExit("Phase 142 could not bound the held-block handshake region")
-region = source[region_start:region_end]
-region = region.replace(
-    "productionSmokeFixture && player.tickCount >= 30",
-    "productionSmokeFixture && productionSettledNativeRayHandshakeReady",
-)
-region = region.replace(
-    "productionSmokeFixture\n                                                        && player.tickCount >= 30",
-    "productionSmokeFixture\n                                                        && productionSettledNativeRayHandshakeReady",
-)
-source = source[:region_start] + region + source[region_end:]
+if region_start >= 0 and region_end > region_start:
+    region = source[region_start:region_end]
+    region = region.replace(old, "productionSmokeFixture")
+    region = region.replace(
+        "productionSmokeFixture\n                                                        && player.tickCount >= 30",
+        "productionSmokeFixture",
+    )
+    source = source[:region_start] + region + source[region_end:]
 
 required = [
-    "productionSettledNativeRayHandshakeReady = true",
+    "readiness_source=executed_settled_native_ray",
+    "vs2.productionHeldBlockServerArmRequested",
     "GATE_F_SERVER_HELD_BLOCK_ARM_REQUEST",
     "GATE_F_SERVER_HELD_BLOCK_ARM_WAIT",
     "GATE_F_PHASE138_NATIVE_HELD_BLOCK_DISPATCH",
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 142 lost current-ray handshake anchors: " + ", ".join(missing))
-
-handshake_region = source[region_start:source.find("GATE_F_CONTRAPTION_MUTATION_SURFACE", region_start)]
-if "player.tickCount >= 30" in handshake_region:
-    raise SystemExit("Phase 142 left a fixed tick guard inside the held-block handshake region")
+    raise SystemExit("Phase 142 lost executed-ray handshake anchors: " + ", ".join(missing))
 
 for forbidden in ["setPos(", "setDeltaMovement(", ".teleport", "setBlock(", "setItemSlot(", "setSchedule", "setTrain", "setVelocity"]:
-    if forbidden in arm_insert:
+    if forbidden in entry_insert:
         raise SystemExit("Phase 142 found forbidden mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 142: arms held-block fixture on the current exact settled native ray")
+print("Phase 142: arms held-block request directly at the executed settled native-ray entrypoint")

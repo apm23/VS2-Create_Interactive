@@ -60,3 +60,4 @@ for forbidden in [
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 169: decouples bounded walk start from placement readiness while preserving strict support plus fresh native carry")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase170.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase171.py")), run_name="__main__")

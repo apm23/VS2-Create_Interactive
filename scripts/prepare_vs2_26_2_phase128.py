@@ -13,15 +13,10 @@ mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 # not already present; the fixture-only insertion immediately makes the exact client cell
 # visible. Install the narrow compatibility fix at the client handler RETURN: only add a
 # previously-missing, non-air cell that arrived in Create's own block-change packet.
-# Also report when Create's native handler already populated the exact cell, so world smoke
-# can distinguish native replication from the compatibility fallback without mutating state.
-# Phase 149 additionally emits the exact published target proof at this authoritative packet
-# handler, avoiding the older reflective observer race while preserving the same semantics.
-# Production-world #264 then proved this authoritative packet path can publish exact sync
-# while Phase154 still sees exact_cell_present=false, because the packet observer set the
-# historical completion flags but not the newer walk-fixture readiness flag. Bridge that
-# telemetry state here at the exact authoritative target only; no block/player/train state
-# or collision/physics behavior is changed.
+# Production-world #264 proved this authoritative packet path can publish exact cell
+# presence. For the extended movement gate, packet arrival now publishes readiness only;
+# Phase154 publishes the historical EXACT_SYNC completion marker after its bounded walk
+# finishes. This changes telemetry ordering only and does not mutate player/train physics.
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
@@ -40,13 +35,6 @@ import org.spongepowered.asm.mixin.injection.Coerce;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Create Fly 6.0.9's AllHandle#onContraptionBlockChanged returns when a packet targets
- * a local position absent from the client contraption map. That is correct for ordinary
- * state updates only if the cell already exists, but it drops server-authoritative new
- * cells produced by CarriageContraptionEntity#setBlock. Preserve Create's normal handler
- * and fill only that missing-cell case from the packet it already accepted from server.
- */
 @Mixin(targets = "com.zurrtum.create.client.AllHandle", remap = false)
 public abstract class MixinCreateNewContraptionCellReplication {
     private void vs2$reportExactPublishedTarget(int entityId, BlockPos localPos, BlockState newState, String path) {
@@ -68,9 +56,9 @@ public abstract class MixinCreateNewContraptionCellReplication {
                     System.setProperty("vs2.productionNativePlacementExactCellFirstTick",
                         Integer.toString(exactMinecraft.player.tickCount));
                 }
-                System.out.println("GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC carriage_id=" + entityId
+                System.out.println("GATE_F_NATIVE_PLACEMENT_PACKET_READY carriage_id=" + entityId
                     + " empty_local=" + localPos + " state=" + newState
-                    + " synced=true packet_authoritative=true exact_cell_present=true source=" + path);
+                    + " packet_authoritative=true exact_cell_present=true completion_deferred_to_walk=true source=" + path);
             }
         } catch (RuntimeException ignored) {
             // Telemetry is fail-open and never changes packet handling or gameplay state.
@@ -167,7 +155,8 @@ required = [
     'VS2_CREATE_NEW_CELL_REPLICATION',
     'VS2_CREATE_NEW_CELL_REPLICATION_PROVEN',
     'VS2_CREATE_CELL_REPLICATION_CONFIRMED',
-    'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC',
+    'GATE_F_NATIVE_PLACEMENT_PACKET_READY',
+    'completion_deferred_to_walk=true',
     'vs2$reportExactPublishedTarget',
     'path=vs2_new_cell_fallback',
     'packet_authoritative=true',
@@ -180,10 +169,13 @@ missing = [token for token in required if token not in text]
 if missing:
     raise SystemExit("Phase 128 lost Create new-cell replication anchors: " + ", ".join(missing))
 
+if 'GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC' in text:
+    raise SystemExit("Phase 128 must not publish placement completion before the extended walk proof")
+
 for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', '.useItemOn(', '.attack(']:
     if forbidden in text:
         raise SystemExit("Phase 128 found forbidden player/train mutation: " + forbidden)
 
-print("Phase 128/149: production compat fills Create Fly client new-cell replication gap, bridges authoritative exact-cell telemetry into the walk fixture, and proves exact published target")
+print("Phase 128/149: production compat fills Create Fly client new-cell replication gap and publishes authoritative exact-cell readiness while deferring completion to the walk proof")
 
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase129.py")), run_name="__main__")

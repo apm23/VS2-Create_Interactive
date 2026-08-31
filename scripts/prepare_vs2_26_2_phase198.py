@@ -7,10 +7,10 @@ java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/Mi
 
 # Production-world #478 proved stable carry, supported native forward sprinting, and a complete native
 # jump ascent/descent/landing cycle on the real moving train. M1 still requires reverse locomotion.
-# Reuse the same vanilla KeyMapping + LocalPlayer.aiStep fixture path to request a short backward walk
-# after the proven forward interval, and do not arm jump until vanilla movement responds while grounded.
-# This remains fixture sequencing/acceptance only; no position/velocity/collision/carry, train/world
-# state, gravity, or VS2/Create physics is synthesized.
+# Run #479 proved the initial reverse fixture waited until tick 78, after the finite route had already
+# carried the player outside strict carriage support. Keep reverse proof close to the proven walk window
+# and arm jump only after reverse movement succeeds. This remains fixture sequencing/acceptance only;
+# no position/velocity/collision/carry, train/world state, gravity, or VS2/Create physics is synthesized.
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import net.minecraft.client.Minecraft;
@@ -50,13 +50,13 @@ public abstract class MixinLocalPlayerFixtureInput {
     private boolean vs2$backwardWindow(LocalPlayer self) {
         if (!vs2$fixtureWalkSeen(self) || vs2$backwardConfirmed) return false;
         int elapsed = self.tickCount - vs2$walkConfirmedTick;
-        return elapsed >= 60 && elapsed <= 63;
+        return elapsed >= 8 && elapsed <= 11;
     }
 
     @Unique
     private boolean vs2$jumpArmReady(LocalPlayer self) {
         if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed) return false;
-        return self.tickCount >= vs2$walkConfirmedTick + 80;
+        return self.tickCount >= vs2$walkConfirmedTick + 24;
     }
 
     @Unique
@@ -230,7 +230,7 @@ required = [
     'GATE_E_M1_NATIVE_JUMP_LANDED',
     'vs2.productionFixtureJumpLanded',
     'vs2.productionFixtureWalkConfirmed',
-    'vs2$walkConfirmedTick + 80',
+    'vs2$walkConfirmedTick + 24',
     '!vs2$backwardConfirmed',
     'jumpWindow',
     'vs2$nativeAiStepTick == self.tickCount',
@@ -255,5 +255,5 @@ for forbidden in [
     if forbidden in text:
         raise SystemExit("Phase 198 introduced forbidden gameplay mutation token: " + forbidden)
 
-print("Phase 198: requires native grounded backward movement before the proven native jump cycle; harness-only")
+print("Phase 198: keeps native grounded backward proof inside the supported moving-train window; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase199.py")), run_name="__main__")

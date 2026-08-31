@@ -11,24 +11,7 @@ source = java.read_text(encoding="utf-8")
 # extend the already-proven Entity.move trace with the immediate vanilla caller during the bounded walk
 # so the actual locomotion boundary can be identified from runtime evidence.
 helper_anchor = '''    @Unique private int vs2$currentIndex;\n\n'''
-helper = helper_anchor + '''    @Unique
-    private static String vs2$walkMoveCallerSummary() {
-        StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-        StringBuilder out = new StringBuilder();
-        int emitted = 0;
-        for (StackTraceElement frame : stack) {
-            String owner = frame.getClassName();
-            if (owner.equals(Thread.class.getName())
-                    || owner.contains("MixinEntityLocalPlayerMoveTrace")
-                    || (owner.equals("net.minecraft.world.entity.Entity") && frame.getMethodName().equals("move"))) continue;
-            if (emitted++ > 0) out.append(" <- ");
-            out.append(owner).append('#').append(frame.getMethodName());
-            if (emitted >= 6) break;
-        }
-        return out.toString();
-    }
-
-'''
+helper = helper_anchor + '''    @Unique\n    private static String vs2$walkMoveCallerSummary() {\n        StackTraceElement[] stack = Thread.currentThread().getStackTrace();\n        StringBuilder out = new StringBuilder();\n        int emitted = 0;\n        for (StackTraceElement frame : stack) {\n            String owner = frame.getClassName();\n            if (owner.equals(Thread.class.getName())\n                    || owner.contains("MixinEntityLocalPlayerMoveTrace")\n                    || (owner.equals("net.minecraft.world.entity.Entity") && frame.getMethodName().equals("move"))) continue;\n            if (emitted++ > 0) out.append(" <- ");\n            out.append(owner).append('#').append(frame.getMethodName());\n            if (emitted >= 6) break;\n        }\n        return out.toString();\n    }\n\n'''
 if "vs2$walkMoveCallerSummary" not in source:
     if source.count(helper_anchor) != 1:
         raise SystemExit("Phase 201 expected one Entity.move helper anchor")
@@ -37,28 +20,8 @@ if "vs2$walkMoveCallerSummary" not in source:
 # Phase 186 extends this same read-only HEAD record with player_tick. Anchor Phase 201 to the
 # current generated shape rather than the pre-186 format so the prepare chain cannot fail before
 # the real train world launches.
-log_anchor = '''        VS2_GATE_E_ENTITY_MOVE_LOGGER.info(
-            "GATE_E_LOCALPLAYER_ENTITY_MOVE_HEAD index={} player_tick={} mover={} requested={},{},{} pos={},{},{} velocity={},{},{} on_ground={}",
-            index, self.tickCount, String.valueOf(type), requested.x, requested.y, requested.z,
-            vs2$beforeX, vs2$beforeY, vs2$beforeZ,
-            self.getDeltaMovement().x, self.getDeltaMovement().y, self.getDeltaMovement().z,
-            self.onGround());
-'''
-log_insert = log_anchor + '''        String rawWalkStart = System.getProperty("vs2.productionFixtureWalkStartTick");
-        if (Boolean.getBoolean("vs2.productionSmokeFixture") && rawWalkStart != null) {
-            try {
-                int walkStart = Integer.parseInt(rawWalkStart);
-                if (self.tickCount >= walkStart && self.tickCount <= walkStart + 7) {
-                    VS2_GATE_E_ENTITY_MOVE_LOGGER.info(
-                        "GATE_E_PHASE201_WALK_MOVE_CALLER player_tick={} mover={} requested={},{},{} delta={},{},{} callers={} fixture_only=true read_only=true",
-                        self.tickCount, String.valueOf(type), requested.x, requested.y, requested.z,
-                        self.getDeltaMovement().x, self.getDeltaMovement().y, self.getDeltaMovement().z,
-                        vs2$walkMoveCallerSummary());
-                }
-            } catch (NumberFormatException ignored) {
-            }
-        }
-'''
+log_anchor = '''        VS2_GATE_E_ENTITY_MOVE_LOGGER.info(\n            "GATE_E_LOCALPLAYER_ENTITY_MOVE_HEAD index={} player_tick={} mover={} requested={},{},{} pos={},{},{} velocity={},{},{} on_ground={}",\n            index, self.tickCount, String.valueOf(type), requested.x, requested.y, requested.z,\n            vs2$beforeX, vs2$beforeY, vs2$beforeZ,\n            self.getDeltaMovement().x, self.getDeltaMovement().y, self.getDeltaMovement().z,\n            self.onGround());\n'''
+log_insert = log_anchor + '''        String rawWalkStart = System.getProperty("vs2.productionFixtureWalkStartTick");\n        if (Boolean.getBoolean("vs2.productionSmokeFixture") && rawWalkStart != null) {\n            try {\n                int walkStart = Integer.parseInt(rawWalkStart);\n                if (self.tickCount >= walkStart && self.tickCount <= walkStart + 7) {\n                    VS2_GATE_E_ENTITY_MOVE_LOGGER.info(\n                        "GATE_E_PHASE201_WALK_MOVE_CALLER player_tick={} mover={} requested={},{},{} delta={},{},{} callers={} fixture_only=true read_only=true",\n                        self.tickCount, String.valueOf(type), requested.x, requested.y, requested.z,\n                        self.getDeltaMovement().x, self.getDeltaMovement().y, self.getDeltaMovement().z,\n                        vs2$walkMoveCallerSummary());\n                }\n            } catch (NumberFormatException ignored) {\n            }\n        }\n'''
 if "GATE_E_PHASE201_WALK_MOVE_CALLER" not in source:
     if source.count(log_anchor) != 1:
         raise SystemExit("Phase 201 expected one post-Phase186 Entity.move HEAD log anchor")

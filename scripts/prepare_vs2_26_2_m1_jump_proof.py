@@ -107,7 +107,7 @@ if strafe_start != strafe_request_tick:
         f"M1 native strafe proof changed start tick: request={strafe_request_tick} "
         f"confirmed_start={strafe_start}"
     )
-if not (walk_tick < backward_request_tick <= backward_tick < strafe_request_tick <= strafe_tick < request_tick):
+if not (walk_tick < backward_request_tick <= backward_tick <= strafe_request_tick <= strafe_tick < request_tick):
     raise SystemExit(
         f"M1 native locomotion ordering changed: walk={walk_tick} reverse_request={backward_request_tick} "
         f"reverse_confirmed={backward_tick} strafe_request={strafe_request_tick} "

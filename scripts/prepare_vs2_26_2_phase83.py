@@ -19,8 +19,15 @@ if "GATE_E_PHASE83_CONTACT_REFRESH" not in source:
     source = source.replace(condition_anchor, condition_replacement, 1)
 
 # Preserve the historical replay markers/body because later cumulative transforms
-# still use them as stable anchors, but never reactivate the branch. This keeps the
-# migration non-destructive while making synthetic LocalPlayer carry unreachable.
+# still use them as stable anchors, but make the branch unreachable here, after the
+# Phase 81 active guard has actually been materialized by the cumulative pipeline.
+active_replay_guard = '''            if (carryBaselineCaptured\n                && phase81PhysicalSupport\n                && carryReplayPlayerTick != player.tickCount'''
+disabled_replay_guard = '''            if (false && carryBaselineCaptured\n                && phase81PhysicalSupport\n                && carryReplayPlayerTick != player.tickCount'''
+if disabled_replay_guard not in source:
+    if active_replay_guard not in source:
+        raise SystemExit("Phase 85 could not find legacy LocalPlayer carry replay guard")
+    source = source.replace(active_replay_guard, disabled_replay_guard, 1)
+
 source = source.replace(
     '"GATE_E_PHASE81_CARRY_REPLAY carriage_id={} requested={},{},{} allowed={},{},{} before={},{},{} after={},{},{}"',
     '"GATE_E_PHASE85_CARRY_REPLAY carriage_id={} requested={},{},{} allowed={},{},{} before={},{},{} after={},{},{}"',
@@ -32,7 +39,6 @@ source = source.replace(
     1,
 )
 
-disabled_replay_guard = '''            if (false && carryBaselineCaptured\n                && phase81PhysicalSupport\n                && carryReplayPlayerTick != player.tickCount'''
 if disabled_replay_guard not in source:
     raise SystemExit("Phase 85 legacy LocalPlayer carry replay must remain disabled")
 

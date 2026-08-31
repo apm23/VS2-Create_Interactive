@@ -5,12 +5,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
 
-# Production-world #474 proved native jump input can begin while the shell is still collecting the
-# already-proven carry interval, contaminating that acceptance window with intentional vertical motion.
-# Preserve the native KeyMapping + LocalPlayer.aiStep path, but leave an 80-client-tick post-walk settle
-# window before jump is armed. Production-world #476 proved that merely observing onGround=false can
-# latch a falling/support-loss frame, while #477 proved genuine positive vanilla jump motion. Require
-# both native ascent and a later native descending airborne sample before accepting natural landing.
+# Production-world #478 proved stable carry, supported native forward sprinting, and a complete native
+# jump ascent/descent/landing cycle on the real moving train. M1 still requires reverse locomotion.
+# Reuse the same vanilla KeyMapping + LocalPlayer.aiStep fixture path to request a short backward walk
+# after the proven forward interval, and do not arm jump until vanilla movement responds while grounded.
 # This remains fixture sequencing/acceptance only; no position/velocity/collision/carry, train/world
 # state, gravity, or VS2/Create physics is synthesized.
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
@@ -32,7 +30,9 @@ public abstract class MixinLocalPlayerFixtureInput {
     @Unique private static int vs2$lastHeadTick = Integer.MIN_VALUE;
     @Unique private static int vs2$lastReturnTick = Integer.MIN_VALUE;
     @Unique private static int vs2$walkConfirmedTick = Integer.MIN_VALUE;
+    @Unique private static int vs2$backwardStartTick = Integer.MIN_VALUE;
     @Unique private static int vs2$jumpStartTick = Integer.MIN_VALUE;
+    @Unique private static boolean vs2$backwardConfirmed;
     @Unique private static boolean vs2$jumpAirborneSeen;
     @Unique private static boolean vs2$jumpFallingSeen;
     @Unique private static boolean vs2$jumpLandedLogged;
@@ -40,11 +40,43 @@ public abstract class MixinLocalPlayerFixtureInput {
     @Unique private boolean vs2$fixtureAiStepFallbackActive;
 
     @Unique
-    private boolean vs2$jumpArmReady(LocalPlayer self) {
-        boolean walkConfirmed = Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");
-        if (!walkConfirmed) return false;
+    private boolean vs2$fixtureWalkSeen(LocalPlayer self) {
+        if (!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")) return false;
         if (vs2$walkConfirmedTick == Integer.MIN_VALUE) vs2$walkConfirmedTick = self.tickCount;
+        return true;
+    }
+
+    @Unique
+    private boolean vs2$backwardWindow(LocalPlayer self) {
+        if (!vs2$fixtureWalkSeen(self) || vs2$backwardConfirmed) return false;
+        int elapsed = self.tickCount - vs2$walkConfirmedTick;
+        return elapsed >= 60 && elapsed <= 63;
+    }
+
+    @Unique
+    private boolean vs2$jumpArmReady(LocalPlayer self) {
+        if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed) return false;
         return self.tickCount >= vs2$walkConfirmedTick + 80;
+    }
+
+    @Unique
+    private void vs2$sampleNativeBackward(LocalPlayer self, Minecraft client, boolean backwardWindow) {
+        if (!backwardWindow || vs2$backwardConfirmed) return;
+        if (vs2$backwardStartTick == Integer.MIN_VALUE) {
+            vs2$backwardStartTick = self.tickCount;
+            VS2_FIXTURE_INPUT_LOGGER.info(
+                "GATE_E_M1_NATIVE_BACKWARD_REQUESTED player_tick={} walk_confirmed_tick={} settle_ticks={} on_ground={} fixture_only=true vanilla_keymapping=true",
+                self.tickCount, vs2$walkConfirmedTick, self.tickCount - vs2$walkConfirmedTick, self.onGround());
+        }
+        if (self.onGround() && client.options.keyDown.isDown()
+                && self.getDeltaMovement().horizontalDistanceSqr() > 0.0004) {
+            vs2$backwardConfirmed = true;
+            System.setProperty("vs2.productionFixtureBackwardConfirmed", "true");
+            VS2_FIXTURE_INPUT_LOGGER.info(
+                "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick={} start_tick={} duration_ticks={} horizontal_speed_sq={} on_ground=true fixture_only=true vanilla_keymapping=true native_motion=true",
+                self.tickCount, vs2$backwardStartTick, self.tickCount - vs2$backwardStartTick,
+                self.getDeltaMovement().horizontalDistanceSqr());
+        }
     }
 
     @Unique
@@ -98,11 +130,18 @@ public abstract class MixinLocalPlayerFixtureInput {
             return;
         }
         boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;
-        client.options.keyUp.setDown(pulse);
-        client.options.keyDown.setDown(false);
+        boolean backwardWindow = vs2$backwardWindow(self);
+        client.options.keyUp.setDown(pulse && !backwardWindow);
+        client.options.keyDown.setDown(backwardWindow);
         client.options.keyLeft.setDown(false);
         client.options.keyRight.setDown(false);
-        client.options.keySprint.setDown(pulse);
+        client.options.keySprint.setDown(pulse && !backwardWindow);
+        if (backwardWindow && vs2$backwardStartTick == Integer.MIN_VALUE) {
+            vs2$backwardStartTick = self.tickCount;
+            VS2_FIXTURE_INPUT_LOGGER.info(
+                "GATE_E_M1_NATIVE_BACKWARD_REQUESTED player_tick={} walk_confirmed_tick={} settle_ticks={} on_ground={} fixture_only=true vanilla_keymapping=true",
+                self.tickCount, vs2$walkConfirmedTick, self.tickCount - vs2$walkConfirmedTick, self.onGround());
+        }
         vs2$sampleNativeJump(self, client);
         if (self.tickCount != vs2$lastHeadTick && self.tickCount <= startTick + 5) {
             vs2$lastHeadTick = self.tickCount;
@@ -125,6 +164,7 @@ public abstract class MixinLocalPlayerFixtureInput {
         } catch (NumberFormatException ignored) {
             return;
         }
+        vs2$sampleNativeBackward(self, client, vs2$backwardWindow(self));
         vs2$sampleNativeJump(self, client);
         if (self.tickCount != vs2$lastReturnTick && self.tickCount <= startTick + 5) {
             vs2$lastReturnTick = self.tickCount;
@@ -150,19 +190,21 @@ public abstract class MixinLocalPlayerFixtureInput {
             return;
         }
         boolean walkWindow = self.tickCount >= startTick && self.tickCount <= startTick + 3;
+        boolean backwardWindow = vs2$backwardWindow(self);
         boolean jumpWindow = vs2$jumpArmReady(self) && !vs2$jumpLandedLogged;
-        if ((!walkWindow && !jumpWindow) || vs2$nativeAiStepTick == self.tickCount) return;
-        client.options.keyUp.setDown(walkWindow);
-        client.options.keyDown.setDown(false);
+        if ((!walkWindow && !backwardWindow && !jumpWindow) || vs2$nativeAiStepTick == self.tickCount) return;
+        client.options.keyUp.setDown(walkWindow && !backwardWindow);
+        client.options.keyDown.setDown(backwardWindow);
         client.options.keyLeft.setDown(false);
         client.options.keyRight.setDown(false);
-        client.options.keySprint.setDown(walkWindow);
+        client.options.keySprint.setDown(walkWindow && !backwardWindow);
         vs2$fixtureAiStepFallbackActive = true;
         try {
             self.aiStep();
             VS2_FIXTURE_INPUT_LOGGER.info(
-                "GATE_E_PHASE198_HEADLESS_NATIVE_AISTEP_FALLBACK player_tick={} start_tick={} key_up={} native_ai_step_seen={} jump_window={} fixture_only=true native_vanilla_path=true",
-                self.tickCount, startTick, client.options.keyUp.isDown(), vs2$nativeAiStepTick == self.tickCount, jumpWindow);
+                "GATE_E_PHASE198_HEADLESS_NATIVE_AISTEP_FALLBACK player_tick={} start_tick={} key_up={} key_down={} native_ai_step_seen={} backward_window={} jump_window={} fixture_only=true native_vanilla_path=true",
+                self.tickCount, startTick, client.options.keyUp.isDown(), client.options.keyDown.isDown(),
+                vs2$nativeAiStepTick == self.tickCount, backwardWindow, jumpWindow);
         } finally {
             vs2$fixtureAiStepFallbackActive = false;
         }
@@ -178,17 +220,23 @@ required = [
     'GATE_E_PHASE198_LOCALPLAYER_AISTEP_HEAD',
     'GATE_E_PHASE198_LOCALPLAYER_AISTEP_RETURN',
     'GATE_E_PHASE198_HEADLESS_NATIVE_AISTEP_FALLBACK',
+    'GATE_E_M1_NATIVE_BACKWARD_REQUESTED',
+    'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED',
+    'vs2.productionFixtureBackwardConfirmed',
+    'client.options.keyDown.setDown(backwardWindow)',
+    'horizontalDistanceSqr() > 0.0004',
     'GATE_E_M1_NATIVE_JUMP_REQUESTED',
     'GATE_E_M1_NATIVE_JUMP_AIRBORNE',
     'GATE_E_M1_NATIVE_JUMP_LANDED',
     'vs2.productionFixtureJumpLanded',
     'vs2.productionFixtureWalkConfirmed',
     'vs2$walkConfirmedTick + 80',
+    '!vs2$backwardConfirmed',
     'jumpWindow',
     'vs2$nativeAiStepTick == self.tickCount',
     'self.aiStep()',
     'vs2.productionFixtureWalkStartTick',
-    'client.options.keyUp.setDown(walkWindow)',
+    'client.options.keyUp.setDown(walkWindow && !backwardWindow)',
     'client.options.keyJump.setDown(jumpPulse)',
     'deltaY > 0.0',
     'deltaY < 0.0',
@@ -207,5 +255,5 @@ for forbidden in [
     if forbidden in text:
         raise SystemExit("Phase 198 introduced forbidden gameplay mutation token: " + forbidden)
 
-print("Phase 198: requires native ascent and descent before accepting natural jump landing; harness-only")
+print("Phase 198: requires native grounded backward movement before the proven native jump cycle; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase199.py")), run_name="__main__")

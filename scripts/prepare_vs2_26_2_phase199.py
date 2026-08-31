@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -108,3 +109,4 @@ for forbidden in [
         raise SystemExit("Phase 199 introduced forbidden mutation token: " + forbidden)
 
 print("Phase 199: traces required KeyboardInput.tick caller/timing boundary read-only; no gameplay or physics mutation")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase200.py")), run_name="__main__")

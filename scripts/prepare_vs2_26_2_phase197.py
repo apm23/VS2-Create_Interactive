@@ -106,8 +106,6 @@ public abstract class MixinLocalPlayerFixtureInput {
                     "GATE_E_M1_NATIVE_JUMP_LANDED player_tick={} start_tick={} duration_ticks={} on_ground=true fixture_only=true natural_fall=true",
                     self.tickCount, vs2$jumpStartTick, self.tickCount - vs2$jumpStartTick);
             }
-        } else {
-            client.options.keyJump.setDown(false);
         }
 
         if (self.tickCount != vs2$lastLoggedTick && self.tickCount <= startTick + 5) {

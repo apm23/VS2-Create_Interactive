@@ -145,11 +145,16 @@ if duration != landed_tick - request_tick or duration < 2:
         f"ticks={request_tick}->{landed_tick}"
     )
 
+# M1 is only accepted when the real production smoke completes without the legacy compatibility
+# carry replay. Native Create/VS2 contact must own locomotion; this verifier does not change physics.
+if "GATE_E_PHASE85_CARRY_REPLAY" in text:
+    raise SystemExit("M1 native locomotion used legacy Phase85 compatibility carry replay")
+
 print(
     "M1_NATIVE_LOCOMOTION_PROOF "
     f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} "
     f"reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} "
     f"strafe_confirmed={strafe_tick} strafe_speed_sq={strafe_speed_sq} "
     f"jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} "
-    f"duration={duration} delta_y={delta_y} natural_fall=true"
+    f"duration={duration} delta_y={delta_y} natural_fall=true replay_free=true"
 )

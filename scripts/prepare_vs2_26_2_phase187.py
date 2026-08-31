@@ -12,37 +12,44 @@ source = client_probe.read_text(encoding="utf-8")
 # step and Phase85 recovered only at tick 35. Let the already-bounded Phase161 loss predicate bypass
 # only that final native de-dup suppression. Phase85 remains the sole carry implementation and still
 # uses Create-computed, Create-collision-filtered horizontal motion; no new vector or physics path.
-old = '''(!(productionSmoke && explicitCarryCompat && (
-                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
-                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
-                                || phase150SupportReacquired)) || phase133ReplayGrace)'''
-new = '''(!(productionSmoke && explicitCarryCompat && (
-                                Boolean.parseBoolean(System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "false"))
-                                || Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId()))
-                                || phase150SupportReacquired)) || phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)'''
-
-if old in source:
-    source = source.replace(old, new, 1)
-elif new not in source:
-    raise SystemExit("Phase 187 could not find final Phase150 de-dup suppression widened by Phase132")
+#
+# Phase184 later expands the support side of this same final guard, so do not match the whole guard
+# text. Bound the edit to the one final Phase85 if-statement by its replay-tick anchor, then widen only
+# the already-existing Phase133 grace tail inside that bounded guard.
+replay_token = "carryReplayPlayerTick != player.tickCount"
+replay_pos = source.find(replay_token)
+if replay_pos < 0:
+    raise SystemExit("Phase 187 could not locate final Phase85 replay-tick anchor")
+if_pos = source.rfind("if (", 0, replay_pos)
+if_end = source.find(") {", replay_pos)
+if if_pos < 0 or if_end < 0:
+    raise SystemExit("Phase 187 could not bound final Phase85 replay guard")
+final_guard = source[if_pos:if_end + 3]
+old_tail = "|| phase133ReplayGrace)"
+new_tail = "|| phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)"
+if new_tail not in final_guard:
+    if final_guard.count(old_tail) != 1:
+        raise SystemExit("Phase 187 expected exactly one Phase133 grace tail inside final Phase85 guard")
+    final_guard = final_guard.replace(old_tail, new_tail, 1)
+    source = source[:if_pos] + final_guard + source[if_end + 3:]
 
 required = [
     "phase161SupportedLocomotionNativeLoss",
     "phase133ReplayGrace || phase161SupportedLocomotionNativeLoss",
     "GATE_E_PHASE85_CARRY_REPLAY",
     "GATE_E_PHASE181_FINAL_REPLAY_GUARD",
+    "carryReplayPlayerTick != player.tickCount",
 ]
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 187 lost bounded handoff-recovery anchors: " + ", ".join(missing))
 
-patch_text = new
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
     "cir.setReturnValue(",
 ]:
-    if forbidden in patch_text:
+    if forbidden in final_guard:
         raise SystemExit("Phase 187 introduced forbidden direct gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")

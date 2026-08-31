@@ -23,8 +23,13 @@ source = client_probe.read_text(encoding="utf-8")
 # Before changing any movement behavior, trace whether the ordinary key pulse actually reaches the
 # LocalPlayer input object. Reflection keeps this diagnostic independent of 26.2 input field names and
 # is read-only: it logs the runtime input class plus its primitive field values beside KeyMapping state.
-# No player movement, carry vector, collision, train/world state, inventory, Create behavior, or VS2
-# physics is changed.
+#
+# Production-world #413 proved the runtime input object is KeyboardInput, but getDeclaredFields() on
+# that concrete class exposed no primitive movement state at all. That leaves the important inherited
+# Input fields invisible. Walk the input class hierarchy and log primitive fields from every level so
+# the next real-world run can distinguish a KeyMapping-only pulse from an actually sampled movement
+# impulse. This remains read-only telemetry; no player movement, carry vector, collision, train/world
+# state, inventory, Create behavior, or VS2 physics is changed.
 #
 # The cumulative client also contains another unrelated rebase-age >=2 expression, so scope this
 # patch to Phase185's complete walk-readiness clause instead of counting the token globally.
@@ -83,14 +88,20 @@ input_probe = '''                                String phase192InputState = "in
                                         } else {
                                             StringBuilder phase192InputBuilder = new StringBuilder(
                                                 phase192Input.getClass().getName());
-                                            for (java.lang.reflect.Field phase192Field : phase192Input.getClass().getDeclaredFields()) {
-                                                Class<?> phase192Type = phase192Field.getType();
-                                                if (phase192Type == boolean.class || phase192Type == float.class
-                                                        || phase192Type == double.class || phase192Type == int.class) {
-                                                    phase192Field.setAccessible(true);
-                                                    phase192InputBuilder.append(';').append(phase192Field.getName())
-                                                        .append('=').append(String.valueOf(phase192Field.get(phase192Input)));
+                                            Class<?> phase192InputClass = phase192Input.getClass();
+                                            while (phase192InputClass != null) {
+                                                for (java.lang.reflect.Field phase192Field : phase192InputClass.getDeclaredFields()) {
+                                                    Class<?> phase192Type = phase192Field.getType();
+                                                    if (phase192Type == boolean.class || phase192Type == float.class
+                                                            || phase192Type == double.class || phase192Type == int.class) {
+                                                        phase192Field.setAccessible(true);
+                                                        phase192InputBuilder.append(';')
+                                                            .append(phase192InputClass.getSimpleName()).append('.')
+                                                            .append(phase192Field.getName()).append('=')
+                                                            .append(String.valueOf(phase192Field.get(phase192Input)));
+                                                    }
                                                 }
+                                                phase192InputClass = phase192InputClass.getSuperclass();
                                             }
                                             phase192InputState = phase192InputBuilder.toString();
                                         }
@@ -110,6 +121,35 @@ if "GATE_E_PHASE192_LOCAL_INPUT" not in source:
     if count != 1:
         raise SystemExit(f"Phase 192 expected one Phase167 sampled-input telemetry anchor, found {count}")
     source = source.replace(input_anchor, input_probe, 1)
+elif "phase192InputClass.getSuperclass()" not in source:
+    old_concrete_loop = '''                                            for (java.lang.reflect.Field phase192Field : phase192Input.getClass().getDeclaredFields()) {
+                                                Class<?> phase192Type = phase192Field.getType();
+                                                if (phase192Type == boolean.class || phase192Type == float.class
+                                                        || phase192Type == double.class || phase192Type == int.class) {
+                                                    phase192Field.setAccessible(true);
+                                                    phase192InputBuilder.append(';').append(phase192Field.getName())
+                                                        .append('=').append(String.valueOf(phase192Field.get(phase192Input)));
+                                                }
+                                            }'''
+    new_hierarchy_loop = '''                                            Class<?> phase192InputClass = phase192Input.getClass();
+                                            while (phase192InputClass != null) {
+                                                for (java.lang.reflect.Field phase192Field : phase192InputClass.getDeclaredFields()) {
+                                                    Class<?> phase192Type = phase192Field.getType();
+                                                    if (phase192Type == boolean.class || phase192Type == float.class
+                                                            || phase192Type == double.class || phase192Type == int.class) {
+                                                        phase192Field.setAccessible(true);
+                                                        phase192InputBuilder.append(';')
+                                                            .append(phase192InputClass.getSimpleName()).append('.')
+                                                            .append(phase192Field.getName()).append('=')
+                                                            .append(String.valueOf(phase192Field.get(phase192Input)));
+                                                    }
+                                                }
+                                                phase192InputClass = phase192InputClass.getSuperclass();
+                                            }'''
+    count = source.count(old_concrete_loop)
+    if count != 1:
+        raise SystemExit(f"Phase 192 expected one concrete-only input reflection loop, found {count}")
+    source = source.replace(old_concrete_loop, new_hierarchy_loop, 1)
 
 required = [
     "GATE_E_PHASE185_SETTLED_WALK_READY",
@@ -123,6 +163,7 @@ required = [
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
     "GATE_E_PHASE192_LOCAL_INPUT",
     "getDeclaredField(\"input\")",
+    "phase192InputClass.getSuperclass()",
     "input_state={}",
 ]
 missing = [token for token in required if token not in source]
@@ -139,4 +180,4 @@ for forbidden in [
         raise SystemExit("Phase 192 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 192: keeps direct-native walk readiness and traces LocalPlayer sampled input state read-only")
+print("Phase 192: keeps direct-native walk readiness and traces inherited LocalPlayer input state read-only")

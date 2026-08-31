@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -101,3 +102,4 @@ for forbidden in [
         raise SystemExit("Phase 198 introduced forbidden gameplay mutation token: " + forbidden)
 
 print("Phase 198: retargets disposable forward KeyMapping bridge to required LocalPlayer.tick HEAD and traces RETURN; harness-only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase199.py")), run_name="__main__")

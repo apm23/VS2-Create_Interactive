@@ -62,16 +62,17 @@ if "phase189SiblingNativeGap" not in source:
     replay_pos = source.find(replay_token, line_start + len(selector))
     replay_if_pos = source.rfind("if (", 0, replay_pos)
 
-# Widen only the final replay guard. Existing Phase85 still computes and collision-filters
-# the motion; Phase189 only recognizes one missed native sibling application while baseline
-# support remains current and healthy.
+# Widen only the final replay guard. Cumulative phases legitimately contain more than one
+# baseline-identity check inside this guard; choose the occurrence closest to the unique replay
+# tick predicate, matching Phase187's structural targeting strategy instead of assuming count=1.
 guard = source[replay_if_pos:replay_pos]
 identity_old = "carryBaselineCarriageId == carriage.getId()"
 identity_new = "(carryBaselineCarriageId == carriage.getId() || phase189SiblingNativeGap)"
 if identity_new not in guard:
-    if guard.count(identity_old) != 1:
-        raise SystemExit(f"Phase 189 expected one baseline identity predicate in final guard, found {guard.count(identity_old)}")
-    guard = guard.replace(identity_old, identity_new, 1)
+    identity_pos = guard.rfind(identity_old)
+    if identity_pos < 0:
+        raise SystemExit("Phase 189 could not find final baseline identity predicate")
+    guard = guard[:identity_pos] + identity_new + guard[identity_pos + len(identity_old):]
 
 support_variants = [
     "(phase81PhysicalSupport || phase133ReplayGrace)",

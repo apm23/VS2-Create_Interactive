@@ -13,41 +13,66 @@ source = client_probe.read_text(encoding="utf-8")
 # only that final native de-dup suppression. Phase85 remains the sole carry implementation and still
 # uses Create-computed, Create-collision-filtered horizontal motion; no new vector or physics path.
 #
-# Phase132 constructs the final Phase150 tail explicitly. Later phases may add predicates/grouping to
-# the support side of the Phase85 guard, so deriving the whole guard from a nearby "if (" is brittle.
-# Bind directly to the unique Phase150 de-dup tail that Phase132 itself requires, and widen only its
-# bounded Phase133 escape hatch. This cannot accidentally touch the separate physical-support widening.
-old_tail = "|| phase150SupportReacquired)) || phase133ReplayGrace)"
-new_tail = "|| phase150SupportReacquired)) || (phase133ReplayGrace || phase161SupportedLocomotionNativeLoss))"
+# Cumulative phases may regroup the final Phase85 boolean expression, so punctuation-based matching
+# is intentionally avoided. Bind first to Phase150's unique support-reacquired identifier, then to
+# the first Phase133 grace identifier following it before the final replay-tick predicate. That is
+# the de-dup escape hatch Phase132 created; the separate physical-support grace occurs earlier.
+anchor = "phase150SupportReacquired"
+replay_token = "carryReplayPlayerTick != player.tickCount"
+new_term = "(phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)"
 
-if new_tail not in source:
-    tail_count = source.count(old_tail)
-    if tail_count != 1:
-        raise SystemExit(f"Phase 187 expected exactly one Phase150/Phase133 de-dup tail, found {tail_count}")
-    source = source.replace(old_tail, new_tail, 1)
+if new_term not in source:
+    anchor_positions = []
+    start = 0
+    while True:
+        pos = source.find(anchor, start)
+        if pos < 0:
+            break
+        anchor_positions.append(pos)
+        start = pos + len(anchor)
+
+    replay_pos = source.find(replay_token)
+    if replay_pos < 0:
+        raise SystemExit("Phase 187 could not locate final Phase85 replay-tick anchor")
+
+    candidates = []
+    for anchor_pos in anchor_positions:
+        if anchor_pos >= replay_pos:
+            continue
+        grace_pos = source.find("phase133ReplayGrace", anchor_pos + len(anchor), replay_pos)
+        if grace_pos >= 0:
+            candidates.append((anchor_pos, grace_pos))
+
+    if not candidates:
+        raise SystemExit("Phase 187 could not locate Phase133 de-dup grace after Phase150 reacquire anchor")
+
+    # The final Phase85 guard is the Phase150 occurrence closest to the unique replay-tick predicate.
+    anchor_pos, grace_pos = max(candidates, key=lambda pair: pair[0])
+    source = source[:grace_pos] + new_term + source[grace_pos + len("phase133ReplayGrace"):]
 
 required = [
     "phase161SupportedLocomotionNativeLoss",
-    new_tail,
+    new_term,
+    "phase150SupportReacquired",
     "GATE_E_PHASE85_CARRY_REPLAY",
     "GATE_E_PHASE181_FINAL_REPLAY_GUARD",
-    "carryReplayPlayerTick != player.tickCount",
+    replay_token,
 ]
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 187 lost bounded handoff-recovery anchors: " + ", ".join(missing))
 
-# Inspect only the rewritten de-dup neighborhood for forbidden direct mutations. Phase187 changes
-# predicate composition only; it must not add any player/world/train/physics action.
-tail_pos = source.index(new_tail)
-tail_slice = source[max(0, tail_pos - 1200):tail_pos + len(new_tail) + 1200]
+# Inspect only the rewritten predicate neighborhood. Phase187 changes predicate composition only;
+# it must not add any direct player/world/train/physics mutation.
+term_pos = source.index(new_term)
+term_slice = source[max(0, term_pos - 1200):term_pos + len(new_term) + 1200]
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
     "cir.setReturnValue(",
 ]:
-    if forbidden in tail_slice:
-        raise SystemExit("Phase 187 found forbidden direct gameplay mutation near de-dup tail: " + forbidden)
+    if forbidden in term_slice:
+        raise SystemExit("Phase 187 found forbidden direct gameplay mutation near de-dup predicate: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 187: widens only the Phase150 de-dup tail with already-bounded Phase161 recovery; existing Create-filtered Phase85 carry only")
+print("Phase 187: structurally widens only the Phase150 de-dup grace with already-bounded Phase161 recovery; existing Create-filtered Phase85 carry only")

@@ -6,22 +6,19 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #312 proved the first post-pulse discontinuity is not compatibility replay:
-# carryReplayPlayerTick was still 16 while tick 28 moved the LocalPlayer 8.889862 blocks and the
-# carriage itself moved only 3.389730 blocks. Existing Create collider telemetry simultaneously
-# reported a 5.500132-block requested/allowed horizontal collision vector. Before changing any
-# gameplay behavior, correlate the active carriage's own getContactPointMotion() with that Create
-# collider request and the player's vanilla delta movement on every bounded walk sample. Phase165
-# has already replaced the sample branch's original keyUp=true statement with keyUp=false plus
-# keyDown=false by the time this phase runs, so anchor that final cumulative input seam. This is
-# read-only diagnostics only; no player, collision, train, world, or VS2/Create physics mutation.
-anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
-                                client.options.keyUp.setDown(false);
+# Production-world #312 added read-only native-motion correlation to the bounded walk sample.
+# Phase165 now holds ordinary forward input through one input-sampling interval and bounds the
+# finite-world proof to twelve ticks, so this diagnostic must follow that harness seam instead of
+# rewriting it back to the historical +20/keyUp=false form. Telemetry remains read-only.
+anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {
+                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 1;
+                                client.options.keyUp.setDown(phase165InputPulse);
                                 client.options.keyDown.setDown(false);
                                 LOGGER.info(
                                     "GATE_E_PHASE163_WALK_WORLD_FRAME'''
-insert = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
-                                client.options.keyUp.setDown(false);
+insert = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {
+                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 1;
+                                client.options.keyUp.setDown(phase165InputPulse);
                                 client.options.keyDown.setDown(false);
                                 String phase167ContactMotionState = "unresolved";
                                 try {
@@ -60,7 +57,7 @@ insert = '''                            if (player.tickCount <= phase154WalkStar
 
 if "GATE_E_PHASE167_WALK_NATIVE_MOTION" not in source:
     if source.count(anchor) != 1:
-        raise SystemExit("Phase 167 expected exactly one final Phase165/163 walk sample anchor")
+        raise SystemExit("Phase 167 expected exactly one final Phase165/163 sampled-input walk anchor")
     source = source.replace(anchor, insert, 1)
 
 required = [
@@ -70,7 +67,9 @@ required = [
     "player.position()",
     "player.getDeltaMovement()",
     "carryReplayPlayerTick",
-    "client.options.keyUp.setDown(false)",
+    "phase154WalkStartTick + 12",
+    "phase165InputPulse",
+    "client.options.keyUp.setDown(phase165InputPulse)",
     "client.options.keyDown.setDown(false)",
     "GATE_E_PHASE163_WALK_WORLD_FRAME",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
@@ -87,5 +86,5 @@ for forbidden in [
         raise SystemExit("Phase 167 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 167: traces active-carriage contact motion beside walk discontinuities read-only")
+print("Phase 167: traces active-carriage contact motion beside the sampled-input walk window; read-only only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase168.py")), run_name="__main__")

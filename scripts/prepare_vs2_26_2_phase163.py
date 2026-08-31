@@ -34,15 +34,15 @@ if "phase163SupportedActiveHandoff" not in source:
 # #308 still produced multi-block local jumps while the same carriage id remained selected.
 # Add read-only world-frame telemetry next to the existing walk sample so the next real-world
 # smoke can distinguish actual player motion from carriage transform/interpolation movement or
-# a late compatibility replay. Phase154 still owns the ordinary keyUp call at this point in the
-# cumulative patch chain (Phase165 changes it later), so include that stable statement in the
-# anchor instead of assuming LOGGER immediately follows the tick-window branch. Do not weaken
-# the walk proof and do not mutate gameplay state.
-walk_sample_anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
+# a late compatibility replay. Phase154 owns the ordinary keyUp call at this point in the
+# cumulative patch chain. Its walk window is intentionally bounded to twelve ticks on the
+# finite production carriage, so this downstream diagnostic must follow the same harness bound.
+# Do not weaken the walk proof and do not mutate gameplay state.
+walk_sample_anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {
                                 client.options.keyUp.setDown(true);
                                 LOGGER.info(
                                     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE'''
-walk_sample_diag = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {
+walk_sample_diag = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {
                                 client.options.keyUp.setDown(true);
                                 LOGGER.info(
                                     "GATE_E_PHASE163_WALK_WORLD_FRAME player_tick={} carriage_id={} walk_carriage_id={} baseline_carriage_id={} rebase_tick={} replay_tick={} player_world={} carriage_world={} local={} local_step={} key_up={} key_down={} on_ground={} broadphase={} read_only=true",
@@ -54,7 +54,7 @@ walk_sample_diag = '''                            if (player.tickCount <= phase1
                                     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE'''
 if "GATE_E_PHASE163_WALK_WORLD_FRAME" not in source:
     if source.count(walk_sample_anchor) != 1:
-        raise SystemExit("Phase 163 expected exactly one Phase154 walk-sample branch with Phase154 keyUp statement")
+        raise SystemExit("Phase 163 expected exactly one bounded Phase154 walk-sample branch with Phase154 keyUp statement")
     source = source.replace(walk_sample_anchor, walk_sample_diag, 1)
 
 required = [
@@ -69,6 +69,7 @@ required = [
     "phase154Carriage.position()",
     "carryReplayPlayerTick",
     "client.options.keyUp.setDown(true)",
+    "phase154WalkStartTick + 12",
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
 ]
@@ -87,4 +88,4 @@ for forbidden in [
         raise SystemExit("Phase 163 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 163: follows supported active carriage and traces read-only walk world-frame discontinuities")
+print("Phase 163: follows supported active carriage and traces bounded read-only walk world-frame discontinuities")

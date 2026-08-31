@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Validate native jump/fall proof from the real production-world smoke log.
+
+This is a CI artifact verifier, not a VS2 source preparation phase. Its filename intentionally
+matches the production-world workflow path trigger so changes to this proof contract rerun the
+real train fixture.
+"""
+import re
+import sys
+from pathlib import Path
+
+if len(sys.argv) != 2:
+    raise SystemExit("usage: prepare_vs2_26_2_m1_jump_proof.py <production-world-smoke.log>")
+
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+
+walk = re.search(
+    r"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*on_ground=true[^\n]*broadphase=true"
+    r"[^\n]*support_healthy=true[^\n]*confirmed=true[^\n]*sprinting=true[^\n]*fixture_only=true",
+    text,
+)
+requested = re.search(
+    r"GATE_E_M1_NATIVE_JUMP_REQUESTED[^\n]*player_tick=(\d+)[^\n]*on_ground=true"
+    r"[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true",
+    text,
+)
+airborne = re.search(
+    r"GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)"
+    r"[^\n]*delta_y=([-+0-9.eE]+)[^\n]*on_ground=false[^\n]*fixture_only=true"
+    r"[^\n]*native_motion=true",
+    text,
+)
+landed = re.search(
+    r"GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)"
+    r"[^\n]*duration_ticks=(\d+)[^\n]*on_ground=true[^\n]*fixture_only=true"
+    r"[^\n]*natural_fall=true",
+    text,
+)
+
+missing = [
+    name
+    for name, match in (
+        ("supported sprint/walk", walk),
+        ("native jump request", requested),
+        ("native airborne transition", airborne),
+        ("natural landing", landed),
+    )
+    if match is None
+]
+if missing:
+    raise SystemExit("M1 native jump proof missing: " + ", ".join(missing))
+
+request_tick = int(requested.group(1))
+airborne_tick = int(airborne.group(1))
+airborne_start = int(airborne.group(2))
+delta_y = float(airborne.group(3))
+landed_tick = int(landed.group(1))
+landed_start = int(landed.group(2))
+duration = int(landed.group(3))
+
+if not (airborne_start == request_tick == landed_start):
+    raise SystemExit(
+        f"M1 native jump proof changed start tick: request={request_tick} "
+        f"airborne_start={airborne_start} landed_start={landed_start}"
+    )
+if not (request_tick < airborne_tick < landed_tick):
+    raise SystemExit(
+        f"M1 native jump transitions are out of order: request={request_tick} "
+        f"airborne={airborne_tick} landed={landed_tick}"
+    )
+if delta_y <= 0.0:
+    raise SystemExit(f"M1 native jump never gained upward motion: delta_y={delta_y}")
+if duration != landed_tick - request_tick or duration < 2:
+    raise SystemExit(
+        f"M1 native jump landing duration is inconsistent: duration={duration} "
+        f"ticks={request_tick}->{landed_tick}"
+    )
+
+print(
+    "M1_NATIVE_JUMP_PROOF "
+    f"request={request_tick} airborne={airborne_tick} landed={landed_tick} "
+    f"duration={duration} delta_y={delta_y} natural_fall=true"
+)

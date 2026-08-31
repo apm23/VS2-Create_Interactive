@@ -1,0 +1,38 @@
+name: m1-native-jump-gate
+
+on:
+  workflow_run:
+    workflows:
+      - production-world-smoke
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-native-jump:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact production-world HEAD
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Download exact production-world diagnostics
+        uses: actions/download-artifact@v4
+        with:
+          name: vs2-production-real-train-world-smoke-log
+          path: production-world-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Require native jump, airborne, and natural landing
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f production-world-artifact/production-world-smoke.log
+          python3 scripts/prepare_vs2_26_2_m1_jump_proof.py production-world-artifact/production-world-smoke.log

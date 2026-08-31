@@ -27,7 +27,8 @@ required = [
     "phase166FixturePulseObservation",
     "phase188PreResetWalkReady",
     "player.tickCount <= phase154WalkStartTick + 20 && !phase188PreResetWalkReady",
-    "phase165WalkPathDistance >= 0.20",
+    "phase165WalkPathDistance >= 0.35",
+    "player.tickCount >= phase154WalkStartTick + 3",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
     "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE",
 ]
@@ -45,6 +46,6 @@ for forbidden in [
         raise SystemExit("Phase 191 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 191: extends only the cumulative Phase188 fixture walk observation deadline to the existing Phase166 delayed-input bound")
+print("Phase 191: aligns delayed walk observation with the sustained three-tick Phase188 proof")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase192.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase193.py")), run_name="__main__")

@@ -8,8 +8,10 @@ java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/Mi
 # Production-world #474 proved native jump input can begin while the shell is still collecting the
 # already-proven carry interval, contaminating that acceptance window with intentional vertical motion.
 # Preserve the native KeyMapping + LocalPlayer.aiStep path, but leave an 80-client-tick post-walk settle
-# window before jump is armed. This is fixture sequencing only; no position/velocity/collision/carry,
-# train/world state, gravity, or VS2/Create physics is synthesized or written here.
+# window before jump is armed. Production-world #476 also proved that merely observing onGround=false
+# can latch a falling/support-loss frame with negative Y motion, so only publish AIRBORNE after vanilla
+# movement has produced positive upward motion. This remains fixture sequencing/acceptance only; no
+# position/velocity/collision/carry, train/world state, gravity, or VS2/Create physics is synthesized.
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import net.minecraft.client.Minecraft;
@@ -58,11 +60,12 @@ public abstract class MixinLocalPlayerFixtureInput {
         }
         boolean jumpPulse = vs2$jumpStartTick != Integer.MIN_VALUE && self.tickCount == vs2$jumpStartTick;
         client.options.keyJump.setDown(jumpPulse);
-        if (vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround() && !vs2$jumpAirborneSeen) {
+        double deltaY = self.getDeltaMovement().y;
+        if (vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround() && deltaY > 0.0 && !vs2$jumpAirborneSeen) {
             vs2$jumpAirborneSeen = true;
             VS2_FIXTURE_INPUT_LOGGER.info(
                 "GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick={} start_tick={} delta_y={} on_ground=false fixture_only=true native_motion=true",
-                self.tickCount, vs2$jumpStartTick, self.getDeltaMovement().y);
+                self.tickCount, vs2$jumpStartTick, deltaY);
         }
         if (vs2$jumpAirborneSeen && self.onGround() && self.tickCount > vs2$jumpStartTick) {
             vs2$jumpLandedLogged = true;
@@ -182,6 +185,7 @@ required = [
     'vs2.productionFixtureWalkStartTick',
     'client.options.keyUp.setDown(walkWindow)',
     'client.options.keyJump.setDown(jumpPulse)',
+    'deltaY > 0.0',
     'fixture_only=true',
 ]
 missing = [token for token in required if token not in text]
@@ -196,5 +200,5 @@ for forbidden in [
     if forbidden in text:
         raise SystemExit("Phase 198 introduced forbidden gameplay mutation token: " + forbidden)
 
-print("Phase 198: delays native jump until the post-walk carry acceptance window settles; harness-only")
+print("Phase 198: requires positive native upward motion before accepting jump airborne state; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase199.py")), run_name="__main__")

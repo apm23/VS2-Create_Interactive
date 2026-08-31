@@ -9,8 +9,7 @@ source = client_probe.read_text(encoding="utf-8")
 # existing three-tick settled predicate, then the end-tick local frame jumped 6.998 blocks at tick
 # 18 and support became unhealthy. The following carriage 4 interval lasted only ticks 19-22 before
 # another handoff. These are short-lived fixture frame windows, not evidence for a new physics
-# correction. Keep the conservative five-tick readiness path and four ticks since the most recent
-# baseline rebase before pressing the disposable forward key.
+# correction. Keep the conservative five-tick readiness path for health-only readiness.
 #
 # Production-world #411 then proved that the conservative five-tick gate can starve the walk proof:
 # carriage 4 had strict support plus exact same-carriage native Create applications on ticks 60-61,
@@ -31,6 +30,16 @@ source = client_probe.read_text(encoding="utf-8")
 # impulse. This remains read-only telemetry; no player movement, carry vector, collision, train/world
 # state, inventory, Create behavior, or VS2 physics is changed.
 #
+# Production-world #489 proves the four-tick post-rebase delay now defeats the later Phase194 hardening:
+# carriage 7 had strict support, exact native Create application, and zero carriage-local drift on
+# ticks 25-28, but readiness stayed false solely because rebase age was 0-3. At tick 29 a sibling
+# carriage native application arrived before the Phase185/172 sibling guard could be prearmed and the
+# stable interval was lost. Phase194 now independently requires three fresh ready ticks plus a strict
+# next-tick confirmation before starting the walk, so the old four-tick delay is redundant. Restore the
+# historical two-tick rebase settle boundary: this lets the existing Phase172 guard prearm inside the
+# proven stable carry window while Phase194 still prevents a two-tick startup transient from starting
+# locomotion. Fixture accounting only; no movement/carry vector/physics mutation is introduced.
+#
 # The cumulative client also contains another unrelated rebase-age >=2 expression, so scope this
 # patch to Phase185's complete walk-readiness clause instead of counting the token globally.
 old_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
@@ -38,16 +47,17 @@ old_readiness = '''                        boolean phase185WalkReadyNow = phase1
                             && phase185FreshNativeEvidence
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 2);'''
-new_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
+old_phase192_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
                             && phase185FreshNativeEvidence
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 4);'''
+new_readiness = old_readiness
 if new_readiness not in source:
-    count = source.count(old_readiness)
+    count = source.count(old_phase192_readiness)
     if count != 1:
         raise SystemExit(f"Phase 192 expected one scoped Phase185 readiness clause, found {count}")
-    source = source.replace(old_readiness, new_readiness, 1)
+    source = source.replace(old_phase192_readiness, new_readiness, 1)
 
 old_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
@@ -156,7 +166,7 @@ required = [
     "phase185WalkReadyCarriageId == phase154Carriage.getId()",
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2",
-    "player.tickCount - carryBaselineRebaseTick >= 4",
+    "player.tickCount - carryBaselineRebaseTick >= 2",
     "phase81PhysicalSupport",
     "phase185FreshNativeEvidence",
     "GATE_E_PHASE154_FIXTURE_WALK_START",
@@ -180,4 +190,4 @@ for forbidden in [
         raise SystemExit("Phase 192 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 192: keeps direct-native walk readiness and traces inherited LocalPlayer input state read-only")
+print("Phase 192: prearms existing sibling guard inside stable carry window while Phase194 keeps strict walk confirmation")

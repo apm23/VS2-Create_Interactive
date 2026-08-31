@@ -9,11 +9,13 @@ source = client_probe.read_text(encoding="utf-8")
 # is still too aggressive for the finite fixture. Production-world #386 then proved the settled
 # walk gate does start, but the old one-callback pulse is released before any visible locomotion
 # sample while the finite train route later performs a 45.50-block same-carriage frame reset at
-# tick 43. Keep ordinary forward input asserted through one complete client input-sampling interval,
-# release it on the following callback, and bound this fixture proof to twelve supported ticks so
-# the measurement finishes before that known route/reset discontinuity. This is harness-only: no
-# player position/velocity, collision, carry vector, train/world state, or VS2/Create physics is
-# changed. A later long-route regression can extend duration after this locomotion sample is proven.
+# tick 43. Production-world #409 made the timing failure explicit: the walk started at tick 27,
+# key_up was visible at tick 28, but was already false again at tick 29 and the player accumulated
+# zero horizontal carriage-local movement before the sibling handoff at tick 33. Hold the ordinary
+# forward key through three post-start callbacks so at least one full Minecraft input-sampling tick
+# can consume it, while retaining the existing twelve-tick verifier bound before the known route
+# discontinuity. This is harness-only: no player position/velocity, collision, carry vector,
+# train/world state, or VS2/Create physics is changed.
 field_old = '''    private static net.minecraft.world.phys.Vec3 phase154WalkPreviousLocal;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
 field_new = '''    private static net.minecraft.world.phys.Vec3 phase154WalkPreviousLocal;\n    private static double phase165WalkPathDistance;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
 if "phase165WalkPathDistance" not in source:
@@ -42,9 +44,12 @@ else:
 
 input_old = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {\n                                client.options.keyUp.setDown(true);\n                                LOGGER.info(\n'''
 input_phase165_old = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {\n                                client.options.keyUp.setDown(false);\n                                client.options.keyDown.setDown(false);\n                                LOGGER.info(\n'''
-input_new = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {\n                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 1;\n                                client.options.keyUp.setDown(phase165InputPulse);\n                                client.options.keyDown.setDown(false);\n                                LOGGER.info(\n'''
-if "boolean phase165InputPulse" not in source:
-    if source.count(input_phase165_old) == 1:
+input_phase165_one_tick = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {\n                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 1;\n                                client.options.keyUp.setDown(phase165InputPulse);\n                                client.options.keyDown.setDown(false);\n                                LOGGER.info(\n'''
+input_new = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {\n                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 3;\n                                client.options.keyUp.setDown(phase165InputPulse);\n                                client.options.keyDown.setDown(false);\n                                LOGGER.info(\n'''
+if "boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 3;" not in source:
+    if source.count(input_phase165_one_tick) == 1:
+        source = source.replace(input_phase165_one_tick, input_new, 1)
+    elif source.count(input_phase165_old) == 1:
         source = source.replace(input_phase165_old, input_new, 1)
     elif source.count(input_old) == 1:
         source = source.replace(input_old, input_new, 1)
@@ -70,7 +75,7 @@ required = [
     "phase165WalkPathDistance = 0.0",
     "phase165WalkPathDistance += phase154Step",
     "phase165InputPulse",
-    "phase154WalkStartTick + 1",
+    "phase154WalkStartTick + 3",
     "phase154WalkStartTick + 12",
     "client.options.keyUp.setDown(phase165InputPulse)",
     "client.options.keyDown.setDown(false)",
@@ -94,4 +99,4 @@ for forbidden in [
         raise SystemExit("Phase 165 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 165: holds ordinary forward input through one sampling interval and observes twelve supported ticks before the finite-route reset")
+print("Phase 165: holds ordinary forward input across three post-start callbacks and observes twelve supported ticks before the finite-route reset")

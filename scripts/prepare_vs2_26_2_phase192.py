@@ -12,21 +12,35 @@ source = client_probe.read_text(encoding="utf-8")
 # correction. Require five consecutive ready ticks and four ticks since the most recent baseline
 # rebase before pressing the disposable forward key. This changes fixture timing only: no player
 # movement, carry vector, collision, train/world state, inventory, Create behavior, or VS2 physics.
-
-old_age = "player.tickCount - carryBaselineRebaseTick >= 2"
-new_age = "player.tickCount - carryBaselineRebaseTick >= 4"
-if new_age not in source:
-    count = source.count(old_age)
+#
+# The cumulative client also contains another unrelated rebase-age >=2 expression, so scope this
+# patch to Phase185's complete walk-readiness clause instead of counting the token globally.
+old_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
+                            && phase81PhysicalSupport
+                            && phase185FreshNativeEvidence
+                            && (carryBaselineRebaseTick == Integer.MIN_VALUE
+                                || player.tickCount - carryBaselineRebaseTick >= 2);'''
+new_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
+                            && phase81PhysicalSupport
+                            && phase185FreshNativeEvidence
+                            && (carryBaselineRebaseTick == Integer.MIN_VALUE
+                                || player.tickCount - carryBaselineRebaseTick >= 4);'''
+if new_readiness not in source:
+    count = source.count(old_readiness)
     if count != 1:
-        raise SystemExit(f"Phase 192 expected one Phase185 rebase-age guard, found {count}")
-    source = source.replace(old_age, new_age, 1)
+        raise SystemExit(f"Phase 192 expected one scoped Phase185 readiness clause, found {count}")
+    source = source.replace(old_readiness, new_readiness, 1)
 
-old_ready = "phase185WalkReadyTicks >= 3"
-new_ready = "phase185WalkReadyTicks >= 5"
+old_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
+                                && phase185WalkReadyCarriageId == phase154Carriage.getId()
+                                && phase185WalkReadyTicks >= 3) {'''
+new_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
+                                && phase185WalkReadyCarriageId == phase154Carriage.getId()
+                                && phase185WalkReadyTicks >= 5) {'''
 if new_ready not in source:
     count = source.count(old_ready)
     if count != 1:
-        raise SystemExit(f"Phase 192 expected one Phase185 ready-tick guard, found {count}")
+        raise SystemExit(f"Phase 192 expected one scoped Phase185 ready-tick branch, found {count}")
     source = source.replace(old_ready, new_ready, 1)
 
 required = [
@@ -43,7 +57,7 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 192 lost settled-frame fixture anchors: " + ", ".join(missing))
 
-inserted = new_age + new_ready
+inserted = new_readiness + new_ready
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",

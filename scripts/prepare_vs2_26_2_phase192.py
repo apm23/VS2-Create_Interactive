@@ -40,6 +40,14 @@ source = client_probe.read_text(encoding="utf-8")
 # proven stable carry window while Phase194 still prevents a two-tick startup transient from starting
 # locomotion. Fixture accounting only; no movement/carry vector/physics mutation is introduced.
 #
+# Production-world #490 exposed a harness contamination boundary, not a new gameplay-physics failure:
+# Phase185 accumulated ready ticks 34-36 while the bounded fixture-contact acquisition was still active
+# (attempts continued through player tick 50). Phase194 then deliberately withheld that assistance on
+# tick 37 for its strict confirmation, where the apparent stable local frame immediately disappeared.
+# Do not arm locomotion from fixture-assisted samples. Require the existing 48-attempt acquisition to
+# be complete before Phase185 can accumulate walk readiness. This is fixture-only acceptance gating;
+# production carry, player motion, collision response, train state, and VS2/Create physics are unchanged.
+#
 # The cumulative client also contains another unrelated rebase-age >=2 expression, so scope this
 # patch to Phase185's complete walk-readiness clause instead of counting the token globally.
 old_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
@@ -52,12 +60,19 @@ old_phase192_readiness = '''                        boolean phase185WalkReadyNow
                             && phase185FreshNativeEvidence
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 4);'''
-new_readiness = old_readiness
+new_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
+                            && phase81PhysicalSupport
+                            && phase185FreshNativeEvidence
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 48)
+                            && (carryBaselineRebaseTick == Integer.MIN_VALUE
+                                || player.tickCount - carryBaselineRebaseTick >= 2);'''
 if new_readiness not in source:
-    count = source.count(old_phase192_readiness)
-    if count != 1:
-        raise SystemExit(f"Phase 192 expected one scoped Phase185 readiness clause, found {count}")
-    source = source.replace(old_phase192_readiness, new_readiness, 1)
+    if source.count(old_readiness) == 1:
+        source = source.replace(old_readiness, new_readiness, 1)
+    elif source.count(old_phase192_readiness) == 1:
+        source = source.replace(old_phase192_readiness, new_readiness, 1)
+    else:
+        raise SystemExit("Phase 192 expected one scoped Phase185 readiness clause")
 
 old_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
@@ -166,6 +181,8 @@ required = [
     "phase185WalkReadyCarriageId == phase154Carriage.getId()",
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2",
+    "fixtureContactAcquireTicks >= 48",
+    "!productionSmokeFixture",
     "player.tickCount - carryBaselineRebaseTick >= 2",
     "phase81PhysicalSupport",
     "phase185FreshNativeEvidence",
@@ -190,4 +207,4 @@ for forbidden in [
         raise SystemExit("Phase 192 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 192: prearms existing sibling guard inside stable carry window while Phase194 keeps strict walk confirmation")
+print("Phase 192: waits for bounded fixture acquisition before accumulating walk readiness")

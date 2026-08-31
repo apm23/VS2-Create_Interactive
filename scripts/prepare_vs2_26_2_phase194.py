@@ -6,16 +6,14 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #416 proved that the two-tick exact-native readiness path can start the disposable
-# walk on the final tick of a transient support window. Carriage 7 had strict support plus exact native
-# Create application at ticks 23-24, the walk started at tick 24, then strict Phase81 support was already
-# false/NaN on tick 25 even though the player stayed grounded and broadphase-overlapping. Tick 25 was
-# covered by the existing one-tick replay grace, but tick 26 then drifted exactly by the carriage frame
-# step. Do not alter carry vectors or support thresholds. Arm the direct-native shortcut after its two
-# qualifying ticks, then require one full following tick of the same active-baseline carriage with strict
-# support before actually pressing the fixture key. The conservative five-tick readiness path is unchanged.
-# Harness timing/accounting only: no player position/velocity, collision response, train/world state,
-# inventory, Create behavior, or VS2 physics is changed.
+# Production-world #443 proves the direct-native walk arm itself is healthy: carriage 5 has two
+# consecutive fresh native Create carry ticks with strict support, then Phase194 arms at tick 16.
+# The blocker is still the disposable contact-acquisition harness: Phase129/162 retry remains active
+# during the required one-tick confirmation window and can reposition onto a sibling carriage before
+# Phase194 observes the next unassisted tick. Pause only that bounded fixture retry for the single tick
+# immediately after an arm; if confirmation fails, acquisition resumes on the following tick. This is
+# harness timing/accounting only: no player position/velocity, collision response, carry vector,
+# train/world state, inventory, Create behavior, or VS2 physics is changed.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -26,6 +24,18 @@ if "phase194PendingWalkTick" not in source:
     if source.count(field_anchor) != 1:
         raise SystemExit("Phase 194 could not locate unique Phase185 readiness field anchor")
     source = source.replace(field_anchor, field_insert, 1)
+
+# Phase162 already freezes contact acquisition after the walk starts. Extend that existing harness
+# boundary one tick earlier, but only while a direct-native arm is awaiting confirmation. Because the
+# arm is set later in the same client tick, the current acquisition attempt is untouched; the next tick
+# is unassisted, and retries automatically resume one tick later if confirmation did not succeed.
+acquire_guard = "fixtureContactAcquireTicks < 48 && !phase154WalkStarted"
+confirm_guard = "fixtureContactAcquireTicks < 48 && !phase154WalkStarted && phase194PendingWalkTick < player.tickCount - 1"
+if confirm_guard not in source:
+    count = source.count(acquire_guard)
+    if count != 2:
+        raise SystemExit(f"Phase 194 expected two Phase162 fixture-acquisition guards, found {count}")
+    source = source.replace(acquire_guard, confirm_guard)
 
 old_branch = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
@@ -74,6 +84,7 @@ required = [
     "phase194DirectNativeCandidate",
     "phase194ConfirmedDirectNativeReady",
     "phase194PendingWalkTick == player.tickCount - 1",
+    "phase194PendingWalkTick < player.tickCount - 1",
     "phase154Carriage.getId() == carryBaselineCarriageId",
     "phase81PhysicalSupport",
     "collisionEligible && broadphaseOverlap && player.onGround()",
@@ -87,7 +98,7 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 194 lost strict-confirmed walk-start anchors: " + ", ".join(missing))
 
-inserted = field_insert + new_branch
+inserted = field_insert + confirm_guard + new_branch
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -97,5 +108,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: requires one full strict-support tick after the two-tick direct-native walk arm; fixture timing only")
+print("Phase 194: freezes fixture retry only during the one-tick direct-native walk confirmation window; harness timing only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

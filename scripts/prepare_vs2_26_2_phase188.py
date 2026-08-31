@@ -32,6 +32,22 @@ if "phase188PreResetWalkReady" not in source:
         raise SystemExit(f"Phase 188 expected exactly one bounded walk completion branch, found {count}")
     source = source.replace(old, new, 1)
 
+# Make the already-required native sprint state explicit on the existing walk confirmation marker.
+# This only strengthens M1 proof visibility; it does not alter input, movement, carry, or collision.
+sprint_log_old = '"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick={} carriage_id={} local_start={} local_end={} local_distance={} duration_ticks={} on_ground={} broadphase={} support_healthy={} confirmed={} fixture_only=true",'
+sprint_log_new = '"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick={} carriage_id={} local_start={} local_end={} local_distance={} duration_ticks={} on_ground={} broadphase={} support_healthy={} confirmed={} sprinting={} fixture_only=true",'
+sprint_args_old = "phase154WalkSupportHealthy, phase154Confirmed);"
+sprint_args_new = "phase154WalkSupportHealthy, phase154Confirmed, player.isSprinting());"
+if "confirmed={} sprinting={} fixture_only=true" not in source:
+    log_count = source.count(sprint_log_old)
+    args_count = source.count(sprint_args_old)
+    if log_count != 1 or args_count != 1:
+        raise SystemExit(
+            f"Phase 188 expected one existing walk confirmation logger and argument tail, found log={log_count} args={args_count}"
+        )
+    source = source.replace(sprint_log_old, sprint_log_new, 1)
+    source = source.replace(sprint_args_old, sprint_args_new, 1)
+
 required = [
     "phase188PreResetWalkReady",
     "player.tickCount >= phase154WalkStartTick + 3",
@@ -43,6 +59,8 @@ required = [
     "phase154Local.z - phase154WalkStartLocal.z",
     "if (player.tickCount <= phase154WalkStartTick + 12 && !phase188PreResetWalkReady)",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
+    "confirmed={} sprinting={} fixture_only=true",
+    "phase154Confirmed, player.isSprinting()",
     "GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC",
 ]
 missing = [token for token in required if token not in source]
@@ -58,5 +76,5 @@ for forbidden in [
         raise SystemExit("Phase 188 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 188: inserts sustained supported native sprint acceptance at its original bounded-walk boundary; fixture acceptance only")
+print("Phase 188: exposes existing sustained supported native sprint state on the walk confirmation; fixture acceptance only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase189.py")), run_name="__main__")

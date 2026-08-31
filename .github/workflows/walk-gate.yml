@@ -54,9 +54,9 @@ jobs:
             grep -E 'GATE_E_PHASE154_FIXTURE_WALK_(START|SAMPLE|CONFIRMED)|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA' "$LOG" | tail -220 || true
             exit 1
           fi
-          if ! grep -Eq 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED.*on_ground=true.*broadphase=true.*support_healthy=true.*confirmed=true.*fixture_only=true' "$LOG"; then
-            echo 'Production world did not prove player walking displacement while remaining supported in one moving carriage frame.'
+          if ! grep -Eq 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED.*on_ground=true.*broadphase=true.*support_healthy=true.*confirmed=true.*sprinting=true.*fixture_only=true' "$LOG"; then
+            echo 'Production world did not prove supported native sprinting displacement in one moving carriage frame.'
             grep -E 'GATE_E_PHASE154_FIXTURE_WALK_(START|SAMPLE|CONFIRMED)|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA' "$LOG" | tail -260 || true
             exit 1
           fi
-          echo 'PRODUCTION_WALK same_carriage_forward_key_stability_confirmed'
+          echo 'PRODUCTION_WALK same_carriage_native_sprint_stability_confirmed'

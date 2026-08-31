@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -102,3 +103,4 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 197: applies fixture forward KeyMapping at LocalPlayer.aiStep HEAD before vanilla input sampling; harness-only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase198.py")), run_name="__main__")

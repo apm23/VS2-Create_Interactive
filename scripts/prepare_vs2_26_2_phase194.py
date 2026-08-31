@@ -26,16 +26,17 @@ if "phase194PendingWalkTick" not in source:
     source = source.replace(field_anchor, field_insert, 1)
 
 # Phase162 already freezes contact acquisition after the walk starts. Extend that existing harness
-# boundary one tick earlier, but only while a direct-native arm is awaiting confirmation. Because the
-# arm is set later in the same client tick, the current acquisition attempt is untouched; the next tick
-# is unassisted, and retries automatically resume one tick later if confirmation did not succeed.
+# boundary one tick earlier, but only while a direct-native arm is awaiting confirmation. The composed
+# Phase193 source has one canonical Phase162 acquisition guard. Because the arm is set later in the same
+# client tick, the current acquisition attempt is untouched; the next tick is unassisted, and retries
+# automatically resume one tick later if confirmation did not succeed.
 acquire_guard = "fixtureContactAcquireTicks < 48 && !phase154WalkStarted"
 confirm_guard = "fixtureContactAcquireTicks < 48 && !phase154WalkStarted && phase194PendingWalkTick < player.tickCount - 1"
 if confirm_guard not in source:
     count = source.count(acquire_guard)
-    if count != 2:
-        raise SystemExit(f"Phase 194 expected two Phase162 fixture-acquisition guards, found {count}")
-    source = source.replace(acquire_guard, confirm_guard)
+    if count != 1:
+        raise SystemExit(f"Phase 194 expected one canonical Phase162 fixture-acquisition guard, found {count}")
+    source = source.replace(acquire_guard, confirm_guard, 1)
 
 old_branch = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()

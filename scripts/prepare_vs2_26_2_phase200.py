@@ -7,12 +7,10 @@ java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/Mi
 
 source = java.read_text(encoding="utf-8")
 
-# Production-world #441 proves the previous fixture bridge reached LocalPlayer.applyInput() and
-# produced ClientInput.keyPresses.forward=true, but calling applyInput reflectively from LocalPlayer.tick
-# HEAD still yielded no horizontal locomotion. Do not synthesize movement and do not call the movement
-# bridge out of order. Instead sample the ordinary fixture KeyMapping at the HEAD of LocalPlayer's own
-# native applyInput invocation and then let vanilla applyInput proceed exactly once in its normal call
-# chain. This is fixture-only input plumbing: no position, velocity, Entity.move, collision/carry,
+# Production-world #453 proves the native fixture path can sustain grounded forward locomotion.
+# Keep the same native LocalPlayer.applyInput boundary but sample the ordinary backward KeyMapping
+# for the next M1 directional proof. Vanilla applyInput still proceeds exactly once in its normal
+# call chain. This is fixture-only input plumbing: no position, velocity, Entity.move, collision/carry,
 # train/world, inventory, or VS2/Create physics state is written.
 method = r'''
 
@@ -31,8 +29,8 @@ method = r'''
             return;
         }
         boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;
-        client.options.keyUp.setDown(pulse);
-        client.options.keyDown.setDown(false);
+        client.options.keyUp.setDown(false);
+        client.options.keyDown.setDown(pulse);
 
         boolean sampled = false;
         String sampler = "missing";
@@ -75,8 +73,8 @@ method = r'''
 
         if (self.tickCount <= startTick + 5) {
             VS2_FIXTURE_INPUT_LOGGER.info(
-                "GATE_E_PHASE200_NATIVE_APPLY_INPUT_HEAD player_tick={} start_tick={} pulse={} key_up={} sampled={} sampler={} fixture_only=true input_only=true native_boundary=true",
-                self.tickCount, startTick, pulse, client.options.keyUp.isDown(), sampled, sampler);
+                "GATE_E_PHASE200_NATIVE_APPLY_INPUT_HEAD player_tick={} start_tick={} pulse={} key_down={} sampled={} sampler={} fixture_only=true input_only=true native_boundary=true",
+                self.tickCount, startTick, pulse, client.options.keyDown.isDown(), sampled, sampler);
         }
     }
 '''
@@ -92,7 +90,7 @@ required = [
     marker,
     '@Inject(method = "applyInput", at = @At("HEAD"), require = 1)',
     "inputTick.invoke(input)",
-    "client.options.keyUp.setDown(pulse)",
+    "client.options.keyDown.setDown(pulse)",
     "native_boundary=true",
     "fixture_only=true input_only=true",
 ]
@@ -111,5 +109,5 @@ for forbidden in [
         raise SystemExit("Phase 200 introduced forbidden gameplay mutation token: " + forbidden)
 
 java.write_text(source, encoding="utf-8")
-print("Phase 200: samples fixture KeyboardInput at native LocalPlayer.applyInput HEAD and lets vanilla proceed once; input-only harness")
+print("Phase 200: samples backward fixture KeyboardInput at native LocalPlayer.applyInput HEAD and lets vanilla proceed once; input-only harness")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase201.py")), run_name="__main__")

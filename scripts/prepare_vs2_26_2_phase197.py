@@ -10,13 +10,11 @@ mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #423 proves Phase196 can make KeyboardInput.keyPresses.forward=true, but the
-# Gate E START_CLIENT_TICK observer is still later than LocalPlayer's effective locomotion sampling
-# boundary in this 26.2 client: ticks 31-33 report forward=true while horizontal delta and carriage-
-# local displacement remain exactly zero. Put only the disposable fixture KeyMapping pulse at
-# LocalPlayer.aiStep HEAD, immediately before vanilla LocalPlayer consumes KeyboardInput. This is
-# harness input timing only; it never writes player position/velocity, collision/carry, train/world,
-# inventory, or VS2/Create physics state.
+# Production-world #453 proves the native fixture path can sustain grounded forward locomotion
+# for the strengthened M1 gate. Keep the exact same LocalPlayer.aiStep input boundary but flip the
+# disposable key pulse to vanilla backward movement so the next production-world run tests a second
+# locomotion direction without touching position, velocity, collision/carry, train/world, inventory,
+# or VS2/Create physics state.
 start_anchor = '''                            phase154WalkStartTick = player.tickCount;\n'''
 start_insert = start_anchor + '''                            System.setProperty("vs2.productionFixtureWalkStartTick", Integer.toString(player.tickCount));\n'''
 if 'vs2.productionFixtureWalkStartTick' not in source:
@@ -50,7 +48,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Disposable production-world smoke input timing bridge. The Gate E observer discovers a strictly
  * supported moving-carriage walk window, then publishes only its start tick. At LocalPlayer.aiStep
- * HEAD we hold vanilla forward KeyMapping for three ticks so LocalPlayer's own KeyboardInput sampling
+ * HEAD we hold vanilla backward KeyMapping for three ticks so LocalPlayer's own KeyboardInput sampling
  * consumes it in the normal locomotion path. No position, velocity, collision, carry, or world state
  * is written here.
  */
@@ -74,13 +72,13 @@ public abstract class MixinLocalPlayerFixtureInput {
             return;
         }
         boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;
-        client.options.keyUp.setDown(pulse);
-        client.options.keyDown.setDown(false);
+        client.options.keyUp.setDown(false);
+        client.options.keyDown.setDown(pulse);
         if (self.tickCount != vs2$lastLoggedTick && self.tickCount <= startTick + 5) {
             vs2$lastLoggedTick = self.tickCount;
             VS2_FIXTURE_INPUT_LOGGER.info(
-                "GATE_E_PHASE197_PRE_AISTEP_FIXTURE_INPUT player_tick={} start_tick={} pulse={} key_up={} fixture_only=true vanilla_input_path=true",
-                self.tickCount, startTick, pulse, client.options.keyUp.isDown());
+                "GATE_E_PHASE197_PRE_AISTEP_FIXTURE_INPUT player_tick={} start_tick={} pulse={} key_down={} fixture_only=true vanilla_input_path=true",
+                self.tickCount, startTick, pulse, client.options.keyDown.isDown());
         }
     }
 }
@@ -102,5 +100,5 @@ for forbidden in [
         raise SystemExit("Phase 197 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 197: applies fixture forward KeyMapping at LocalPlayer.aiStep HEAD before vanilla input sampling; harness-only")
+print("Phase 197: applies fixture backward KeyMapping at LocalPlayer.aiStep HEAD before vanilla input sampling; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase198.py")), run_name="__main__")

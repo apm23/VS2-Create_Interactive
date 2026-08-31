@@ -7,11 +7,12 @@ java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/Mi
 
 source = java.read_text(encoding="utf-8")
 
-# Production-world #456 proves sustained grounded right-strafe locomotion. Keep the same native
-# LocalPlayer.applyInput boundary but sample ordinary forward+sprint KeyMappings for the next M1
-# proof. Vanilla applyInput still proceeds exactly once in its normal call chain. This is fixture-only
-# input plumbing: no position, velocity, Entity.move, collision/carry, train/world, inventory, or
-# VS2/Create physics state is written.
+# Production-world #480 proved the Phase198 reverse window was reached while grounded, but this
+# downstream applyInput fixture reset keyDown=false on every invocation before vanilla sampled the
+# reverse request. Preserve the already-proven forward+sprint pulse here, then leave later directional
+# KeyMappings owned by Phase198 untouched. Vanilla applyInput still proceeds exactly once in its normal
+# call chain. This remains fixture-only input plumbing: no position, velocity, Entity.move,
+# collision/carry, train/world, inventory, or VS2/Create physics state is written.
 method = r'''
 
     @Inject(method = "applyInput", at = @At("HEAD"), require = 1)
@@ -29,11 +30,13 @@ method = r'''
             return;
         }
         boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;
-        client.options.keyUp.setDown(pulse);
-        client.options.keyDown.setDown(false);
-        client.options.keyLeft.setDown(false);
-        client.options.keyRight.setDown(false);
-        client.options.keySprint.setDown(pulse);
+        if (pulse) {
+            client.options.keyUp.setDown(true);
+            client.options.keyDown.setDown(false);
+            client.options.keyLeft.setDown(false);
+            client.options.keyRight.setDown(false);
+            client.options.keySprint.setDown(true);
+        }
 
         boolean sampled = false;
         String sampler = "missing";
@@ -93,8 +96,9 @@ required = [
     marker,
     '@Inject(method = "applyInput", at = @At("HEAD"), require = 1)',
     "inputTick.invoke(input)",
-    "client.options.keyUp.setDown(pulse)",
-    "client.options.keySprint.setDown(pulse)",
+    "if (pulse)",
+    "client.options.keyUp.setDown(true)",
+    "client.options.keySprint.setDown(true)",
     "native_boundary=true",
     "fixture_only=true input_only=true",
 ]
@@ -113,5 +117,5 @@ for forbidden in [
         raise SystemExit("Phase 200 introduced forbidden gameplay mutation token: " + forbidden)
 
 java.write_text(source, encoding="utf-8")
-print("Phase 200: samples forward+sprint fixture KeyboardInput at native LocalPlayer.applyInput HEAD and lets vanilla proceed once; input-only harness")
+print("Phase 200: preserves the proven forward pulse without clobbering later reverse/jump KeyMappings; input-only harness")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase201.py")), run_name="__main__")

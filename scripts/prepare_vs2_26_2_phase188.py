@@ -7,27 +7,28 @@ client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client
 source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #456 proves all four ordinary walk directions through native Minecraft locomotion.
-# Strengthen the existing bounded walk acceptance for the next M1 step: the same supported three-tick
-# proof must now also observe the LocalPlayer in Minecraft's native sprinting state. This changes only
-# fixture acceptance; it does not write position, velocity, collision, train/world, or VS2/Create physics.
-old = """                            boolean phase188PreResetWalkReady = player.tickCount >= phase154WalkStartTick + 3
-                                && phase154WalkSupportHealthy
-                                && phase154Carriage.getId() == phase154WalkCarriageId
-                                && phase154Broadphase && player.onGround()
-                                && phase165WalkPathDistance >= 0.35 && phase165WalkPathDistance <= 4.00
-"""
-new = """                            boolean phase188PreResetWalkReady = player.tickCount >= phase154WalkStartTick + 3
-                                && phase154WalkSupportHealthy
-                                && phase154Carriage.getId() == phase154WalkCarriageId
-                                && phase154Broadphase && player.onGround() && player.isSprinting()
-                                && phase165WalkPathDistance >= 0.35 && phase165WalkPathDistance <= 4.00
-"""
+# Strengthen only the existing Phase188 acceptance seam for the next M1 step: require Minecraft's
+# native sprinting state on the already-supported three-tick locomotion proof. Match the stable
+# onGround/broadphase predicate itself instead of a larger composed block so later Phase composition
+# cannot invalidate this harness patch. No position, velocity, collision, train/world, or VS2/Create
+# physics state is written here.
+old_guard = "                                && phase154Broadphase && player.onGround()\n"
+new_guard = "                                && phase154Broadphase && player.onGround() && player.isSprinting()\n"
 
-if "phase154Broadphase && player.onGround() && player.isSprinting()" not in source:
-    count = source.count(old)
+if new_guard not in source:
+    marker = "boolean phase188PreResetWalkReady = player.tickCount >= phase154WalkStartTick + 3"
+    start = source.find(marker)
+    if start < 0:
+        raise SystemExit("Phase 188 lost sustained walk acceptance marker")
+    end = source.find(";", start)
+    if end < 0:
+        raise SystemExit("Phase 188 could not bound sustained walk acceptance expression")
+    block = source[start:end + 1]
+    count = block.count(old_guard)
     if count != 1:
-        raise SystemExit(f"Phase 188 expected one sustained walk acceptance block, found {count}")
-    source = source.replace(old, new, 1)
+        raise SystemExit(f"Phase 188 expected one onGround/broadphase guard inside sustained acceptance, found {count}")
+    block = block.replace(old_guard, new_guard, 1)
+    source = source[:start] + block + source[end + 1:]
 
 required = [
     "phase188PreResetWalkReady",
@@ -48,9 +49,9 @@ for forbidden in [
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
     "cir.setReturnValue(",
 ]:
-    if forbidden in new:
+    if forbidden in new_guard:
         raise SystemExit("Phase 188 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 188: requires sustained supported native sprint state before bounded locomotion completion; fixture acceptance only")
+print("Phase 188: requires sustained supported native sprint state at the stable acceptance guard; fixture acceptance only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase189.py")), run_name="__main__")

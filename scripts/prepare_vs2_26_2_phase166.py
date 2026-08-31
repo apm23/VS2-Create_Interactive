@@ -10,9 +10,10 @@ source = client_probe.read_text(encoding="utf-8")
 # 1.0-block carriage-local step. The drift-only native-health classifier then calls that motion
 # a carry loss and Phase85 begins replaying carriage motion from tick 41 onward, contaminating
 # the rest of the walk proof. Treat at most one bounded (<=1.10 block) post-pulse displacement
-# as fixture locomotion accounting while strict support remains valid. This is production-smoke
-# fixture bookkeeping only: no movement vector, player/world/train state, collision response or
-# VS2/Create physics behavior is introduced or changed outside the disposable smoke fixture.
+# as fixture locomotion accounting while strict support remains valid. Production-world #446
+# later proved that a larger local-frame seam is not itself physical support loss, so this phase
+# must not reintroduce the old >0.75 support-health latch. Fixture bookkeeping only: no movement
+# vector, player/world/train state, collision response or VS2/Create physics behavior is changed.
 
 field_old = '''    private static double phase165WalkPathDistance;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
 field_new = '''    private static double phase165WalkPathDistance;\n    private static boolean phase166FixturePulseConsumed;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
@@ -45,7 +46,7 @@ if "phase166FixturePulseObservation" not in source:
         raise SystemExit("Phase 166 expected exactly one Phase158 locomotion-health hold")
     source = source.replace(health_old, health_new, 1)
 
-guard_old = '''                            if (!phase154SupportNow || phase160GuardStep > 0.75) {
+guard_old = '''                            if (!phase154SupportNow) {
                                 phase154WalkSupportHealthy = false;
                             }
                             LOGGER.info(
@@ -61,14 +62,14 @@ guard_new = '''                            boolean phase166FixturePulseStep = pr
                                     "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE player_tick={} carriage_id={} local_step={} max_fixture_pulse_step=1.10 strict_support=true replay_suppression_accounting=true fixture_only=true",
                                     player.tickCount, phase154Carriage.getId(), phase160GuardStep);
                             }
-                            if (!phase154SupportNow || (phase160GuardStep > 0.75 && !phase166FixturePulseStep)) {
+                            if (!phase154SupportNow) {
                                 phase154WalkSupportHealthy = false;
                             }
                             LOGGER.info(
                                 "GATE_E_PHASE156_WALK_FRAME_GUARD'''
 if "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE" not in source:
     if source.count(guard_old) != 1:
-        raise SystemExit("Phase 166 expected exactly one cumulative Phase156/160 frame guard")
+        raise SystemExit("Phase 166 expected exactly one support-only Phase156/160 frame guard")
     source = source.replace(guard_old, guard_new, 1)
 
 required = [
@@ -78,7 +79,7 @@ required = [
     "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE",
     "phase160GuardStep > 0.75 && phase160GuardStep <= 1.10",
     "phase166FixturePulseConsumed = true",
-    "phase160GuardStep > 0.75 && !phase166FixturePulseStep",
+    "if (!phase154SupportNow)",
     "productionSmokeFixture",
     "phase154WalkStarted && !phase154WalkFinished",
     "GATE_E_PHASE85_CARRY_REPLAY",
@@ -87,6 +88,9 @@ required = [
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 166 lost delayed-pulse accounting anchors: " + ", ".join(missing))
+
+if "phase160GuardStep > 0.75 && !phase166FixturePulseStep" in source:
+    raise SystemExit("Phase 166 must not reintroduce frame-seam support poisoning")
 
 patch_text = field_new + start_new + health_new + guard_new
 for forbidden in [
@@ -97,4 +101,4 @@ for forbidden in [
         raise SystemExit("Phase 166 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 166: accounts for one bounded delayed single-pulse locomotion response without enabling duplicate replay")
+print("Phase 166: accounts for one bounded delayed fixture pulse while keeping walk support health tied only to actual support loss")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate native jump/fall proof from the real production-world smoke log.
+"""Validate native grounded reverse plus jump/fall proof from the real production-world smoke log.
 
 This is a CI artifact verifier, not a VS2 source preparation phase. Its filename intentionally
 matches the production-world workflow path trigger so changes to this proof contract rerun the
@@ -15,8 +15,19 @@ if len(sys.argv) != 2:
 text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
 
 walk = re.search(
-    r"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*on_ground=true[^\n]*broadphase=true"
+    r"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*on_ground=true[^\n]*broadphase=true"
     r"[^\n]*support_healthy=true[^\n]*confirmed=true[^\n]*sprinting=true[^\n]*fixture_only=true",
+    text,
+)
+backward_requested = re.search(
+    r"GATE_E_M1_NATIVE_BACKWARD_REQUESTED[^\n]*player_tick=(\d+)[^\n]*on_ground=true"
+    r"[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true",
+    text,
+)
+backward_confirmed = re.search(
+    r"GATE_E_M1_NATIVE_BACKWARD_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)"
+    r"[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)"
+    r"[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*native_motion=true",
     text,
 )
 requested = re.search(
@@ -41,6 +52,8 @@ missing = [
     name
     for name, match in (
         ("supported sprint/walk", walk),
+        ("native backward request", backward_requested),
+        ("native grounded backward confirmation", backward_confirmed),
         ("native jump request", requested),
         ("native airborne transition", airborne),
         ("natural landing", landed),
@@ -48,8 +61,14 @@ missing = [
     if match is None
 ]
 if missing:
-    raise SystemExit("M1 native jump proof missing: " + ", ".join(missing))
+    raise SystemExit("M1 native locomotion proof missing: " + ", ".join(missing))
 
+walk_tick = int(walk.group(1))
+backward_request_tick = int(backward_requested.group(1))
+backward_tick = int(backward_confirmed.group(1))
+backward_start = int(backward_confirmed.group(2))
+backward_duration = int(backward_confirmed.group(3))
+backward_speed_sq = float(backward_confirmed.group(4))
 request_tick = int(requested.group(1))
 airborne_tick = int(airborne.group(1))
 airborne_start = int(airborne.group(2))
@@ -57,6 +76,22 @@ delta_y = float(airborne.group(3))
 landed_tick = int(landed.group(1))
 landed_start = int(landed.group(2))
 duration = int(landed.group(3))
+
+if backward_start != backward_request_tick:
+    raise SystemExit(
+        f"M1 native backward proof changed start tick: request={backward_request_tick} "
+        f"confirmed_start={backward_start}"
+    )
+if not (walk_tick < backward_request_tick <= backward_tick < request_tick):
+    raise SystemExit(
+        f"M1 native locomotion ordering changed: walk={walk_tick} reverse_request={backward_request_tick} "
+        f"reverse_confirmed={backward_tick} jump_request={request_tick}"
+    )
+if backward_duration != backward_tick - backward_request_tick or backward_speed_sq <= 0.0004:
+    raise SystemExit(
+        f"M1 native backward proof is inconsistent: duration={backward_duration} "
+        f"ticks={backward_request_tick}->{backward_tick} speed_sq={backward_speed_sq}"
+    )
 
 if not (airborne_start == request_tick == landed_start):
     raise SystemExit(
@@ -79,7 +114,8 @@ if duration != landed_tick - request_tick or duration < 2:
     )
 
 print(
-    "M1_NATIVE_JUMP_PROOF "
-    f"request={request_tick} airborne={airborne_tick} landed={landed_tick} "
-    f"duration={duration} delta_y={delta_y} natural_fall=true"
+    "M1_NATIVE_LOCOMOTION_PROOF "
+    f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} "
+    f"reverse_speed_sq={backward_speed_sq} jump_request={request_tick} airborne={airborne_tick} "
+    f"landed={landed_tick} duration={duration} delta_y={delta_y} natural_fall=true"
 )

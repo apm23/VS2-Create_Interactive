@@ -48,3 +48,34 @@ for forbidden in [
 java.write_text(source, encoding="utf-8")
 print("Phase 201: traces bounded-walk Entity.move caller boundary read-only; no gameplay or physics mutation")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase202.py")), run_name="__main__")
+
+# Production-world #498 proves the 32-attempt fixture-acquisition boundary is now the blocker:
+# carriage 2 has strict physical support, broadphase overlap, onGround, fresh Phase134 health and
+# exact same-carriage native Create contact continuously from attempts 14 through 18, while the
+# Phase185 walk-ready predicate remains false solely because Phase192 waits for attempt 32. By the
+# time 32 is reached the finite carriage frame has already been lost. End the disposable acquisition
+# at the end of that five-frame proven native window and align the existing unassisted readiness /
+# observation gates to the same boundary. Phase194 still requires its hardened fresh-frame sequence
+# before locomotion can start. Harness-only: no position, velocity, carry, collision, train/world,
+# Create, or VS2 physics mutation.
+client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
+probe_source = client_probe.read_text(encoding="utf-8")
+old_acquire = "fixtureContactAcquireTicks < 32"
+old_unassisted = "fixtureContactAcquireTicks >= 32"
+acquire_count = probe_source.count(old_acquire)
+unassisted_count = probe_source.count(old_unassisted)
+if acquire_count < 2 or unassisted_count < 2:
+    raise SystemExit(
+        f"Phase 201 expected cumulative 32-attempt fixture boundaries, found acquire={acquire_count} unassisted={unassisted_count}"
+    )
+probe_source = probe_source.replace(old_acquire, "fixtureContactAcquireTicks < 18")
+probe_source = probe_source.replace(old_unassisted, "fixtureContactAcquireTicks >= 18")
+for forbidden in [
+    "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
+    "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
+    "cir.setReturnValue(",
+]:
+    if forbidden in "fixtureContactAcquireTicks < 18 fixtureContactAcquireTicks >= 18":
+        raise SystemExit("Phase 201 fixture-boundary alignment introduced forbidden gameplay mutation")
+client_probe.write_text(probe_source, encoding="utf-8")
+print("Phase 201: stops fixture acquisition at attempt 18 after Run 498 proved five native-supported frames")

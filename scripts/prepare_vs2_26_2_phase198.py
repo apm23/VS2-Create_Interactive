@@ -5,10 +5,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
 
-# Production-world #473 proves the supported sprint/walk path is healthy, but Phase198 overwrote
-# Phase197's jump request bridge and limited the headless native-aiStep fallback to the short walk
-# pulse. Preserve the same vanilla KeyMapping + LocalPlayer.aiStep harness across the post-walk jump
-# proof. No position/velocity/collision/carry/train/world state is synthesized or written here.
+# Production-world #474 proved native jump input can begin while the shell is still collecting the
+# already-proven carry interval, contaminating that acceptance window with intentional vertical motion.
+# Preserve the native KeyMapping + LocalPlayer.aiStep path, but leave an 80-client-tick post-walk settle
+# window before jump is armed. This is fixture sequencing only; no position/velocity/collision/carry,
+# train/world state, gravity, or VS2/Create physics is synthesized or written here.
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import net.minecraft.client.Minecraft;
@@ -27,6 +28,7 @@ public abstract class MixinLocalPlayerFixtureInput {
     @Unique private static final Logger VS2_FIXTURE_INPUT_LOGGER = LogManager.getLogger("VS2-GateE-FixtureInput");
     @Unique private static int vs2$lastHeadTick = Integer.MIN_VALUE;
     @Unique private static int vs2$lastReturnTick = Integer.MIN_VALUE;
+    @Unique private static int vs2$walkConfirmedTick = Integer.MIN_VALUE;
     @Unique private static int vs2$jumpStartTick = Integer.MIN_VALUE;
     @Unique private static boolean vs2$jumpAirborneSeen;
     @Unique private static boolean vs2$jumpLandedLogged;
@@ -34,17 +36,25 @@ public abstract class MixinLocalPlayerFixtureInput {
     @Unique private boolean vs2$fixtureAiStepFallbackActive;
 
     @Unique
-    private void vs2$sampleNativeJump(LocalPlayer self, Minecraft client) {
+    private boolean vs2$jumpArmReady(LocalPlayer self) {
         boolean walkConfirmed = Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");
-        if (!walkConfirmed || vs2$jumpLandedLogged) {
-            if (!walkConfirmed) client.options.keyJump.setDown(false);
+        if (!walkConfirmed) return false;
+        if (vs2$walkConfirmedTick == Integer.MIN_VALUE) vs2$walkConfirmedTick = self.tickCount;
+        return self.tickCount >= vs2$walkConfirmedTick + 80;
+    }
+
+    @Unique
+    private void vs2$sampleNativeJump(LocalPlayer self, Minecraft client) {
+        boolean jumpArmReady = vs2$jumpArmReady(self);
+        if (!jumpArmReady || vs2$jumpLandedLogged) {
+            client.options.keyJump.setDown(false);
             return;
         }
         if (vs2$jumpStartTick == Integer.MIN_VALUE && self.onGround()) {
             vs2$jumpStartTick = self.tickCount;
             VS2_FIXTURE_INPUT_LOGGER.info(
-                "GATE_E_M1_NATIVE_JUMP_REQUESTED player_tick={} on_ground=true fixture_only=true vanilla_keymapping=true",
-                self.tickCount);
+                "GATE_E_M1_NATIVE_JUMP_REQUESTED player_tick={} walk_confirmed_tick={} settle_ticks={} on_ground=true fixture_only=true vanilla_keymapping=true",
+                self.tickCount, vs2$walkConfirmedTick, self.tickCount - vs2$walkConfirmedTick);
         }
         boolean jumpPulse = vs2$jumpStartTick != Integer.MIN_VALUE && self.tickCount == vs2$jumpStartTick;
         client.options.keyJump.setDown(jumpPulse);
@@ -132,7 +142,7 @@ public abstract class MixinLocalPlayerFixtureInput {
             return;
         }
         boolean walkWindow = self.tickCount >= startTick && self.tickCount <= startTick + 3;
-        boolean jumpWindow = Boolean.getBoolean("vs2.productionFixtureWalkConfirmed") && !vs2$jumpLandedLogged;
+        boolean jumpWindow = vs2$jumpArmReady(self) && !vs2$jumpLandedLogged;
         if ((!walkWindow && !jumpWindow) || vs2$nativeAiStepTick == self.tickCount) return;
         client.options.keyUp.setDown(walkWindow);
         client.options.keyDown.setDown(false);
@@ -165,6 +175,7 @@ required = [
     'GATE_E_M1_NATIVE_JUMP_LANDED',
     'vs2.productionFixtureJumpLanded',
     'vs2.productionFixtureWalkConfirmed',
+    'vs2$walkConfirmedTick + 80',
     'jumpWindow',
     'vs2$nativeAiStepTick == self.tickCount',
     'self.aiStep()',
@@ -185,5 +196,5 @@ for forbidden in [
     if forbidden in text:
         raise SystemExit("Phase 198 introduced forbidden gameplay mutation token: " + forbidden)
 
-print("Phase 198: preserves native jump request/landing through the headless aiStep bridge after supported walk confirmation; harness-only")
+print("Phase 198: delays native jump until the post-walk carry acceptance window settles; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase199.py")), run_name="__main__")

@@ -291,7 +291,7 @@ jobs:
 
           WALK_READY=0
           for i in $(seq 1 60); do
-            if grep -Eq 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*on_ground=true[^\n]*broadphase=true[^\n]*support_healthy=true[^\n]*confirmed=true[^\n]*fixture_only=true' ../production-world-smoke.log; then
+            if grep -Eq 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED.*on_ground=true.*broadphase=true.*support_healthy=true.*confirmed=true.*fixture_only=true' ../production-world-smoke.log; then
               WALK_READY=1
               break
             fi

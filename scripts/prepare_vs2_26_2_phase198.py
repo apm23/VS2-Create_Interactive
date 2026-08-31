@@ -8,10 +8,11 @@ java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/Mi
 # Production-world #474 proved native jump input can begin while the shell is still collecting the
 # already-proven carry interval, contaminating that acceptance window with intentional vertical motion.
 # Preserve the native KeyMapping + LocalPlayer.aiStep path, but leave an 80-client-tick post-walk settle
-# window before jump is armed. Production-world #476 also proved that merely observing onGround=false
-# can latch a falling/support-loss frame with negative Y motion, so only publish AIRBORNE after vanilla
-# movement has produced positive upward motion. This remains fixture sequencing/acceptance only; no
-# position/velocity/collision/carry, train/world state, gravity, or VS2/Create physics is synthesized.
+# window before jump is armed. Production-world #476 proved that merely observing onGround=false can
+# latch a falling/support-loss frame, while #477 proved genuine positive vanilla jump motion. Require
+# both native ascent and a later native descending airborne sample before accepting natural landing.
+# This remains fixture sequencing/acceptance only; no position/velocity/collision/carry, train/world
+# state, gravity, or VS2/Create physics is synthesized.
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import net.minecraft.client.Minecraft;
@@ -33,6 +34,7 @@ public abstract class MixinLocalPlayerFixtureInput {
     @Unique private static int vs2$walkConfirmedTick = Integer.MIN_VALUE;
     @Unique private static int vs2$jumpStartTick = Integer.MIN_VALUE;
     @Unique private static boolean vs2$jumpAirborneSeen;
+    @Unique private static boolean vs2$jumpFallingSeen;
     @Unique private static boolean vs2$jumpLandedLogged;
     @Unique private int vs2$nativeAiStepTick = Integer.MIN_VALUE;
     @Unique private boolean vs2$fixtureAiStepFallbackActive;
@@ -67,7 +69,10 @@ public abstract class MixinLocalPlayerFixtureInput {
                 "GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick={} start_tick={} delta_y={} on_ground=false fixture_only=true native_motion=true",
                 self.tickCount, vs2$jumpStartTick, deltaY);
         }
-        if (vs2$jumpAirborneSeen && self.onGround() && self.tickCount > vs2$jumpStartTick) {
+        if (vs2$jumpAirborneSeen && !self.onGround() && deltaY < 0.0) {
+            vs2$jumpFallingSeen = true;
+        }
+        if (vs2$jumpFallingSeen && self.onGround() && self.tickCount > vs2$jumpStartTick) {
             vs2$jumpLandedLogged = true;
             client.options.keyJump.setDown(false);
             System.setProperty("vs2.productionFixtureJumpLanded", "true");
@@ -186,6 +191,8 @@ required = [
     'client.options.keyUp.setDown(walkWindow)',
     'client.options.keyJump.setDown(jumpPulse)',
     'deltaY > 0.0',
+    'deltaY < 0.0',
+    'vs2$jumpFallingSeen',
     'fixture_only=true',
 ]
 missing = [token for token in required if token not in text]
@@ -200,5 +207,5 @@ for forbidden in [
     if forbidden in text:
         raise SystemExit("Phase 198 introduced forbidden gameplay mutation token: " + forbidden)
 
-print("Phase 198: requires positive native upward motion before accepting jump airborne state; harness-only")
+print("Phase 198: requires native ascent and descent before accepting natural jump landing; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase199.py")), run_name="__main__")

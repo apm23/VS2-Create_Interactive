@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -57,3 +58,4 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 195: traces object-valued sampled KeyboardInput payload during bounded walk; read-only only")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase196.py")), run_name="__main__")

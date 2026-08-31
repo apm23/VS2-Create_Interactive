@@ -7,22 +7,25 @@ source = client_probe.read_text(encoding="utf-8")
 
 # Production-world run 33347367499 kept the bounded walk fixture grounded, broadphase-overlapping,
 # and support-healthy from tick 15 through tick 28 after Phase190 removed the sibling discontinuity,
-# but the existing +12 completion window ended before any material horizontal locomotion arrived.
-# Phase166 already defines delayed fixture-pulse accounting through +20 ticks, and the known finite
-# route reset is later than this bounded window. Align the walk completion deadline with that existing
-# +20 observation bound. Harness-only: no player movement, carry vector, collision, train/world state,
-# inventory, Create behavior, or VS2 physics mutation is introduced.
+# but the existing completion window ended before any material horizontal locomotion arrived.
+# Phase188 has already wrapped that deadline with its pre-reset early-success predicate, so target
+# the cumulative compound branch structurally rather than the obsolete bare +12 form. Phase166
+# already defines delayed fixture-pulse accounting through +20 ticks. Harness-only: no player
+# movement, carry vector, collision, train/world state, inventory, Create behavior, or VS2 physics
+# mutation is introduced.
 
-old = "if (player.tickCount <= phase154WalkStartTick + 12) {"
-new = "if (player.tickCount <= phase154WalkStartTick + 20) {"
-count = source.count(old)
-if count != 1:
-    raise SystemExit(f"Phase 191 expected exactly one final +12 walk observation bound, found {count}")
-source = source.replace(old, new, 1)
+old = "if (player.tickCount <= phase154WalkStartTick + 12 && !phase188PreResetWalkReady) {"
+new = "if (player.tickCount <= phase154WalkStartTick + 20 && !phase188PreResetWalkReady) {"
+if new not in source:
+    count = source.count(old)
+    if count != 1:
+        raise SystemExit(f"Phase 191 expected exactly one cumulative Phase188 +12 walk observation bound, found {count}")
+    source = source.replace(old, new, 1)
 
 required = [
     "phase166FixturePulseObservation",
-    "player.tickCount <= phase154WalkStartTick + 20",
+    "phase188PreResetWalkReady",
+    "player.tickCount <= phase154WalkStartTick + 20 && !phase188PreResetWalkReady",
     "phase165WalkPathDistance >= 0.20",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
     "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE",
@@ -41,4 +44,4 @@ for forbidden in [
         raise SystemExit("Phase 191 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 191: extends only the fixture walk observation deadline to the existing Phase166 delayed-input bound")
+print("Phase 191: extends only the cumulative Phase188 fixture walk observation deadline to the existing Phase166 delayed-input bound")

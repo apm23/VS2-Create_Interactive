@@ -10,11 +10,11 @@ mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #455 proves the native fixture path can sustain grounded left-strafe locomotion
-# on the moving train. Keep the exact same LocalPlayer.aiStep input boundary but flip the disposable
-# key pulse to vanilla right-strafe movement so the next production-world run proves the opposite
-# lateral direction without touching position, velocity, collision/carry, train/world, inventory,
-# or VS2/Create physics state.
+# Production-world #456 proves sustained grounded right-strafe locomotion on the moving train.
+# Keep the exact same LocalPlayer.aiStep boundary but switch the disposable fixture to vanilla
+# forward+sprint KeyMappings so the next production-world run proves sprint through Minecraft's
+# native locomotion path. No position, velocity, collision/carry, train/world, inventory, or
+# VS2/Create physics state is written.
 start_anchor = '''                            phase154WalkStartTick = player.tickCount;\n'''
 start_insert = start_anchor + '''                            System.setProperty("vs2.productionFixtureWalkStartTick", Integer.toString(player.tickCount));\n'''
 if 'vs2.productionFixtureWalkStartTick' not in source:
@@ -48,8 +48,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Disposable production-world smoke input timing bridge. The Gate E observer discovers a strictly
  * supported moving-carriage walk window, then publishes only its start tick. At LocalPlayer.aiStep
- * HEAD we hold vanilla right-strafe KeyMapping for three ticks so LocalPlayer's own KeyboardInput
- * sampling consumes it in the normal locomotion path. No position, velocity, collision, carry, or
+ * HEAD we hold vanilla forward+sprint KeyMappings for three ticks so LocalPlayer's own KeyboardInput
+ * sampling consumes them in the normal locomotion path. No position, velocity, collision, carry, or
  * world state is written here.
  */
 @Mixin(LocalPlayer.class)
@@ -72,15 +72,16 @@ public abstract class MixinLocalPlayerFixtureInput {
             return;
         }
         boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;
-        client.options.keyUp.setDown(false);
+        client.options.keyUp.setDown(pulse);
         client.options.keyDown.setDown(false);
         client.options.keyLeft.setDown(false);
-        client.options.keyRight.setDown(pulse);
+        client.options.keyRight.setDown(false);
+        client.options.keySprint.setDown(pulse);
         if (self.tickCount != vs2$lastLoggedTick && self.tickCount <= startTick + 5) {
             vs2$lastLoggedTick = self.tickCount;
             VS2_FIXTURE_INPUT_LOGGER.info(
-                "GATE_E_PHASE197_PRE_AISTEP_FIXTURE_INPUT player_tick={} start_tick={} pulse={} key_right={} fixture_only=true vanilla_input_path=true",
-                self.tickCount, startTick, pulse, client.options.keyRight.isDown());
+                "GATE_E_PHASE197_PRE_AISTEP_FIXTURE_INPUT player_tick={} start_tick={} pulse={} key_up={} key_sprint={} sprinting={} fixture_only=true vanilla_input_path=true",
+                self.tickCount, startTick, pulse, client.options.keyUp.isDown(), client.options.keySprint.isDown(), self.isSprinting());
         }
     }
 }
@@ -102,5 +103,5 @@ for forbidden in [
         raise SystemExit("Phase 197 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 197: applies fixture right-strafe KeyMapping at LocalPlayer.aiStep HEAD before vanilla input sampling; harness-only")
+print("Phase 197: applies fixture forward+sprint KeyMappings at LocalPlayer.aiStep HEAD before vanilla input sampling; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase198.py")), run_name="__main__")

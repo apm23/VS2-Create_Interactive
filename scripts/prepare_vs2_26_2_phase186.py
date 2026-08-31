@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 move_java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinEntityLocalPlayerMoveTrace.java"
@@ -71,3 +72,4 @@ for text in (move, setpos):
             raise SystemExit("Phase 186 encountered unexpected mutation token: " + forbidden)
 
 print("Phase 186: extends read-only LocalPlayer move/setPos caller telemetry through the bounded walk window")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase187.py")), run_name="__main__")

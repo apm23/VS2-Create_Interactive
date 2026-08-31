@@ -1,0 +1,36 @@
+name: carry-gap-diagnostics
+
+on:
+  workflow_run:
+    workflows: ["production-world-smoke"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect-native-carry-gap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download production-world diagnostics
+        uses: actions/download-artifact@v5
+        with:
+          name: vs2-production-real-train-world-smoke-log
+          path: diagnostics
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Correlate native contact and replay seam
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="diagnostics/production-world-smoke.log"
+          test -f "$LOG"
+          echo '=== carry gap correlation ==='
+          grep -E 'GATE_E_(CARRIAGE_LOCAL_CONTINUITY|CLIENT_CARRY_DELTA|PHASE85_CARRY_REPLAY|PHASE130_REPLAY_GUARD|PHASE170|PHASE171|PHASE177|PHASE179|PHASE181|PHASE189|PHASE190|PHASE193|PHASE194|PHASE201|PHASE202)' "$LOG" | tail -520 || true
+          echo '=== focused player ticks 14-26 ==='
+          grep -E 'player_tick=(1[4-9]|2[0-6])([^0-9]|$)' "$LOG" \
+            | grep -E 'GATE_E_(CARRIAGE_LOCAL_CONTINUITY|CLIENT_CARRY_DELTA|PHASE85_CARRY_REPLAY|PHASE130_REPLAY_GUARD|PHASE170|PHASE171|PHASE177|PHASE179|PHASE181|PHASE189|PHASE190|PHASE193|PHASE194|PHASE201|PHASE202)' \
+            || true

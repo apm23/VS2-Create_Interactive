@@ -27,6 +27,12 @@ source = client_probe.read_text(encoding="utf-8")
 # wins when multiple sibling carriages apply native contact during the same tick: active carriage 5
 # applied at tick 50, then sibling 10 overwrote the global id. Consume Phase170's per-carriage tick
 # property so exact native evidence survives sibling ordering. Fixture accounting only.
+#
+# Production-world #437 then reached the walk start but applied active carriage 8 motion followed by
+# sibling carriage 10 motion in the same tick before Phase172's walk-active property existed. Two
+# settled readiness ticks already prove the intended active frame before that third-tick transition.
+# Pre-arm only Phase172's existing disposable sibling de-dup guard at readiness tick two, and clear it
+# if readiness is lost before the walk starts. This invents no vector and changes no production path.
 
 field_anchor = "    private static boolean phase154WalkStarted;\n"
 field_insert = field_anchor + (
@@ -111,6 +117,24 @@ else:
             raise SystemExit("Phase 185 could not upgrade settled walk readiness telemetry")
         source = source.replace(old_log, new_log, 1)
 
+prearm_anchor = '''                            LOGGER.info(
+                                "GATE_E_PHASE185_SETTLED_WALK_READY player_tick={} carriage_id={} ready_now={} ready_ticks={} baseline_rebase_age={} strict_support={} phase134_fresh_native={} exact_native_application={} fresh_native_evidence={} fixture_only=true accounting_only=true",'''
+if "GATE_E_PHASE185_SIBLING_GUARD_PREARM" not in source:
+    if source.count(prearm_anchor) != 1:
+        raise SystemExit("Phase 185 could not locate settled readiness log for sibling-guard prearm")
+    prearm = '''                            if (phase185WalkReadyNow
+                                    && phase185WalkReadyCarriageId == phase154Carriage.getId()
+                                    && phase185WalkReadyTicks >= 2) {
+                                System.setProperty("vs2.phase172WalkActiveCarriageId", Integer.toString(phase154Carriage.getId()));
+                                LOGGER.info(
+                                    "GATE_E_PHASE185_SIBLING_GUARD_PREARM player_tick={} carriage_id={} ready_ticks={} fixture_only=true existing_guard_only=true",
+                                    player.tickCount, phase154Carriage.getId(), phase185WalkReadyTicks);
+                            } else if (!phase185WalkReadyNow) {
+                                System.clearProperty("vs2.phase172WalkActiveCarriageId");
+                            }
+'''
+    source = source.replace(prearm_anchor, prearm + prearm_anchor, 1)
+
 required = [
     "phase185WalkReadyCarriageId",
     "phase185WalkReadyTicks",
@@ -124,6 +148,9 @@ required = [
     "player.tickCount - carryBaselineRebaseTick >= 2",
     "phase185WalkReadyTicks >= 3",
     "GATE_E_PHASE185_SETTLED_WALK_READY",
+    "GATE_E_PHASE185_SIBLING_GUARD_PREARM",
+    "vs2.phase172WalkActiveCarriageId",
+    "phase185WalkReadyTicks >= 2",
     "exact_native_application={}",
     "fresh_native_evidence={}",
     "GATE_E_PHASE154_FIXTURE_WALK_START",
@@ -142,5 +169,5 @@ for forbidden in [
         raise SystemExit("Phase 185 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 185: delays fixture walk until three consecutive settled active-carriage support/native-carry ticks using per-carriage Phase170 native evidence; accounting only")
+print("Phase 185: pre-arms the existing fixture-only sibling carry de-dup guard after two settled active-carriage ticks, then starts bounded walk after three")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase186.py")), run_name="__main__")

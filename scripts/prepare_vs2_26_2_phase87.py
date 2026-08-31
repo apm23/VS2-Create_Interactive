@@ -50,23 +50,17 @@ source = source.replace(
     1,
 )
 
-# Production-world run 2 proved the explicit compatibility path can load the real
-# train world with ci_harness=false and observe genuine carriage motion, but Phase
-# 85 never fires because its historical smoke-only guard still requires
-# carryBaselineCaptured. The actual safety predicate we validated is the current
-# Create simplified collider directly under the LocalPlayer, plus
-# collisionEligible+broadphaseOverlap and Create's own getContactPointMotion ->
-# ContraptionCollider.collide result. Allow explicit production opt-in to use that
-# strict current physical-support predicate without requiring a prior CI-only
-# contact baseline. CI behavior remains unchanged.
+# Phase 83 now retires the legacy LocalPlayer replay before Phase 87 runs. Only the
+# remaining native-contact compatibility guard should be widened for explicit
+# production opt-in; the disabled replay guard must stay disabled.
 old_carry_guard = '''            if (carryBaselineCaptured
                 && phase81PhysicalSupport'''
 new_carry_guard = '''            if ((carryBaselineCaptured || explicitCarryCompat)
                 && phase81PhysicalSupport'''
 carry_guard_count = source.count(old_carry_guard)
-if carry_guard_count < 2:
-    raise SystemExit(f"Phase 87 expected both Phase 85 production carry guards, found {carry_guard_count}")
-source = source.replace(old_carry_guard, new_carry_guard, 2)
+if carry_guard_count < 1:
+    raise SystemExit(f"Phase 87 expected the remaining native-contact production guard, found {carry_guard_count}")
+source = source.replace(old_carry_guard, new_carry_guard, 1)
 
 # Production-world run 3 still emitted no Phase 85 replay marker. The old Phase 81
 # support-continuity telemetry itself was also hidden behind carryBaselineCaptured,

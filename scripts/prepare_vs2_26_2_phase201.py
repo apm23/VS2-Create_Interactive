@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -46,3 +47,4 @@ for forbidden in [
 
 java.write_text(source, encoding="utf-8")
 print("Phase 201: traces bounded-walk Entity.move caller boundary read-only; no gameplay or physics mutation")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase202.py")), run_name="__main__")

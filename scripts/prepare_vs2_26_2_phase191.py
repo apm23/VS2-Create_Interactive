@@ -47,3 +47,4 @@ for forbidden in [
 client_probe.write_text(source, encoding="utf-8")
 print("Phase 191: extends only the cumulative Phase188 fixture walk observation deadline to the existing Phase166 delayed-input bound")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase192.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase193.py")), run_name="__main__")

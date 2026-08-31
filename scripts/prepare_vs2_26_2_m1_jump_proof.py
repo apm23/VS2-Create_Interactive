@@ -145,10 +145,15 @@ if duration != landed_tick - request_tick or duration < 2:
         f"ticks={request_tick}->{landed_tick}"
     )
 
-# M1 is only accepted when the real production smoke completes without the legacy compatibility
-# carry replay. Native Create/VS2 contact must own locomotion; this verifier does not change physics.
-if "GATE_E_PHASE85_CARRY_REPLAY" in text:
-    raise SystemExit("M1 native locomotion used legacy Phase85 compatibility carry replay")
+# M1 is only accepted when the real production smoke completes without any compatibility carry
+# recovery path. Native Create/VS2 contact must own locomotion end-to-end; this verifier changes
+# no player position, velocity, collision response, train state, or physics behavior.
+for forbidden_marker in (
+    "GATE_E_PHASE85_CARRY_REPLAY",
+    "GATE_E_PHASE189_SIBLING_NATIVE_GAP_RECOVERY",
+):
+    if forbidden_marker in text:
+        raise SystemExit(f"M1 native locomotion used compatibility carry recovery: {forbidden_marker}")
 
 print(
     "M1_NATIVE_LOCOMOTION_PROOF "
@@ -156,5 +161,5 @@ print(
     f"reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} "
     f"strafe_confirmed={strafe_tick} strafe_speed_sq={strafe_speed_sq} "
     f"jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} "
-    f"duration={duration} delta_y={delta_y} natural_fall=true replay_free=true"
+    f"duration={duration} delta_y={delta_y} natural_fall=true replay_free=true recovery_free=true"
 )

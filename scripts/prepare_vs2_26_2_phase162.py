@@ -10,21 +10,23 @@ source = client_probe.read_text(encoding="utf-8")
 # fixture-acquisition loop was still active and performed another fixture reposition at tick 34,
 # selecting carriage 4. The next walk sample therefore measured the now-distant carriage-8 frame
 # as a 51.7-block local jump. Stop fixture contact acquisition once the walk proof has started.
-# Production-world #334 required extending Phase129's bounded acquisition window from 32 to 48
-# attempts because genuine strict support arrived late. Keep this guard aligned with that bound.
-# This only disables further test-fixture repositioning; it does not change production carry,
-# player movement, Create collision, train state, world state, or VS2 physics.
+# Production-world #494 then failed before Minecraft because Phase129's acquisition bound was
+# intentionally reduced from 48 to 32 after Run 493 proved earlier native support, while this
+# harness guard still hard-coded the obsolete 48-attempt source shape. Keep Phase162 aligned with
+# the current 32-attempt fixture boundary. This only disables further test-fixture repositioning;
+# it does not change production carry, player movement, Create collision, train state, world state,
+# or VS2 physics.
 
-old_retry = '''|| (productionSmokeFixture && fixtureContactAcquireTicks < 48)) {'''
-new_retry = '''|| (productionSmokeFixture && fixtureContactAcquireTicks < 48 && !phase154WalkStarted)) {'''
-if "fixtureContactAcquireTicks < 48 && !phase154WalkStarted" not in source:
+old_retry = '''|| (productionSmokeFixture && fixtureContactAcquireTicks < 32)) {'''
+new_retry = '''|| (productionSmokeFixture && fixtureContactAcquireTicks < 32 && !phase154WalkStarted)) {'''
+if "fixtureContactAcquireTicks < 32 && !phase154WalkStarted" not in source:
     if source.count(old_retry) != 1:
-        raise SystemExit("Phase 162 expected exactly one Phase129 bounded fixture retry guard")
+        raise SystemExit("Phase 162 expected exactly one current Phase129 bounded fixture retry guard")
     source = source.replace(old_retry, new_retry, 1)
 
-old_count = '''if (productionSmokeFixture && fixtureContactAcquireTicks < 48) {
+old_count = '''if (productionSmokeFixture && fixtureContactAcquireTicks < 32) {
         fixtureContactAcquireTicks++;'''
-new_count = '''if (productionSmokeFixture && fixtureContactAcquireTicks < 48 && !phase154WalkStarted) {
+new_count = '''if (productionSmokeFixture && fixtureContactAcquireTicks < 32 && !phase154WalkStarted) {
         fixtureContactAcquireTicks++;'''
 if old_count in source:
     source = source.replace(old_count, new_count, 1)
@@ -33,7 +35,7 @@ required = [
     "phase154WalkStarted",
     "GATE_E_PHASE154_FIXTURE_WALK_START",
     "GATE_E_FIXTURE_CONTACT_ACQUIRE",
-    "fixtureContactAcquireTicks < 48 && !phase154WalkStarted",
+    "fixtureContactAcquireTicks < 32 && !phase154WalkStarted",
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -48,4 +50,4 @@ for forbidden in [
         raise SystemExit("Phase 162 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 162: freezes fixture contact acquisition once the bounded walk proof starts")
+print("Phase 162: freezes fixture contact acquisition once the bounded walk proof starts at the current 32-attempt bound")

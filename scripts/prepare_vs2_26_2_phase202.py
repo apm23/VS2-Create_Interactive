@@ -61,6 +61,20 @@ for forbidden in [
     if forbidden in inserted:
         raise SystemExit("Phase 202 introduced forbidden gameplay mutation: " + forbidden)
 
+# Production-world #484 proves the moving-frame boundary itself: on the supported active carriage,
+# Create published frame/contact motion but skipped the native LocalPlayer application for the first
+# transition tick. Phase189 already has a one-tick Create-computed, Create-collision-filtered recovery,
+# but artificially limited it to a sibling carriage. Reuse that exact native recovery for the same
+# baseline carriage when the previous tick was native and current strict support remains valid. No
+# new vector, teleport, direct move, gravity, collision solver, or train/world mutation is introduced.
+previous_native_scope = """    && carryBaselineCarriageId != carriage.getId()\n    && Integer.toString(player.tickCount - 1).equals(System.getProperty(\"vs2.phase170NativeContactApplicationTick\"))"""
+previous_native_same_or_sibling = """    && Integer.toString(player.tickCount - 1).equals(System.getProperty(\"vs2.phase170NativeContactApplicationTick\"))"""
+if previous_native_scope not in probe_source:
+    raise SystemExit("Phase 202 expected the Phase189 sibling-only native-gap boundary")
+probe_source = probe_source.replace(previous_native_scope, previous_native_same_or_sibling, 1)
+if "phase189PreviousNativeSibling" not in probe_source or "GATE_E_PHASE189_SIBLING_NATIVE_GAP_RECOVERY" not in probe_source:
+    raise SystemExit("Phase 202 lost the existing Create-filtered native-gap recovery anchors")
+
 # Production-world #483 still proved stable carry and supported sprinting, but the fixed eight-tick
 # post-walk delay did not request reverse until the finite-route support seam had already started.
 # Keep the exact same vanilla KeyMapping -> LocalPlayer.aiStep path and acceptance thresholds, but
@@ -112,4 +126,4 @@ for forbidden in [
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 202: keeps native reverse, right-strafe, and jump inside the proven support window; harness-only")
+print("Phase 202: reuses Create-filtered native-gap recovery across same-carriage and sibling frame seams")

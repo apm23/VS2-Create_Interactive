@@ -7,61 +7,109 @@ java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/Mi
 
 source = java.read_text(encoding="utf-8")
 
-# Production-world #429 proved every KeyboardInput.tick invocation in the bounded walk window is the
-# reflective Phase196 call from START_CLIENT_TICK; no vanilla caller reaches KeyboardInput.tick before
-# LocalPlayer locomotion. Phase198 already places the ordinary fixture KeyMapping at LocalPlayer.tick
-# HEAD. Sample that KeyMapping through the player's existing KeyboardInput immediately there.
-#
-# Production-world #440 then proved sampling itself is correct: ClientInput.keyPresses.forward=true
-# for ticks 27-30, yet LocalPlayer.tick RETURN keeps zero horizontal delta and Entity.move is never
-# reached by locomotion. Minecraft 26.x exposes LocalPlayer.applyInput() as the vanilla bridge from the
-# sampled ClientInput object into LivingEntity movement inputs. Invoke that existing vanilla bridge
-# immediately after the fixture-only KeyboardInput sample, still before LocalPlayer.tick proceeds.
-# This does not synthesize a movement vector or touch position/velocity/collision/carry/train/world
-# state; it only completes the disposable headless fixture's ordinary input pipeline.
-anchor = '''        client.options.keyUp.setDown(pulse);\n        client.options.keyDown.setDown(false);\n'''
-insert = anchor + '''        boolean phase200Sampled = false;\n        boolean phase200AppliedInput = false;\n        String phase200Sampler = "missing";\n        String phase200ApplyBridge = "missing";\n        try {\n            java.lang.reflect.Field inputField = null;\n            Class<?> playerClass = self.getClass();\n            while (playerClass != null && inputField == null) {\n                try {\n                    inputField = playerClass.getDeclaredField("input");\n                } catch (NoSuchFieldException ignored) {\n                    playerClass = playerClass.getSuperclass();\n                }\n            }\n            if (inputField != null) {\n                inputField.setAccessible(true);\n                Object input = inputField.get(self);\n                if (input != null) {\n                    java.lang.reflect.Method inputTick = null;\n                    Class<?> inputClass = input.getClass();\n                    while (inputClass != null && inputTick == null) {\n                        for (java.lang.reflect.Method method : inputClass.getDeclaredMethods()) {\n                            if (method.getName().equals("tick") && method.getParameterCount() == 0) {\n                                inputTick = method;\n                                break;\n                            }\n                        }\n                        inputClass = inputClass.getSuperclass();\n                    }\n                    if (inputTick != null) {\n                        inputTick.setAccessible(true);\n                        inputTick.invoke(input);\n                        phase200Sampled = true;\n                        phase200Sampler = inputTick.getDeclaringClass().getName() + "." + inputTick.getName();\n                    }\n                }\n            }\n            if (phase200Sampled) {\n                java.lang.reflect.Method applyInput = null;\n                Class<?> applyClass = self.getClass();\n                while (applyClass != null && applyInput == null) {\n                    for (java.lang.reflect.Method method : applyClass.getDeclaredMethods()) {\n                        if (method.getName().equals("applyInput") && method.getParameterCount() == 0) {\n                            applyInput = method;\n                            break;\n                        }\n                    }\n                    applyClass = applyClass.getSuperclass();\n                }\n                if (applyInput != null) {\n                    applyInput.setAccessible(true);\n                    applyInput.invoke(self);\n                    phase200AppliedInput = true;\n                    phase200ApplyBridge = applyInput.getDeclaringClass().getName() + "." + applyInput.getName();\n                }\n            }\n        } catch (ReflectiveOperationException | RuntimeException exception) {\n            if (!phase200Sampled) {\n                phase200Sampler = "error=" + exception.getClass().getSimpleName();\n            } else {\n                phase200ApplyBridge = "error=" + exception.getClass().getSimpleName();\n            }\n        }\n        if (self.tickCount <= startTick + 5) {\n            VS2_FIXTURE_INPUT_LOGGER.info(\n                "GATE_E_PHASE200_PRE_LOCALPLAYER_INPUT_SAMPLE player_tick={} start_tick={} pulse={} key_up={} sampled={} sampler={} applied_input={} apply_bridge={} fixture_only=true input_only=true",\n                self.tickCount, startTick, pulse, client.options.keyUp.isDown(), phase200Sampled, phase200Sampler,\n                phase200AppliedInput, phase200ApplyBridge);\n        }\n'''
+# Production-world #441 proves the previous fixture bridge reached LocalPlayer.applyInput() and
+# produced ClientInput.keyPresses.forward=true, but calling applyInput reflectively from LocalPlayer.tick
+# HEAD still yielded no horizontal locomotion. Do not synthesize movement and do not call the movement
+# bridge out of order. Instead sample the ordinary fixture KeyMapping at the HEAD of LocalPlayer's own
+# native applyInput invocation and then let vanilla applyInput proceed exactly once in its normal call
+# chain. This is fixture-only input plumbing: no position, velocity, Entity.move, collision/carry,
+# train/world, inventory, or VS2/Create physics state is written.
+method = r'''
 
-if "GATE_E_PHASE200_PRE_LOCALPLAYER_INPUT_SAMPLE" not in source:
-    count = source.count(anchor)
-    if count != 1:
-        raise SystemExit(f"Phase 200 expected one Phase198 KeyMapping anchor, found {count}")
-    source = source.replace(anchor, insert, 1)
-else:
-    old_begin = '''        boolean phase200Sampled = false;\n        String phase200Sampler = "missing";'''
-    old_end = '''        if (self.tickCount <= startTick + 5) {\n            VS2_FIXTURE_INPUT_LOGGER.info(\n                "GATE_E_PHASE200_PRE_LOCALPLAYER_INPUT_SAMPLE player_tick={} start_tick={} pulse={} key_up={} sampled={} sampler={} fixture_only=true input_only=true",\n                self.tickCount, startTick, pulse, client.options.keyUp.isDown(), phase200Sampled, phase200Sampler);\n        }\n'''
-    start = source.find(old_begin)
-    end = source.find(old_end)
-    if start < 0 or end < 0:
-        raise SystemExit("Phase 200 could not upgrade existing input sample bridge")
-    end += len(old_end)
-    replacement = insert[len(anchor):]
-    source = source[:start] + replacement + source[end:]
+    @Inject(method = "applyInput", at = @At("HEAD"), require = 1)
+    private void vs2$sampleFixtureInputAtNativeApplyInput(CallbackInfo ci) {
+        if (!Boolean.getBoolean("vs2.productionSmokeFixture")) return;
+        LocalPlayer self = (LocalPlayer) (Object) this;
+        Minecraft client = Minecraft.getInstance();
+        if (client.player != self) return;
+        String rawStart = System.getProperty("vs2.productionFixtureWalkStartTick");
+        if (rawStart == null) return;
+        int startTick;
+        try {
+            startTick = Integer.parseInt(rawStart);
+        } catch (NumberFormatException ignored) {
+            return;
+        }
+        boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;
+        client.options.keyUp.setDown(pulse);
+        client.options.keyDown.setDown(false);
+
+        boolean sampled = false;
+        String sampler = "missing";
+        try {
+            java.lang.reflect.Field inputField = null;
+            Class<?> playerClass = self.getClass();
+            while (playerClass != null && inputField == null) {
+                try {
+                    inputField = playerClass.getDeclaredField("input");
+                } catch (NoSuchFieldException ignored) {
+                    playerClass = playerClass.getSuperclass();
+                }
+            }
+            if (inputField != null) {
+                inputField.setAccessible(true);
+                Object input = inputField.get(self);
+                if (input != null) {
+                    java.lang.reflect.Method inputTick = null;
+                    Class<?> inputClass = input.getClass();
+                    while (inputClass != null && inputTick == null) {
+                        for (java.lang.reflect.Method candidate : inputClass.getDeclaredMethods()) {
+                            if (candidate.getName().equals("tick") && candidate.getParameterCount() == 0) {
+                                inputTick = candidate;
+                                break;
+                            }
+                        }
+                        inputClass = inputClass.getSuperclass();
+                    }
+                    if (inputTick != null) {
+                        inputTick.setAccessible(true);
+                        inputTick.invoke(input);
+                        sampled = true;
+                        sampler = inputTick.getDeclaringClass().getName() + "." + inputTick.getName();
+                    }
+                }
+            }
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            sampler = "error=" + exception.getClass().getSimpleName();
+        }
+
+        if (self.tickCount <= startTick + 5) {
+            VS2_FIXTURE_INPUT_LOGGER.info(
+                "GATE_E_PHASE200_NATIVE_APPLY_INPUT_HEAD player_tick={} start_tick={} pulse={} key_up={} sampled={} sampler={} fixture_only=true input_only=true native_boundary=true",
+                self.tickCount, startTick, pulse, client.options.keyUp.isDown(), sampled, sampler);
+        }
+    }
+'''
+
+marker = "GATE_E_PHASE200_NATIVE_APPLY_INPUT_HEAD"
+if marker not in source:
+    end = source.rfind("\n}")
+    if end < 0:
+        raise SystemExit("Phase 200 could not find MixinLocalPlayerFixtureInput class end")
+    source = source[:end] + method + source[end:]
 
 required = [
-    "GATE_E_PHASE200_PRE_LOCALPLAYER_INPUT_SAMPLE",
+    marker,
+    '@Inject(method = "applyInput", at = @At("HEAD"), require = 1)',
     "inputTick.invoke(input)",
-    "applyInput.invoke(self)",
-    "phase200AppliedInput",
-    "applied_input={}",
-    "apply_bridge={}",
     "client.options.keyUp.setDown(pulse)",
-    '@Inject(method = "tick", at = @At("HEAD"), require = 1)',
+    "native_boundary=true",
     "fixture_only=true input_only=true",
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 200 lost pre-LocalPlayer input bridge anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 200 lost native applyInput fixture anchors: " + ", ".join(missing))
 
+# The fixture may manipulate only ordinary input state. Keep direct movement/physics mutation out.
 for forbidden in [
     "self.setPos(", "self.setDeltaMovement(", "self.move(", "player.setPos(",
     "player.setDeltaMovement(", "player.move(", ".teleport(", "setBlock(",
     "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(", "cir.setReturnValue(",
-    "keyPresses =", "moveVector =",
+    "applyInput.invoke(", "keyPresses =", "moveVector =",
 ]:
     if forbidden in source:
         raise SystemExit("Phase 200 introduced forbidden gameplay mutation token: " + forbidden)
 
 java.write_text(source, encoding="utf-8")
-print("Phase 200: samples fixture KeyboardInput and applies the vanilla LocalPlayer input bridge before tick; harness-only input plumbing")
+print("Phase 200: samples fixture KeyboardInput at native LocalPlayer.applyInput HEAD and lets vanilla proceed once; input-only harness")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase201.py")), run_name="__main__")

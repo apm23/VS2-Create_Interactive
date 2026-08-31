@@ -9,14 +9,6 @@ probe_source = client_probe.read_text(encoding="utf-8")
 trace_source = contact_trace.read_text(encoding="utf-8")
 fixture_source = fixture_input.read_text(encoding="utf-8")
 
-# Production-world #457 proves native carry, interaction dispatch, and authoritative new-cell
-# replication, but the bounded walk never starts: Phase194 arms carriage 4 on player tick 23 after
-# two strict/native-supported ticks, then tick 24 loses baseline support while sibling carriage 2
-# reports a large frame/contact-motion discontinuity. Do not widen replay or relax acceptance yet.
-# Correlate the already-read-only Phase171 carriage frame/contact values with the one-tick Phase194
-# pending-confirmation window so the next real-world run can distinguish a Create transform handoff
-# from a missing carry application without changing movement, collision, train, world, or VS2 physics.
-
 arm_anchor = '''                            phase194PendingWalkCarriageId = phase154Carriage.getId();\n                            phase194PendingWalkTick = player.tickCount;\n'''
 arm_insert = arm_anchor + '''                            System.setProperty("vs2.phase194PendingWalkCarriageId", Integer.toString(phase194PendingWalkCarriageId));\n                            System.setProperty("vs2.phase194PendingWalkTick", Integer.toString(phase194PendingWalkTick));\n'''
 if 'System.setProperty("vs2.phase194PendingWalkTick"' not in probe_source:
@@ -26,61 +18,17 @@ if 'System.setProperty("vs2.phase194PendingWalkTick"' not in probe_source:
 
 anchor = '''            LOGGER.info(\n                "GATE_E_PHASE171_CARRIAGE_FRAME_STEP player_tick={} carriage_id={} previous_player_tick={} frame_step={} contact_motion={} motion_minus_frame_step={} carriage_pos={} read_only=true diagnostic_state_only=true",\n                phase170Player.tickCount, self.getId(), phase171PreviousPlayerTick,\n                phase171FrameStep, motion, phase171MotionResidual, phase171Position);\n'''
 insert = anchor + '''            String phase202PendingTickRaw = System.getProperty("vs2.phase194PendingWalkTick");\n            String phase202PendingCarriageRaw = System.getProperty("vs2.phase194PendingWalkCarriageId");\n            if (Boolean.getBoolean("vs2.productionSmokeFixture")\n                    && phase202PendingTickRaw != null && phase202PendingCarriageRaw != null) {\n                try {\n                    int phase202PendingTick = Integer.parseInt(phase202PendingTickRaw);\n                    int phase202PendingCarriage = Integer.parseInt(phase202PendingCarriageRaw);\n                    if (phase170Player.tickCount == phase202PendingTick + 1) {\n                        boolean phase202NativeApplied = Integer.toString(phase170Player.tickCount).equals(\n                            System.getProperty("vs2.phase170NativeContactApplicationTick." + self.getId()));\n                        LOGGER.info(\n                            "GATE_E_PHASE202_PENDING_CONFIRM_CONTACT player_tick={} carriage_id={} pending_carriage_id={} pending_tick={} is_pending_carriage={} frame_step={} contact_motion={} motion_minus_frame_step={} native_applied_this_tick={} carriage_pos={} fixture_only=true read_only=true diagnostic_state_only=true",\n                            phase170Player.tickCount, self.getId(), phase202PendingCarriage, phase202PendingTick,\n                            self.getId() == phase202PendingCarriage, phase171FrameStep, motion, phase171MotionResidual,\n                            phase202NativeApplied, phase171Position);\n                    }\n                } catch (NumberFormatException ignored) {\n                }\n            }\n'''
-
 if "GATE_E_PHASE202_PENDING_CONFIRM_CONTACT" not in trace_source:
     if trace_source.count(anchor) != 1:
         raise SystemExit("Phase 202 expected one Phase171 carriage-frame log anchor")
     trace_source = trace_source.replace(anchor, insert, 1)
 
-required_probe = [
-    'System.setProperty("vs2.phase194PendingWalkCarriageId"',
-    'System.setProperty("vs2.phase194PendingWalkTick"',
-    "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM",
-]
-required_trace = [
-    "GATE_E_PHASE202_PENDING_CONFIRM_CONTACT",
-    "vs2.phase194PendingWalkTick",
-    "vs2.phase194PendingWalkCarriageId",
-    "phase202PendingTick + 1",
-    "vs2.phase170NativeContactApplicationTick.",
-    "is_pending_carriage={}",
-    "motion_minus_frame_step={}",
-    "fixture_only=true read_only=true diagnostic_state_only=true",
-    "GATE_E_PHASE171_CARRIAGE_FRAME_STEP",
-]
-missing = [token for token in required_probe if token not in probe_source]
-missing += [token for token in required_trace if token not in trace_source]
-if missing:
-    raise SystemExit("Phase 202 lost pending-confirmation telemetry anchors: " + ", ".join(missing))
-
-inserted = arm_insert + insert
-for forbidden in [
-    "setPos(", "setDeltaMovement(", ".move(", ".teleport", "setBlock(",
-    "setSchedule", "setTrain", "setVelocity", "syncCarriage(", "cir.setReturnValue(",
-]:
-    if forbidden in inserted:
-        raise SystemExit("Phase 202 introduced forbidden gameplay mutation: " + forbidden)
-
-# Production-world #484 proves the moving-frame boundary itself: on the supported active carriage,
-# Create published frame/contact motion but skipped the native LocalPlayer application for the first
-# transition tick. Phase189 already has a one-tick Create-computed, Create-collision-filtered recovery,
-# but artificially limited it to a sibling carriage. Reuse that exact native recovery for the same
-# baseline carriage when the previous tick was native and current strict support remains valid. No
-# new vector, teleport, direct move, gravity, collision solver, or train/world mutation is introduced.
 previous_native_scope = """    && carryBaselineCarriageId != carriage.getId()\n    && Integer.toString(player.tickCount - 1).equals(System.getProperty(\"vs2.phase170NativeContactApplicationTick\"))"""
 previous_native_same_or_sibling = """    && Integer.toString(player.tickCount - 1).equals(System.getProperty(\"vs2.phase170NativeContactApplicationTick\"))"""
 if previous_native_scope not in probe_source:
     raise SystemExit("Phase 202 expected the Phase189 sibling-only native-gap boundary")
 probe_source = probe_source.replace(previous_native_scope, previous_native_same_or_sibling, 1)
-if "phase189PreviousNativeSibling" not in probe_source or "GATE_E_PHASE189_SIBLING_NATIVE_GAP_RECOVERY" not in probe_source:
-    raise SystemExit("Phase 202 lost the existing Create-filtered native-gap recovery anchors")
 
-# Production-world #483 still proved stable carry and supported sprinting, but the fixed eight-tick
-# post-walk delay did not request reverse until the finite-route support seam had already started.
-# Keep the exact same vanilla KeyMapping -> LocalPlayer.aiStep path and acceptance thresholds, but
-# chain reverse, right-strafe, and jump inside the already-proven supported interval. This changes
-# only disposable production-smoke input timing; it does not synthesize position, velocity, carry,
-# collision, gravity, train state, world state, or VS2/Create physics.
 timing_replacements = [
     (
         '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;\n        return elapsed >= 8 && elapsed <= 11;''',
@@ -97,12 +45,22 @@ timing_replacements = [
 ]
 for old, new in timing_replacements:
     if fixture_source.count(old) != 1:
-        raise SystemExit("Phase 202 expected one M1 fixture timing boundary: " + old.splitlines()[-1].strip())
+        raise SystemExit("Phase 202 expected one M1 fixture timing boundary")
     fixture_source = fixture_source.replace(old, new, 1)
+
+# Production-world #485 reached the native jump request after carry/walk/reverse/strafe, but never
+# became airborne. Phase196 already proved why: fixture KeyMappings can be set after Minecraft's normal
+# KeyboardInput sampling point. Reuse that same native KeyboardInput.tick sampling boundary immediately
+# after this fixture updates movement/jump KeyMappings at LocalPlayer.aiStep HEAD, before vanilla aiStep
+# consumes Input. Harness-only; no position, velocity, collision, carry, gravity, train or world mutation.
+head_anchor = '''        vs2$sampleNativeJump(self, client);\n        if (self.tickCount != vs2$lastHeadTick && self.tickCount <= startTick + 5) {'''
+head_insert = '''        vs2$sampleNativeJump(self, client);\n        try {\n            java.lang.reflect.Field inputField = null;\n            Class<?> playerClass = self.getClass();\n            while (playerClass != null && inputField == null) {\n                try {\n                    inputField = playerClass.getDeclaredField("input");\n                } catch (NoSuchFieldException ignored) {\n                    playerClass = playerClass.getSuperclass();\n                }\n            }\n            if (inputField != null) {\n                inputField.setAccessible(true);\n                Object input = inputField.get(self);\n                if (input != null) {\n                    java.lang.reflect.Method tickMethod = null;\n                    Class<?> inputClass = input.getClass();\n                    while (inputClass != null && tickMethod == null) {\n                        for (java.lang.reflect.Method method : inputClass.getDeclaredMethods()) {\n                            if (method.getName().equals("tick") && method.getParameterCount() == 0) {\n                                tickMethod = method;\n                                break;\n                            }\n                        }\n                        inputClass = inputClass.getSuperclass();\n                    }\n                    if (tickMethod != null) {\n                        tickMethod.setAccessible(true);\n                        tickMethod.invoke(input);\n                    }\n                }\n            }\n        } catch (ReflectiveOperationException | RuntimeException ignored) {\n        }\n        if (self.tickCount != vs2$lastHeadTick && self.tickCount <= startTick + 5) {'''
+if fixture_source.count(head_anchor) != 1:
+    raise SystemExit("Phase 202 expected one LocalPlayer aiStep HEAD input-consumption anchor")
+fixture_source = fixture_source.replace(head_anchor, head_insert, 1)
 
 required_fixture = [
     "return elapsed >= 1 && elapsed <= 4;",
-    "self.tickCount - vs2$backwardStartTick",
     "return elapsed >= 2 && elapsed <= 5;",
     "self.tickCount >= vs2$strafeStartTick + 4",
     "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED",
@@ -111,19 +69,23 @@ required_fixture = [
     "client.options.keyDown.setDown(backwardWindow)",
     "client.options.keyRight.setDown(strafeWindow)",
     "client.options.keyJump.setDown(jumpPulse)",
+    "getDeclaredField(\"input\")",
+    "method.getName().equals(\"tick\")",
+    "tickMethod.invoke(input)",
 ]
 missing_fixture = [token for token in required_fixture if token not in fixture_source]
 if missing_fixture:
-    raise SystemExit("Phase 202 lost compact native M1 fixture anchors: " + ", ".join(missing_fixture))
+    raise SystemExit("Phase 202 lost native M1 fixture anchors: " + ", ".join(missing_fixture))
+
 for forbidden in [
     "self.setPos(", "self.setDeltaMovement(", "self.move(", "player.setPos(",
     "player.setDeltaMovement(", "player.move(", ".teleport(", "setBlock(",
     "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(", "cir.setReturnValue(",
 ]:
     if forbidden in fixture_source:
-        raise SystemExit("Phase 202 compact M1 fixture contains forbidden gameplay mutation: " + forbidden)
+        raise SystemExit("Phase 202 native M1 fixture contains forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 202: reuses Create-filtered native-gap recovery across same-carriage and sibling frame seams")
+print("Phase 202: reuses native Create carry recovery and resamples native fixture input before aiStep consumption")

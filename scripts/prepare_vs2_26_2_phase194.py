@@ -6,14 +6,11 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #445 proves the direct-native arm can be healthy while the following confirmation
-# tick is explicitly bad: carriage 10 armed after two fresh supported native ticks, then Phase161/134
-# measured drift_sq=104/native_carry_healthy=false on the same carriage at tick 18 and Phase185 reset
-# ready_now=false, yet the old Phase194 support-only confirmation still started the fixture walk.
-# Reuse Phase185's existing fresh-native-evidence decision on the confirmation tick instead of bypassing
-# it. The one-tick acquisition freeze remains bounded; a rejected confirmation resumes acquisition on
-# the following tick. Harness timing/accounting only: no player position/velocity, collision response,
-# carry vector, train/world state, inventory, Create behavior, or VS2 physics is changed.
+# Production-world #487 exposed a startup-transient false-positive: two fresh native carry ticks can
+# arm the fixture immediately before the active carriage loses frame continuity. Require three fresh
+# supported native-ready ticks before arming, then keep the existing next-tick strict confirmation.
+# This only strengthens fixture acceptance; no player position/velocity, collision response, carry
+# vector, train/world state, inventory, Create behavior, or VS2 physics is changed.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -46,7 +43,7 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                             && phase185WalkReadyNow
                             && phase185WalkReadyCarriageId == phase154Carriage.getId()
                             && phase185NativeApplicationFresh
-                            && phase185WalkReadyTicks >= 2;
+                            && phase185WalkReadyTicks >= 3;
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
                             && phase194PendingWalkTick == player.tickCount - 1
@@ -92,6 +89,7 @@ required = [
     "phase185FreshNativeEvidence",
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase185WalkReadyTicks >= 5",
+    "phase185WalkReadyTicks >= 3",
     "phase185NativeApplicationFresh",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_CONFIRMED",
@@ -111,5 +109,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: confirmation reuses Phase185 fresh-native evidence; fixture retry freeze remains bounded and harness-only")
+print("Phase 194: requires three fresh supported native-ready ticks before strict next-tick walk confirmation")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

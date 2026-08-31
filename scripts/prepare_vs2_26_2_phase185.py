@@ -22,6 +22,11 @@ source = client_probe.read_text(encoding="utf-8")
 # missing. For fixture readiness only, accept that exact same-tick, same-carriage Phase170 application
 # as fresh native evidence. This does not synthesize/replay motion; it only lets the existing walk
 # fixture start after three consecutive ticks of directly observed native Create application.
+#
+# Production-world #435 exposed that the historical Phase170 global carriage property is last-writer-
+# wins when multiple sibling carriages apply native contact during the same tick: active carriage 5
+# applied at tick 50, then sibling 10 overwrote the global id. Consume Phase170's per-carriage tick
+# property so exact native evidence survives sibling ordering. Fixture accounting only.
 
 field_anchor = "    private static boolean phase154WalkStarted;\n"
 field_insert = field_anchor + (
@@ -34,13 +39,12 @@ if "phase185WalkReadyTicks" not in source:
     source = source.replace(field_anchor, field_insert, 1)
 
 walk_gate = "                        if (!phase154WalkStarted && phase154SupportNow && phase81PhysicalSupport && phase158FreshNativeCarry) {"
+per_carriage_native = '''                        boolean phase185NativeApplicationFresh = Integer.toString(player.tickCount).equals(
+                            System.getProperty("vs2.phase170NativeContactApplicationTick." + phase154Carriage.getId()));'''
 if "GATE_E_PHASE185_SETTLED_WALK_READY" not in source:
     if source.count(walk_gate) != 1:
         raise SystemExit("Phase 185 expected exactly one cumulative walk-start predicate")
-    settled = '''                        boolean phase185NativeApplicationFresh = Integer.toString(player.tickCount).equals(
-                            System.getProperty("vs2.phase170NativeContactApplicationTick"))
-                            && Integer.toString(phase154Carriage.getId()).equals(System.getProperty(
-                                "vs2.phase170NativeContactApplicationCarriageId"));
+    settled = per_carriage_native + '''
                         boolean phase185FreshNativeEvidence = phase158FreshNativeCarry || phase185NativeApplicationFresh;
                         boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
@@ -70,15 +74,21 @@ if "GATE_E_PHASE185_SETTLED_WALK_READY" not in source:
                                 && phase185WalkReadyTicks >= 3) {'''
     source = source.replace(walk_gate, settled, 1)
 else:
+    old_global_native = '''                        boolean phase185NativeApplicationFresh = Integer.toString(player.tickCount).equals(
+                            System.getProperty("vs2.phase170NativeContactApplicationTick"))
+                            && Integer.toString(phase154Carriage.getId()).equals(System.getProperty(
+                                "vs2.phase170NativeContactApplicationCarriageId"));'''
+    if old_global_native in source:
+        source = source.replace(old_global_native, per_carriage_native, 1)
+    elif per_carriage_native not in source:
+        raise SystemExit("Phase 185 could not retarget exact native evidence to per-carriage Phase170 property")
+
     old_ready = '''                        boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
                             && phase158FreshNativeCarry
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 2);'''
-    new_ready = '''                        boolean phase185NativeApplicationFresh = Integer.toString(player.tickCount).equals(
-                            System.getProperty("vs2.phase170NativeContactApplicationTick"))
-                            && Integer.toString(phase154Carriage.getId()).equals(System.getProperty(
-                                "vs2.phase170NativeContactApplicationCarriageId"));
+    new_ready = per_carriage_native + '''
                         boolean phase185FreshNativeEvidence = phase158FreshNativeCarry || phase185NativeApplicationFresh;
                         boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
@@ -110,8 +120,7 @@ required = [
     "phase154SupportNow",
     "phase81PhysicalSupport",
     "phase158FreshNativeCarry",
-    "vs2.phase170NativeContactApplicationTick",
-    "vs2.phase170NativeContactApplicationCarriageId",
+    "vs2.phase170NativeContactApplicationTick.",
     "player.tickCount - carryBaselineRebaseTick >= 2",
     "phase185WalkReadyTicks >= 3",
     "GATE_E_PHASE185_SETTLED_WALK_READY",
@@ -133,5 +142,5 @@ for forbidden in [
         raise SystemExit("Phase 185 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 185: delays fixture walk until three consecutive settled active-carriage support/native-carry ticks; exact same-carriage Phase170 application is valid fresh native evidence; accounting only")
+print("Phase 185: delays fixture walk until three consecutive settled active-carriage support/native-carry ticks using per-carriage Phase170 native evidence; accounting only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase186.py")), run_name="__main__")

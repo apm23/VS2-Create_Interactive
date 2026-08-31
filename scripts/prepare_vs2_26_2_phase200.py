@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -43,3 +44,4 @@ for forbidden in [
 
 java.write_text(source, encoding="utf-8")
 print("Phase 200: samples existing fixture KeyMapping through KeyboardInput at LocalPlayer.tick HEAD; harness-only input plumbing")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase201.py")), run_name="__main__")

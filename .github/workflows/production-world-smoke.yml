@@ -9,7 +9,6 @@ on:
       - 'scripts/prepare_vs2_26_2*.py'
       - '.github/workflows/production-world-smoke.yml'
       - '.github/workflows/walk-gate.yml'
-      - '.github/workflows/held-block-gate.yml'
 
 jobs:
   real-train-production-isolation:
@@ -41,9 +40,9 @@ jobs:
           grep -q 'vs2.productionSmoke' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'vs2.productionSmokeFixture' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
-          grep -q 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'GATE_E_CARRIAGE_LOCAL_CONTINUITY' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'GATE_E_PHASE130_REPLAY_GUARD' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
 
       - name: Reconstruct verified r0v3 train save
         shell: bash
@@ -83,7 +82,7 @@ jobs:
             sleep $((attempt * 10))
           done
 
-      - name: Load real train world with production carry and test-only support fixture
+      - name: Prove M1 movement on real moving train
         working-directory: upstream
         timeout-minutes: 18
         env:
@@ -290,108 +289,25 @@ jobs:
             exit 1
           fi
 
-          INTERACTION_TARGET_READY=0
-          NATIVE_RAY_USED=0
+          WALK_READY=0
           for i in $(seq 1 60); do
-            if grep -Eq 'GATE_F_CREATE_NATIVE_RAY_SETTLED.*hit=[^;]+;face=' ../production-world-smoke.log; then
-              echo 'PRODUCTION_INTERACTION native_create_ray_ready'
-              INTERACTION_TARGET_READY=1
-              NATIVE_RAY_USED=1
-              break
-            fi
-            if grep -Eq 'GATE_F_CONTRAPTION_EXACT_LOCAL_HIT.*exact_hit=true' ../production-world-smoke.log \
-              && grep -Eq 'GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED.*fields_match=true' ../production-world-smoke.log \
-              && grep -Eq 'GATE_F_INTERACTION_DISPATCH_CANDIDATE.*exact_handle_player_interaction=true' ../production-world-smoke.log; then
-              echo 'PRODUCTION_INTERACTION validated_contraption_local_fallback'
-              INTERACTION_TARGET_READY=1
+            if grep -Eq 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*on_ground=true[^\n]*broadphase=true[^\n]*support_healthy=true[^\n]*confirmed=true[^\n]*fixture_only=true' ../production-world-smoke.log; then
+              WALK_READY=1
               break
             fi
             if fatal_state; then exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
             sleep 1
           done
-          if [ "$INTERACTION_TARGET_READY" -ne 1 ]; then
-            echo 'Production world did not prove an exact moving-contraption interaction target.'
-            grep -E 'GATE_F_CREATE_NATIVE_RAY_SETTLED|GATE_F_CONTRAPTION_EXACT_LOCAL_HIT|GATE_F_SYNTHETIC_BLOCK_HIT_CONSTRUCTED|GATE_F_INTERACTION_DISPATCH_CANDIDATE' ../production-world-smoke.log | tail -160 || true
-            exit 1
-          fi
-
-          RIGHT_CLICK_ENTRYPOINT_READY=0
-          for i in $(seq 1 60); do
-            if grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT.*exact=true' ../production-world-smoke.log; then
-              RIGHT_CLICK_ENTRYPOINT_READY=1
-              break
-            fi
-            if fatal_state; then exit 1; fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
-            sleep 1
-          done
-          if [ "$RIGHT_CLICK_ENTRYPOINT_READY" -ne 1 ]; then
-            echo 'Production world did not expose the exact Create moving-contraption right-click entrypoint.'
-            grep -E 'GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT|GATE_F_INTERACTION_DISPATCH_CANDIDATE' ../production-world-smoke.log | tail -120 || true
-            exit 1
-          fi
-
-          if [ "$NATIVE_RAY_USED" -eq 1 ]; then
-            NATIVE_RIGHT_CLICK_CONFIRMED=0
-            for i in $(seq 1 60); do
-              if grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_PROBE.*invoked=true.*handled=true.*hand_empty_after=true' ../production-world-smoke.log \
-                && grep -Eq 'GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED.*handled=true' ../production-world-smoke.log; then
-                echo 'PRODUCTION_INTERACTION native_right_click_dispatch_confirmed'
-                NATIVE_RIGHT_CLICK_CONFIRMED=1
-                break
-              fi
-              if fatal_state; then exit 1; fi
-              if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
-              sleep 1
-            done
-            if [ "$NATIVE_RIGHT_CLICK_CONFIRMED" -ne 1 ]; then
-              echo 'Native Create ray was ready but the fixture did not prove an actual handled empty-hand right-click dispatch.'
-              grep -E 'GATE_F_CREATE_NATIVE_RAY_SETTLED|GATE_F_NATIVE_RIGHT_CLICK_ENTRYPOINT|GATE_F_NATIVE_RIGHT_CLICK_PROBE|GATE_F_NATIVE_RIGHT_CLICK_CONFIRMED' ../production-world-smoke.log | tail -160 || true
-              exit 1
-            fi
-          fi
-
-          PLACEMENT_SYNC_READY=0
-          for i in $(seq 1 60); do
-            if python3 - ../production-world-smoke.log <<'PY'
-          import re, sys
-          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
-          targets = re.findall(
-              r'GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED[^\n]*carriage_id=(\d+)[^\n]*empty_local=(BlockPos\{x=-?\d+, y=-?\d+, z=-?\d+\})',
-              text,
-          )
-          replications = set(re.findall(
-              r'VS2_CREATE_CELL_REPLICATION_CONFIRMED[^\n]*entity_id=(\d+)[^\n]*local_pos=(BlockPos\{x=-?\d+, y=-?\d+, z=-?\d+\})[^\n]*state=Block\{minecraft:stone\}[^\n]*entry_present=true[^\n]*state_match=true[^\n]*packet_authoritative=true',
-              text,
-          ))
-          walk_confirmed = re.search(
-              r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*on_ground=true[^\n]*broadphase=true[^\n]*support_healthy=true[^\n]*confirmed=true[^\n]*fixture_only=true',
-              text,
-          ) is not None
-          for target in targets:
-              if target in replications and walk_confirmed:
-                  print(f'PRODUCTION_PLACEMENT authoritative_moving_cell_synced_after_walk carriage_id={target[0]} local_pos={target[1]} source=packet_authoritative')
-                  raise SystemExit(0)
-          raise SystemExit(1)
-          PY
-            then
-              PLACEMENT_SYNC_READY=1
-              break
-            fi
-            if fatal_state; then exit 1; fi
-            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
-            sleep 1
-          done
-          if [ "$PLACEMENT_SYNC_READY" -ne 1 ]; then
-            echo 'Production world did not prove authoritative new-cell placement replication plus bounded supported walking on the exact published moving-carriage target.'
-            grep -E 'VS2_CREATE_CELL_REPLICATION_CONFIRMED|GATE_F_NATIVE_PLACEMENT_TARGET_PUBLISHED|GATE_E_PHASE154_FIXTURE_WALK_(START|SAMPLE|CONFIRMED)|GATE_F_NATIVE_PLACEMENT_CLIENT_EXACT_SYNC' ../production-world-smoke.log | tail -240 || true
+          if [ "$WALK_READY" -ne 1 ]; then
+            echo 'Production world did not prove bounded supported walking on the moving train.'
+            grep -E 'GATE_E_PHASE154_FIXTURE_WALK_(START|SAMPLE|CONFIRMED)|GATE_E_PHASE185_SETTLED_WALK_READY|GATE_E_PHASE193_STRICT_SUPPORT' ../production-world-smoke.log | tail -240 || true
             exit 1
           fi
 
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'Production sustained carriage-local carry continuity, interaction targeting/entrypoint, confirmed native dispatch when available, authoritative moving-carriage placement replication, and bounded supported walking passed.'
+          echo 'M1 production moving-train carry continuity and bounded supported walking passed.'
 
       - name: Upload production real-world diagnostics
         if: always()

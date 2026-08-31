@@ -10,16 +10,14 @@ source = client_probe.read_text(encoding="utf-8")
 # keyPresses=Input[forward=false,...] and LocalPlayer horizontal delta stayed zero. The Gate E callback
 # sets KeyMapping after Minecraft's normal input sampling point, so the disposable key pulse is never
 # consumed during the finite real-train window. Sample the already-set fixture KeyMapping through the
-# existing KeyboardInput tick method immediately after changing it. This is strictly production-smoke-
-# fixture input plumbing: it does not set player position/velocity, alter collision/carry, or mutate the
-# train/world/VS2 state. Reflection avoids depending on the concrete 26.2 input field visibility.
-anchor = '''                                client.options.keyUp.setDown(phase165InputPulse);
-                                client.options.keyDown.setDown(false);
-                                LOGGER.info(
+# existing KeyboardInput tick method immediately before the Phase192 input snapshot. That snapshot is
+# already proven to run inside the bounded walk branch after the fixture key state is updated, and is a
+# more stable cumulative anchor than the Phase165 source fragment modified by later composition phases.
+# This is strictly production-smoke-fixture input plumbing: it does not set player position/velocity,
+# alter collision/carry, or mutate train/world/VS2 state.
+anchor = '''                                String phase192InputState = "input_field_missing";
 '''
-replacement = '''                                client.options.keyUp.setDown(phase165InputPulse);
-                                client.options.keyDown.setDown(false);
-                                boolean phase196InputSampled = false;
+sampler = '''                                boolean phase196InputSampled = false;
                                 String phase196Sampler = "missing";
                                 try {
                                     java.lang.reflect.Field phase196InputField = null;
@@ -60,16 +58,16 @@ replacement = '''                                client.options.keyUp.setDown(ph
                                     phase196Sampler = "error=" + phase196Exception.getClass().getSimpleName();
                                 }
                                 LOGGER.info(
-                                    "GATE_E_PHASE196_FIXTURE_INPUT_SAMPLE player_tick={} carriage_id={} pulse={} key_up={} sampled={} sampler={} fixture_only=true",
-                                    player.tickCount, phase154Carriage.getId(), phase165InputPulse,
-                                    client.options.keyUp.isDown(), phase196InputSampled, phase196Sampler);
-                                LOGGER.info(
+                                    "GATE_E_PHASE196_FIXTURE_INPUT_SAMPLE player_tick={} carriage_id={} key_up={} sampled={} sampler={} fixture_only=true",
+                                    player.tickCount, phase154Carriage.getId(), client.options.keyUp.isDown(),
+                                    phase196InputSampled, phase196Sampler);
+                                String phase192InputState = "input_field_missing";
 '''
 if "GATE_E_PHASE196_FIXTURE_INPUT_SAMPLE" not in source:
     count = source.count(anchor)
     if count != 1:
-        raise SystemExit(f"Phase 196 expected one Phase165 fixture input anchor, found {count}")
-    source = source.replace(anchor, replacement, 1)
+        raise SystemExit(f"Phase 196 expected one cumulative Phase192 input snapshot anchor, found {count}")
+    source = source.replace(anchor, sampler, 1)
 
 required = [
     "GATE_E_PHASE196_FIXTURE_INPUT_SAMPLE",
@@ -77,21 +75,21 @@ required = [
     "phase196Method.getName().equals(\"tick\")",
     "phase196Method.getParameterCount() == 0",
     "phase196Tick.invoke(phase196Input)",
-    "client.options.keyUp.setDown(phase165InputPulse)",
+    "GATE_E_PHASE192_LOCAL_INPUT",
+    "client.options.keyUp.isDown()",
     "fixture_only=true",
 ]
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 196 lost fixture input-sampling anchors: " + ", ".join(missing))
 
-inserted = replacement
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
-    "cir.setReturnValue(",
+    "cir.setReturnValue(", "keyPresses =", "movementVector =",
 ]:
-    if forbidden in inserted:
+    if forbidden in sampler:
         raise SystemExit("Phase 196 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 196: samples the fixture key through KeyboardInput after the late Gate E key update; harness-only")
+print("Phase 196: samples the fixture key through KeyboardInput at the cumulative Phase192 input probe; harness-only")

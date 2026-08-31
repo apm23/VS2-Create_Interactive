@@ -11,6 +11,9 @@ source = client_probe.read_text(encoding="utf-8")
 # supported native-ready ticks before arming, then keep the existing next-tick strict confirmation.
 # This only strengthens fixture acceptance; no player position/velocity, collision response, carry
 # vector, train/world state, inventory, Create behavior, or VS2 physics is changed.
+# Production-world #495 then proved this preparation step still matched Phase162's obsolete 48-attempt
+# acquisition source shape after the authoritative fixture bound was reduced to 32. Keep this harness
+# dependency aligned with Phase129/162's current 32-attempt boundary; gameplay behavior is unchanged.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -27,8 +30,8 @@ if "phase194PendingWalkTick" not in source:
 # Phase193 source has one canonical Phase162 acquisition guard. Because the arm is set later in the same
 # client tick, the current acquisition attempt is untouched; the next tick is unassisted, and retries
 # automatically resume one tick later if confirmation did not succeed.
-acquire_guard = "fixtureContactAcquireTicks < 48 && !phase154WalkStarted"
-confirm_guard = "fixtureContactAcquireTicks < 48 && !phase154WalkStarted && phase194PendingWalkTick < player.tickCount - 1"
+acquire_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted"
+confirm_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted && phase194PendingWalkTick < player.tickCount - 1"
 if confirm_guard not in source:
     count = source.count(acquire_guard)
     if count != 1:
@@ -109,5 +112,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: requires three fresh supported native-ready ticks before strict next-tick walk confirmation")
+print("Phase 194: requires three fresh supported native-ready ticks before strict next-tick walk confirmation at the current 32-attempt fixture bound")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

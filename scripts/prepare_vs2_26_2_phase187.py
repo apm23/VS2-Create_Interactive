@@ -13,9 +13,9 @@ source = client_probe.read_text(encoding="utf-8")
 # only that final native de-dup suppression. Phase85 remains the sole carry implementation and still
 # uses Create-computed, Create-collision-filtered horizontal motion; no new vector or physics path.
 #
-# Phase184 later expands the support side of this same final guard, so do not match the whole guard
-# text. Bound the edit to the one final Phase85 if-statement by its replay-tick anchor, then widen only
-# the already-existing Phase133 grace tail inside that bounded guard.
+# Phase184 later expands the support side of this same final guard, so do not match punctuation around
+# Phase133's grace term. Bound the edit to the one final Phase85 if-statement by its replay-tick anchor,
+# require exactly one Phase133 grace identifier inside that guard, then widen that identifier in place.
 replay_token = "carryReplayPlayerTick != player.tickCount"
 replay_pos = source.find(replay_token)
 if replay_pos < 0:
@@ -25,17 +25,17 @@ if_end = source.find(") {", replay_pos)
 if if_pos < 0 or if_end < 0:
     raise SystemExit("Phase 187 could not bound final Phase85 replay guard")
 final_guard = source[if_pos:if_end + 3]
-old_tail = "|| phase133ReplayGrace)"
-new_tail = "|| phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)"
-if new_tail not in final_guard:
-    if final_guard.count(old_tail) != 1:
-        raise SystemExit("Phase 187 expected exactly one Phase133 grace tail inside final Phase85 guard")
-    final_guard = final_guard.replace(old_tail, new_tail, 1)
+old_term = "phase133ReplayGrace"
+new_term = "(phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)"
+if new_term not in final_guard:
+    if final_guard.count(old_term) != 1:
+        raise SystemExit("Phase 187 expected exactly one Phase133 grace identifier inside final Phase85 guard")
+    final_guard = final_guard.replace(old_term, new_term, 1)
     source = source[:if_pos] + final_guard + source[if_end + 3:]
 
 required = [
     "phase161SupportedLocomotionNativeLoss",
-    "phase133ReplayGrace || phase161SupportedLocomotionNativeLoss",
+    "(phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)",
     "GATE_E_PHASE85_CARRY_REPLAY",
     "GATE_E_PHASE181_FINAL_REPLAY_GUARD",
     "carryReplayPlayerTick != player.tickCount",

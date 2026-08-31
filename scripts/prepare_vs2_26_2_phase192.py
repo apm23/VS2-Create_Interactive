@@ -48,11 +48,11 @@ source = client_probe.read_text(encoding="utf-8")
 # be complete before Phase185 can accumulate walk readiness. This is fixture-only acceptance gating;
 # production carry, player motion, collision response, train state, and VS2/Create physics are unchanged.
 #
-# Production-world #491 exposed the same contamination in the earlier carry acceptance: the workflow
-# reported PRODUCTION_CARRY from ticks 34-40 while fixture acquisition was still active through tick 49.
-# That can falsely mark carry green before any unassisted frame exists. Gate the existing continuity
-# telemetry itself behind completed fixture acquisition so every workflow consumer sees only post-setup
-# samples. This changes acceptance telemetry only; no movement/collision/carry state is mutated.
+# Production-world #492 proved that rewriting the runtime continuity observation guard here is brittle:
+# cumulative preparation no longer exposes the historical guard shape, so the harness aborts before
+# Minecraft starts. The production-world workflow already rejects carry samples with fixture_attempt < 48.
+# Keep runtime continuity telemetry observational and let the workflow own that acceptance boundary.
+# Harness-only simplification; no player movement, carry, collision, train, or physics state is changed.
 #
 # The cumulative client also contains another unrelated rebase-age >=2 expression, so scope this
 # patch to Phase185's complete walk-readiness clause instead of counting the token globally.
@@ -79,21 +79,6 @@ if new_readiness not in source:
         source = source.replace(old_phase192_readiness, new_readiness, 1)
     else:
         raise SystemExit("Phase 192 expected one scoped Phase185 readiness clause")
-
-# Keep production carry proof honest too. Later cumulative phases can rewrite the original Phase129
-# observation guard, so enforce the fixture boundary again here, after those preparation phases.
-continuity_guard_old = '''if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 72) {'''
-continuity_guard_new = '''if (productionSmokeFixture && fixtureContactAcquireTicks >= 48
-                && player.tickCount >= 14 && player.tickCount <= 72) {'''
-if continuity_guard_new not in source:
-    continuity_pos = source.find('GATE_E_CARRIAGE_LOCAL_CONTINUITY')
-    if continuity_pos < 0:
-        raise SystemExit("Phase 192 could not locate carriage-local continuity telemetry")
-    search_start = max(0, continuity_pos - 5000)
-    guard_pos = source.rfind(continuity_guard_old, search_start, continuity_pos)
-    if guard_pos < 0:
-        raise SystemExit("Phase 192 expected one ungated production continuity observation guard")
-    source = source[:guard_pos] + continuity_guard_new + source[guard_pos + len(continuity_guard_old):]
 
 old_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
@@ -203,7 +188,6 @@ required = [
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2",
     "fixtureContactAcquireTicks >= 48",
-    "GATE_E_CARRIAGE_LOCAL_CONTINUITY",
     "!productionSmokeFixture",
     "player.tickCount - carryBaselineRebaseTick >= 2",
     "phase81PhysicalSupport",
@@ -219,7 +203,7 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 192 lost settled-frame/input telemetry anchors: " + ", ".join(missing))
 
-inserted = new_readiness + continuity_guard_new + new_ready + input_probe
+inserted = new_readiness + new_ready + input_probe
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -229,4 +213,4 @@ for forbidden in [
         raise SystemExit("Phase 192 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 192: excludes fixture-assisted samples from production carry and walk acceptance")
+print("Phase 192: excludes fixture-assisted walk readiness while workflow owns carry acceptance")

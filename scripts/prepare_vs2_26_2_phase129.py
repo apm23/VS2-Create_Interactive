@@ -16,12 +16,13 @@ source = client_probe.read_text(encoding="utf-8")
 # Production-world #187 showed the same harness race at the old 16-tick bound: baseline
 # remained false through tick 38 and only captured at tick 39 after assistance had already
 # stopped, producing a stale 36-block frame replay instead of a valid carry sample.
-# Production-world #334 reproduced the late-promotion race after the 32-attempt window:
-# strict physical support appeared at player tick 38 and the baseline captured at tick 39,
-# after assisted acquisition had already ended and the moving carriage had escaped the
-# fixture. Keep setup bounded but allow 48 fixture-acquisition ticks so genuine support
-# promotion gets follow-up ticks to capture a usable baseline, then observe unassisted.
-# This changes only the disposable production-smoke fixture, not production carry.
+# Production-world #334 reproduced the late-promotion race after the old 32-attempt window.
+# Later cumulative support/carry fixes changed that boundary: production-world #493 now
+# proves genuine strict support plus exact same-carriage native Create application well
+# before attempt 32, while keeping fixture retargeting active through attempt 48 leaves only
+# ticks 49-50 for unassisted readiness before the finite-route frame is lost at tick 51.
+# Bound acquisition at 32 again so the already-proven stable interval can be observed
+# unassisted. This changes only the disposable production-smoke fixture, not gameplay carry.
 field_old = '''    private static boolean fixtureColliderNormalized;\n'''
 field_new = '''    private static boolean fixtureColliderNormalized;\n    private static int fixtureContactAcquireTicks;\n'''
 if "fixtureContactAcquireTicks" not in source:
@@ -53,8 +54,8 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
 
     replacement = (
         f'{indent}if (({cond})\n'
-        f'{indent}        || (productionSmokeFixture && fixtureContactAcquireTicks < 48)) {{\n'
-        f'{indent}    if (productionSmokeFixture && fixtureContactAcquireTicks < 48) {{\n'
+        f'{indent}        || (productionSmokeFixture && fixtureContactAcquireTicks < 32)) {{\n'
+        f'{indent}    if (productionSmokeFixture && fixtureContactAcquireTicks < 32) {{\n'
         f'{indent}        fixtureContactAcquireTicks++;\n'
         f'{indent}        LOGGER.info(\n'
         f'{indent}            "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={{}} attempt={{}} bounded=true fixture_only=true",\n'
@@ -69,7 +70,7 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
 # has stopped. Extend the observation window so CI still has enough unassisted ticks.
 source = source.replace(
     '''if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 32) {''',
-    '''if (productionSmokeFixture && fixtureContactAcquireTicks >= 48 && player.tickCount >= 14 && player.tickCount <= 72) {''',
+    '''if (productionSmokeFixture && fixtureContactAcquireTicks >= 32 && player.tickCount >= 14 && player.tickCount <= 72) {''',
     1,
 )
 
@@ -102,7 +103,7 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
 
     replay_indent = replay_match.group("indent")
     replay_probe = (
-        f'{replay_indent}if (productionSmokeFixture && fixtureContactAcquireTicks >= 48 '
+        f'{replay_indent}if (productionSmokeFixture && fixtureContactAcquireTicks >= 32 '
         f'&& player.tickCount >= 14 && player.tickCount <= 72) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
         f'{replay_indent}        "GATE_E_PHASE130_REPLAY_GUARD player_tick={{}} carriage_id={{}} baseline_captured={{}} physical_support={{}} collision_eligible={{}} broadphase={{}} baseline_carriage_id={{}} rebase_tick={{}} rebase_age={{}} replay_tick={{}} read_only=true",\n'
@@ -115,8 +116,8 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
     source = source[:replay_if_pos] + replay_probe + source[replay_if_pos:]
 
 required = [
-    'fixtureContactAcquireTicks < 48',
-    'fixtureContactAcquireTicks >= 48',
+    'fixtureContactAcquireTicks < 32',
+    'fixtureContactAcquireTicks >= 32',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',
     'bounded=true fixture_only=true',
     'GATE_E_FIXTURE_COLLIDER_NEAREST_FALLBACK',
@@ -132,6 +133,6 @@ if missing:
     raise SystemExit("Phase 129 lost bounded fixture/contact telemetry anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 129: extends bounded fixture acquisition to 48 ticks after Run 334 late-support race; production carry unchanged")
+print("Phase 129: bounds fixture acquisition at 32 ticks after Run 493 proved an earlier stable native-support window")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase130.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase131.py")), run_name="__main__")

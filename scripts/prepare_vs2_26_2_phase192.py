@@ -41,18 +41,18 @@ source = client_probe.read_text(encoding="utf-8")
 # locomotion. Fixture accounting only; no movement/carry vector/physics mutation is introduced.
 #
 # Production-world #490 exposed a harness contamination boundary, not a new gameplay-physics failure:
-# Phase185 accumulated ready ticks 34-36 while the bounded fixture-contact acquisition was still active
-# (attempts continued through player tick 50). Phase194 then deliberately withheld that assistance on
-# tick 37 for its strict confirmation, where the apparent stable local frame immediately disappeared.
-# Do not arm locomotion from fixture-assisted samples. Require the existing 48-attempt acquisition to
-# be complete before Phase185 can accumulate walk readiness. This is fixture-only acceptance gating;
-# production carry, player motion, collision response, train state, and VS2/Create physics are unchanged.
+# Phase185 accumulated ready ticks while bounded fixture-contact acquisition was still active. Do not
+# arm locomotion from fixture-assisted samples. Production-world #493 now proves strict support plus
+# exact same-carriage native Create application before attempt 32, but a 48-attempt acquisition leaves
+# only two unassisted ready ticks before the finite-route frame disappears. Phase129 now stops fixture
+# assistance at 32; require that same completed boundary here before accumulating walk readiness.
+# This is fixture-only acceptance gating; production carry, player motion, collision response, train
+# state, and VS2/Create physics are unchanged.
 #
 # Production-world #492 proved that rewriting the runtime continuity observation guard here is brittle:
 # cumulative preparation no longer exposes the historical guard shape, so the harness aborts before
-# Minecraft starts. The production-world workflow already rejects carry samples with fixture_attempt < 48.
-# Keep runtime continuity telemetry observational and let the workflow own that acceptance boundary.
-# Harness-only simplification; no player movement, carry, collision, train, or physics state is changed.
+# Minecraft starts. Keep runtime continuity telemetry observational and let the existing workflow/source
+# observation path own carry acceptance. Harness-only simplification; no gameplay state is changed.
 #
 # The cumulative client also contains another unrelated rebase-age >=2 expression, so scope this
 # patch to Phase185's complete walk-readiness clause instead of counting the token globally.
@@ -69,7 +69,7 @@ old_phase192_readiness = '''                        boolean phase185WalkReadyNow
 new_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
                             && phase185FreshNativeEvidence
-                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 48)
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32)
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 2);'''
 if new_readiness not in source:
@@ -187,7 +187,7 @@ required = [
     "phase185WalkReadyCarriageId == phase154Carriage.getId()",
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2",
-    "fixtureContactAcquireTicks >= 48",
+    "fixtureContactAcquireTicks >= 32",
     "!productionSmokeFixture",
     "player.tickCount - carryBaselineRebaseTick >= 2",
     "phase81PhysicalSupport",
@@ -213,4 +213,4 @@ for forbidden in [
         raise SystemExit("Phase 192 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 192: excludes fixture-assisted walk readiness while workflow owns carry acceptance")
+print("Phase 192: excludes fixture-assisted walk readiness after bounded 32-tick acquisition")

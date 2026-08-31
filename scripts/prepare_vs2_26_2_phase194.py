@@ -6,14 +6,17 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #487 exposed a startup-transient false-positive: two fresh native carry ticks can
-# arm the fixture immediately before the active carriage loses frame continuity. Require three fresh
-# supported native-ready ticks before arming, then keep the existing next-tick strict confirmation.
-# This only strengthens fixture acceptance; no player position/velocity, collision response, carry
-# vector, train/world state, inventory, Create behavior, or VS2 physics is changed.
-# Production-world #495 then proved this preparation step still matched Phase162's obsolete 48-attempt
-# acquisition source shape after the authoritative fixture bound was reduced to 32. Keep this harness
-# dependency aligned with Phase129/162's current 32-attempt boundary; gameplay behavior is unchanged.
+# Production-world #487 exposed a startup-transient false-positive when two fresh native carry ticks
+# could start the fixture directly before the active carriage lost frame continuity. Phase194 now has
+# a separate next-tick strict-support confirmation, so that confirmation—not an extra third ready tick—
+# is the authoritative false-positive guard. Production-world #511 produced exactly three supported
+# ready ticks (16-18), then the finite-route frame seam at tick 19; requiring three ticks before arming
+# therefore made confirmation impossible even though ticks 17-18 already formed a valid two-tick arm
+# plus strict-confirmation pair. Arm after two fresh supported native-ready ticks and retain the existing
+# next-tick strict confirmation. This is fixture acceptance only: no player position/velocity, collision
+# response, carry vector, train/world state, inventory, Create behavior, or VS2 physics is changed.
+# Production-world #495 proved this preparation step must remain aligned with Phase129/162's current
+# 32-attempt acquisition boundary; gameplay behavior is unchanged.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -46,7 +49,7 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                             && phase185WalkReadyNow
                             && phase185WalkReadyCarriageId == phase154Carriage.getId()
                             && phase185NativeApplicationFresh
-                            && phase185WalkReadyTicks >= 3;
+                            && phase185WalkReadyTicks >= 2;
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
                             && phase194PendingWalkTick == player.tickCount - 1
@@ -79,6 +82,12 @@ if "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM" not in source:
     if count != 1:
         raise SystemExit(f"Phase 194 expected one Phase192 direct-native start branch, found {count}")
     source = source.replace(old_branch, new_branch, 1)
+else:
+    source = source.replace(
+        "&& phase185WalkReadyTicks >= 3;",
+        "&& phase185WalkReadyTicks >= 2;",
+        1,
+    )
 
 required = [
     "phase194PendingWalkCarriageId",
@@ -92,7 +101,7 @@ required = [
     "phase185FreshNativeEvidence",
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase185WalkReadyTicks >= 5",
-    "phase185WalkReadyTicks >= 3",
+    "phase185WalkReadyTicks >= 2",
     "phase185NativeApplicationFresh",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_CONFIRMED",
@@ -112,5 +121,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: requires three fresh supported native-ready ticks before strict next-tick walk confirmation at the current 32-attempt fixture bound")
+print("Phase 194: arms after two fresh native-ready ticks and keeps strict next-tick walk confirmation at the current 32-attempt fixture bound")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

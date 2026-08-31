@@ -12,8 +12,8 @@ source = client_probe.read_text(encoding="utf-8")
 # Before changing any carry or handoff behavior, correlate a failed walk frame with the exact
 # same-tick native-contact carriage and its current local coordinate/broadphase. Read-only only.
 # Later cumulative phases can insert accounting between phase154WalkPreviousLocal and the sample
-# branch, so anchor on the durable sample-window branch itself rather than historical adjacency.
-anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 20) {'''
+# branch, so anchor on the durable bounded sample-window branch itself rather than historical adjacency.
+anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {'''
 insert = '''                            if (!phase154WalkSupportHealthy
                                     && Integer.toString(player.tickCount).equals(System.getProperty(
                                         "vs2.phase170NativeContactApplicationTick"))) {
@@ -102,7 +102,7 @@ required = [
     "native_broadphase={}",
     "diagnostic_state_only=true",
     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE",
-    "phase154WalkStartTick + 20",
+    "phase154WalkStartTick + 12",
     "GATE_E_PHASE178_FIXTURE_WALK_REPLAY_ACCOUNTING",
     "phase178FixtureReplayMasquerade",
     "phase137PreviousReplayInSample",

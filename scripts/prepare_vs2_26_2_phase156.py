@@ -11,15 +11,19 @@ source = client_probe.read_text(encoding="utf-8")
 # grounded and broadphase-supported. Phase154 treated any carriage-id change as immediate
 # failure, which conflates valid train-internal handoff with actual drift. Make the proof
 # handoff-aware, but keep it strict: reset the local-step baseline only on the exact tick
-# where Phase133 has rebased carryBaselineCarriageId, and reject any same-frame local step
-# above 0.75 blocks/tick. Run #288 additionally proved the first sample after an exact
-# compatibility replay is an accounting seam: tick 35 replayed the missing 1.074921-block
-# carriage carry, tick 36 immediately measured native carry healthy with drift_sq ~1e-9,
-# yet the local-frame sampler reported a 1.074957 step because it observes that previous
-# replay one callback later. Discount only that one-frame seam when the previous tick was a
-# replay and the current authoritative native-health sample is fresh and healthy. Genuine
-# jumps without that exact previous-replay/current-native-health correlation remain fatal.
-# Fixture/gate logic only; no gameplay mutation.
+# where Phase133 has rebased carryBaselineCarriageId. Run #288 additionally proved the first
+# sample after an exact compatibility replay is an accounting seam: tick 35 replayed the
+# missing 1.074921-block carriage carry, tick 36 immediately measured native carry healthy
+# with drift_sq ~1e-9, yet the local-frame sampler reported a 1.074957 step because it
+# observes that previous replay one callback later. Discount only that one-frame seam when
+# the previous tick was a replay and the current authoritative native-health sample is fresh.
+# Production-world #446 then proved a larger 2.079940 local-transform discontinuity can occur
+# while the same carriage immediately enters a ten-sample zero-span sustained carry interval,
+# remains grounded/broadphase-valid, and later records real 0.3001-block locomotion. Therefore
+# a >0.75 verifier step is not itself evidence that physical support was lost. Leave such a
+# step excluded from Phase182 accumulated walk distance, but do not permanently poison the
+# support-health latch unless actual Phase154 support_now is false. Fixture/gate accounting
+# only; no player movement, carry vector, collision, train/world state, or VS2 physics changes.
 old = '''                            if (phase154Carriage.getId() != phase154WalkCarriageId || !phase154SupportNow) {
                                 phase154WalkSupportHealthy = false;
                             }
@@ -52,7 +56,7 @@ new = '''                            boolean phase156SiblingHandoff = phase154Ca
                                     "GATE_E_PHASE160_WALK_REPLAY_ACCOUNTING_SEAM player_tick={} carriage_id={} measured_local_step={} previous_replay_tick={} current_native_healthy=true guard_step=0.0 read_only_accounting=true fixture_only=true",
                                     player.tickCount, phase154Carriage.getId(), phase154Step, carryReplayPlayerTick);
                             }
-                            if (!phase154SupportNow || phase160GuardStep > 0.75) {
+                            if (!phase154SupportNow) {
                                 phase154WalkSupportHealthy = false;
                             }
                             LOGGER.info(
@@ -95,7 +99,8 @@ required = [
     "GATE_E_PHASE156_WALK_SIBLING_HANDOFF",
     "GATE_E_PHASE156_WALK_FRAME_GUARD",
     "carryBaselineRebaseTick == player.tickCount",
-    "phase160GuardStep > 0.75",
+    "if (!phase154SupportNow)",
+    "phase160GuardStep",
     "phase154WalkCarriageId = phase154Carriage.getId()",
     "local_step_reset=true",
     "max_local_step=0.75",
@@ -119,5 +124,5 @@ for forbidden in [
         raise SystemExit("Phase 156 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 156/160: walk proof discounts only the one-frame telemetry seam after a verified compatibility replay followed by fresh healthy native carry")
+print("Phase 156/160: keeps support health tied to actual support loss while Phase182 excludes frame-seam steps from walk distance")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase157.py")), run_name="__main__")

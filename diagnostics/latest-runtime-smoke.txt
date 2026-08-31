@@ -1,25 +1,4 @@
 VS2 26.2 dedicated runtime smoke failure diagnostic
-source_commit=162123ea7a6456a3b52c80760b524366a21be5a6
+source_commit=6af8c995148179536f888946cd408eb97bd49cc6
 
-=== fatal/error context (last 80 matches) ===
-1:WARNING: A restricted method in java.lang.System has been called
-2:WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/home/runner/.gradle/wrapper/dists/gradle-9.7.0-all/5hez1j29szzu41ldlyeeyuiv4/gradle-9.7.0/lib/native-platform-0.22-milestone-29.jar)
-3:WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
-4:WARNING: Restricted methods will be blocked in a future release unless native access is enabled
-
-=== last 160 runtime lines ===
-WARNING: A restricted method in java.lang.System has been called
-WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/home/runner/.gradle/wrapper/dists/gradle-9.7.0-all/5hez1j29szzu41ldlyeeyuiv4/gradle-9.7.0/lib/native-platform-0.22-milestone-29.jar)
-WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
-WARNING: Restricted methods will be blocked in a future release unless native access is enabled
-
-To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.7.0/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
-Daemon will be stopped at the end of the build 
-
-> Configure project :
-Architect Plugin: 3.5.169
-Architectury Loom: 1.17.483
-This version of Architectury Loom is in beta! Please report any issues you encounter: https://github.com/architectury/architectury-loom/issues
-Publishing to Github Packages (2.4.205+0bc19eac8f)
-Publishing to Github Packages (2.4.205+0bc19eac8f)
-Publishing to Github Packages (2.4.205+0bc19eac8f)
+No runtime-smoke.log was produced.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -14,42 +15,75 @@ source = client_probe.read_text(encoding="utf-8")
 # only that final native de-dup suppression. Phase85 remains the sole carry implementation and still
 # uses Create-computed, Create-collision-filtered horizontal motion; no new vector or physics path.
 #
-# Cumulative phases may regroup the final Phase85 boolean expression, so punctuation-based matching
-# is intentionally avoided. Bind first to Phase150's unique support-reacquired identifier, then to
-# the first Phase133 grace identifier following it before the final replay-tick predicate. That is
-# the de-dup escape hatch Phase132 created; the separate physical-support grace occurs earlier.
+# Production-carry #380 exposed a selector bug after Phase181 added replay-guard telemetry: the old
+# global anchor search could bind to the telemetry argument `phase133ReplayGrace` instead of the
+# actual Phase85 boolean guard. In production isolation that telemetry sits outside the local grace
+# variable's lexical scope, so javac failed before Minecraft could boot. Locate the unique replay
+# predicate first, then walk backward to the final replay `if (` and rewrite only that condition.
 anchor = "phase150SupportReacquired"
 replay_token = "carryReplayPlayerTick != player.tickCount"
+old_term = "phase133ReplayGrace"
 new_term = "(phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)"
 
-if new_term not in source:
-    anchor_positions = []
-    start = 0
-    while True:
-        pos = source.find(anchor, start)
-        if pos < 0:
-            break
-        anchor_positions.append(pos)
-        start = pos + len(anchor)
+replay_positions = [match.start() for match in re.finditer(re.escape(replay_token), source)]
+if len(replay_positions) != 1:
+    raise SystemExit(f"Phase 187 expected one final Phase85 replay-tick anchor, found {len(replay_positions)}")
+replay_pos = replay_positions[0]
 
-    replay_pos = source.find(replay_token)
-    if replay_pos < 0:
-        raise SystemExit("Phase 187 could not locate final Phase85 replay-tick anchor")
+search_start = max(0, replay_pos - 12000)
+prefix = source[search_start:replay_pos]
+if_candidates = list(re.finditer(r"(?m)^(?P<indent>[ \t]*)if \(", prefix))
+guard_start = None
+for candidate in reversed(if_candidates):
+    absolute = search_start + candidate.start()
+    segment = source[absolute:replay_pos]
+    if (
+        "phase81PhysicalSupport" in segment
+        and anchor in segment
+        and old_term in segment
+        and "LOGGER.info" not in segment
+    ):
+        guard_start = absolute
+        break
 
-    candidates = []
-    for anchor_pos in anchor_positions:
-        if anchor_pos >= replay_pos:
-            continue
-        grace_pos = source.find("phase133ReplayGrace", anchor_pos + len(anchor), replay_pos)
-        if grace_pos >= 0:
-            candidates.append((anchor_pos, grace_pos))
+if guard_start is None:
+    raise SystemExit("Phase 187 could not locate structural final Phase85 replay guard")
 
-    if not candidates:
-        raise SystemExit("Phase 187 could not locate Phase133 de-dup grace after Phase150 reacquire anchor")
+guard_segment = source[guard_start:replay_pos]
+if new_term not in guard_segment:
+    anchor_pos = guard_segment.rfind(anchor)
+    grace_pos = guard_segment.find(old_term, anchor_pos + len(anchor)) if anchor_pos >= 0 else -1
+    if grace_pos < 0:
+        raise SystemExit("Phase 187 could not locate Phase133 de-dup grace inside final replay guard")
+    guard_segment = (
+        guard_segment[:grace_pos]
+        + new_term
+        + guard_segment[grace_pos + len(old_term):]
+    )
+    source = source[:guard_start] + guard_segment + source[replay_pos:]
 
-    # The final Phase85 guard is the Phase150 occurrence closest to the unique replay-tick predicate.
-    anchor_pos, grace_pos = max(candidates, key=lambda pair: pair[0])
-    source = source[:grace_pos] + new_term + source[grace_pos + len("phase133ReplayGrace"):]
+# Fail closed if the rewrite ever lands in Phase181 telemetry again. The telemetry must retain the
+# scalar phase133ReplayGrace argument; only the final replay predicate may contain the widened term.
+telemetry_marker = "GATE_E_PHASE181_FINAL_REPLAY_GUARD"
+telemetry_pos = source.find(telemetry_marker)
+if telemetry_pos >= 0:
+    telemetry_slice = source[max(0, telemetry_pos - 800):telemetry_pos + 1800]
+    if new_term in telemetry_slice:
+        raise SystemExit("Phase 187 incorrectly rewrote Phase181 telemetry instead of the replay guard")
+
+updated_replay_pos = source.find(replay_token)
+updated_search_start = max(0, updated_replay_pos - 12000)
+updated_prefix = source[updated_search_start:updated_replay_pos]
+updated_if_candidates = list(re.finditer(r"(?m)^(?P<indent>[ \t]*)if \(", updated_prefix))
+updated_guard = None
+for candidate in reversed(updated_if_candidates):
+    absolute = updated_search_start + candidate.start()
+    segment = source[absolute:updated_replay_pos]
+    if "phase81PhysicalSupport" in segment and anchor in segment and new_term in segment:
+        updated_guard = segment
+        break
+if updated_guard is None:
+    raise SystemExit("Phase 187 widened term is not contained by the final Phase85 replay guard")
 
 required = [
     "phase161SupportedLocomotionNativeLoss",
@@ -76,5 +110,5 @@ for forbidden in [
         raise SystemExit("Phase 187 found forbidden direct gameplay mutation near de-dup predicate: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 187: structurally widens only the Phase150 de-dup grace with already-bounded Phase161 recovery; existing Create-filtered Phase85 carry only")
+print("Phase 187: structurally widens only the final Phase85 de-dup guard with bounded Phase161 recovery; Phase181 telemetry remains read-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase188.py")), run_name="__main__")

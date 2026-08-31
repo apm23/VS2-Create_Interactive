@@ -170,6 +170,11 @@ jobs:
               r'[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
               r'[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)'
               r'[^\n]*baseline_frame=(true|false)')
+          prewalk_pattern = re.compile(
+              r'GATE_E_PHASE154_PRE_WALK_TRACE[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
+              r'[^\n]*local=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
+              r'[^\n]*local_step=([-+0-9.eE]+)[^\n]*on_ground=(true|false)'
+              r'[^\n]*broadphase=(true|false)[^\n]*walk_started=(true|false)')
           guard_pattern = re.compile(
               r'GATE_E_PHASE130_REPLAY_GUARD[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
               r'[^\n]*baseline_captured=(true|false)[^\n]*physical_support=(true|false)'
@@ -211,6 +216,37 @@ jobs:
                   collision_eligible,
                   baseline_frame == 'true',
               ))
+
+          # Run 501 reaches native walk confirmation at tick 21, so post-start sprint displacement
+          # must not invalidate the earlier standing carry proof. Reuse the existing pre-walk local
+          # trace only while walk_started=false; require the same Phase130 strict-support guard.
+          for match in prewalk_pattern.finditer(text):
+              tick, carriage = map(int, match.groups()[:2])
+              x, y, z, local_step = map(float, match.groups()[2:6])
+              on_ground, broadphase, walk_started = match.groups()[6:]
+              if walk_started != 'false' or local_step > 0.05:
+                  continue
+              guard = guards.get((tick, carriage))
+              if guard is None:
+                  continue
+              baseline_captured, physical_support, collision_eligible, guard_broadphase = guard
+              raw_samples.append((
+                  tick, carriage, x, y, z,
+                  broadphase == 'true',
+                  on_ground == 'true',
+                  True,
+              ))
+              samples.append((
+                  tick, carriage, x, y, z,
+                  broadphase == 'true' and guard_broadphase,
+                  on_ground == 'true',
+                  baseline_captured,
+                  physical_support,
+                  collision_eligible,
+                  True,
+              ))
+          raw_samples.sort(key=lambda sample: (sample[0], sample[1]))
+          samples.sort(key=lambda sample: (sample[0], sample[1]))
 
           def best_streak(require_physical_support, max_step):
               streak = []
@@ -285,7 +321,7 @@ jobs:
           done
           if [ "$CARRY" -ne 1 ]; then
             echo 'Production world did not prove sustained carriage-local carry continuity.'
-            grep -E 'GATE_D_TRAIN_MOVED|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_CLIENT_CARRY_DELTA|GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE130_REPLAY_GUARD' ../production-world-smoke.log | tail -320 || true
+            grep -E 'GATE_D_TRAIN_MOVED|GATE_E_CARRIAGE_LOCAL_CONTINUITY|GATE_E_PHASE154_PRE_WALK_TRACE|GATE_E_CLIENT_CARRY_DELTA|GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE130_REPLAY_GUARD' ../production-world-smoke.log | tail -320 || true
             exit 1
           fi
 

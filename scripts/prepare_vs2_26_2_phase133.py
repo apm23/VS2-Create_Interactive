@@ -11,7 +11,12 @@ source = client_probe.read_text(encoding="utf-8")
 # pinned to carriage 7. Phase85 already owns the Create-computed, Create-collision-filtered
 # carry vector; this phase only transfers baseline identity/coordinates to the currently
 # supported sibling so the existing replay path can resume after Phase108's one-tick settle.
-# No player position, velocity, world, train-control, or VS2 physics mutation is introduced.
+# Production-world #449 then proved the handoff itself can thrash across overlapping sibling
+# carriage candidates (8 -> 10 -> 8 on consecutive ticks) even while the previous active
+# baseline remained strictly supported. Keep a one-tick support lease on the active baseline:
+# a sibling may take ownership only after the current baseline was not strictly supported on
+# the immediately previous tick. This stabilizes frame identity only; no movement vector,
+# player position/velocity, world/train state, collision response, or VS2 physics is changed.
 if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
@@ -34,8 +39,19 @@ if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
         raise SystemExit("Phase 133 could not locate final Phase85 replay guard")
 
     handoff = (
+        f'{replay_indent}boolean phase133CurrentBaselineStrictSupport = productionSmoke && explicitCarryCompat\n'
+        f'{replay_indent}    && carryBaselineCaptured && carryBaselineCarriageId == carriage.getId()\n'
+        f'{replay_indent}    && phase81PhysicalSupport && collisionEligible && broadphaseOverlap && player.onGround();\n'
+        f'{replay_indent}if (phase133CurrentBaselineStrictSupport) {{\n'
+        f'{replay_indent}    System.setProperty("vs2.phase133BaselineSupportTick", Integer.toString(player.tickCount));\n'
+        f'{replay_indent}    System.setProperty("vs2.phase133BaselineSupportCarriageId", Integer.toString(carriage.getId()));\n'
+        f'{replay_indent}}}\n'
+        f'{replay_indent}boolean phase133PreviousBaselineSupportLease = carryBaselineCaptured\n'
+        f'{replay_indent}    && Integer.toString(carryBaselineCarriageId).equals(System.getProperty("vs2.phase133BaselineSupportCarriageId"))\n'
+        f'{replay_indent}    && Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase133BaselineSupportTick"));\n'
         f'{replay_indent}boolean phase136SupportedSiblingHandoff = productionSmoke && explicitCarryCompat\n'
         f'{replay_indent}    && carryBaselineCaptured && carryBaselineCarriageId != carriage.getId()\n'
+        f'{replay_indent}    && !phase133PreviousBaselineSupportLease\n'
         f'{replay_indent}    && phase81PhysicalSupport && collisionEligible && broadphaseOverlap\n'
         f'{replay_indent}    && player.onGround() && carryBaselineRebaseTick != player.tickCount;\n'
         f'{replay_indent}if (phase136SupportedSiblingHandoff) {{\n'
@@ -50,7 +66,7 @@ if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
         f'{replay_indent}    carryCarriageZ = carriage.getZ();\n'
         f'{replay_indent}    carryDeltaReported = false;\n'
         f'{replay_indent}    LOGGER.info(\n'
-        f'{replay_indent}        "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE previous_carriage_id={{}} carriage_id={{}} player_tick={{}} physical_support=true collision_eligible=true broadphase=true on_ground=true settle_one_tick=true",\n'
+        f'{replay_indent}        "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE previous_carriage_id={{}} carriage_id={{}} player_tick={{}} physical_support=true collision_eligible=true broadphase=true on_ground=true previous_baseline_support_lease=false settle_one_tick=true",\n'
         f'{replay_indent}        phase136PreviousCarriageId, carriage.getId(), player.tickCount);\n'
         f'{replay_indent}}}\n\n'
     )
@@ -58,12 +74,18 @@ if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
 
 required = [
     "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE",
+    "phase133CurrentBaselineStrictSupport",
+    "vs2.phase133BaselineSupportTick",
+    "vs2.phase133BaselineSupportCarriageId",
+    "phase133PreviousBaselineSupportLease",
     "carryBaselineCarriageId != carriage.getId()",
+    "!phase133PreviousBaselineSupportLease",
     "phase81PhysicalSupport && collisionEligible && broadphaseOverlap",
     "carryBaselineRebaseTick != player.tickCount",
     "carryBaselineCarriageId = carriage.getId()",
     "carryBaselineRebaseTick = player.tickCount",
     "carryDeltaReported = false",
+    "previous_baseline_support_lease=false",
     "settle_one_tick=true",
 ]
 missing = [token for token in required if token not in source]
@@ -71,7 +93,7 @@ if missing:
     raise SystemExit("Phase 133 lost supported-sibling handoff anchors: " + ", ".join(missing))
 
 marker_pos = source.index("GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE")
-handoff_slice = source[max(0, marker_pos - 2200):marker_pos + 1200]
+handoff_slice = source[max(0, marker_pos - 3200):marker_pos + 1200]
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", ".teleport", "setBlock(",
     ".put(", ".remove(", "setSchedule", "setTrain", "setVelocity",
@@ -80,4 +102,4 @@ for forbidden in [
         raise SystemExit("Phase 133 found forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 133: rebases carry baseline only to a sibling carriage with proven strict physical support; existing Create-filtered carry remains authoritative")
+print("Phase 133: stabilizes active carriage baseline with a one-tick strict-support lease before sibling handoff")

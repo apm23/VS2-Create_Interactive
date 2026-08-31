@@ -9,9 +9,16 @@ source = client_probe.read_text(encoding="utf-8")
 # existing three-tick settled predicate, then the end-tick local frame jumped 6.998 blocks at tick
 # 18 and support became unhealthy. The following carriage 4 interval lasted only ticks 19-22 before
 # another handoff. These are short-lived fixture frame windows, not evidence for a new physics
-# correction. Require five consecutive ready ticks and four ticks since the most recent baseline
-# rebase before pressing the disposable forward key. This changes fixture timing only: no player
-# movement, carry vector, collision, train/world state, inventory, Create behavior, or VS2 physics.
+# correction. Keep the conservative five-tick readiness path and four ticks since the most recent
+# baseline rebase before pressing the disposable forward key.
+#
+# Production-world #411 then proved that the conservative five-tick gate can starve the walk proof:
+# carriage 4 had strict support plus exact same-carriage native Create applications on ticks 60-61,
+# but native application ended at tick 62, so the five-tick counter could never complete. Treat two
+# consecutive ready ticks as sufficient only when the current tick itself has the exact Phase170
+# same-carriage native application evidence. Health-only readiness still requires five ticks. This is
+# fixture start timing only: no player movement, carry vector, collision, train/world state, inventory,
+# Create behavior, or VS2 physics is changed.
 #
 # The cumulative client also contains another unrelated rebase-age >=2 expression, so scope this
 # patch to Phase185's complete walk-readiness clause instead of counting the token globally.
@@ -34,19 +41,26 @@ if new_readiness not in source:
 old_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
                                 && phase185WalkReadyTicks >= 3) {'''
-new_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
+old_phase192_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
                                 && phase185WalkReadyTicks >= 5) {'''
+new_ready = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
+                                && phase185WalkReadyCarriageId == phase154Carriage.getId()
+                                && (phase185WalkReadyTicks >= 5
+                                    || (phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2))) {'''
 if new_ready not in source:
-    count = source.count(old_ready)
-    if count != 1:
-        raise SystemExit(f"Phase 192 expected one scoped Phase185 ready-tick branch, found {count}")
-    source = source.replace(old_ready, new_ready, 1)
+    if source.count(old_phase192_ready) == 1:
+        source = source.replace(old_phase192_ready, new_ready, 1)
+    elif source.count(old_ready) == 1:
+        source = source.replace(old_ready, new_ready, 1)
+    else:
+        raise SystemExit("Phase 192 expected one scoped Phase185 ready-tick branch")
 
 required = [
     "GATE_E_PHASE185_SETTLED_WALK_READY",
     "phase185WalkReadyCarriageId == phase154Carriage.getId()",
     "phase185WalkReadyTicks >= 5",
+    "phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2",
     "player.tickCount - carryBaselineRebaseTick >= 4",
     "phase81PhysicalSupport",
     "phase185FreshNativeEvidence",
@@ -67,4 +81,4 @@ for forbidden in [
         raise SystemExit("Phase 192 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 192: delays only disposable walk input until five consecutive settled supported/native ticks and four ticks after rebase")
+print("Phase 192: keeps five-tick settled readiness, but permits two consecutive ticks when exact same-carriage native Create application is directly observed")

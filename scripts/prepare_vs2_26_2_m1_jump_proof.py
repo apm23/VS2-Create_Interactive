@@ -3,7 +3,8 @@
 
 This is a CI artifact verifier, not a VS2 source preparation phase. Its filename intentionally
 matches the production-world workflow path trigger so changes to this proof contract rerun the
-real train fixture.
+real train fixture. Keep this file in the production-world trigger surface so native-only M1
+regressions are always exercised against the archived moving-train save.
 """
 import re
 import sys

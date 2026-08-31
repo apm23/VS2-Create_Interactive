@@ -13,9 +13,10 @@ source = client_probe.read_text(encoding="utf-8")
 # only that final native de-dup suppression. Phase85 remains the sole carry implementation and still
 # uses Create-computed, Create-collision-filtered horizontal motion; no new vector or physics path.
 #
-# Phase184 later expands the support side of this same final guard, so do not match punctuation around
-# Phase133's grace term. Bound the edit to the one final Phase85 if-statement by its replay-tick anchor,
-# require exactly one Phase133 grace identifier inside that guard, then widen that identifier in place.
+# Phase132 legitimately places phase133ReplayGrace twice in this final guard: first in the physical-
+# support widening and again at the tail of Phase150's native de-dup suppression. Phase184 may add
+# more grouping around the support side. Therefore bind to the unique final Phase85 guard by replay-
+# tick anchor and replace only the LAST phase133ReplayGrace occurrence, which is the de-dup tail.
 replay_token = "carryReplayPlayerTick != player.tickCount"
 replay_pos = source.find(replay_token)
 if replay_pos < 0:
@@ -28,9 +29,11 @@ final_guard = source[if_pos:if_end + 3]
 old_term = "phase133ReplayGrace"
 new_term = "(phase133ReplayGrace || phase161SupportedLocomotionNativeLoss)"
 if new_term not in final_guard:
-    if final_guard.count(old_term) != 1:
-        raise SystemExit("Phase 187 expected exactly one Phase133 grace identifier inside final Phase85 guard")
-    final_guard = final_guard.replace(old_term, new_term, 1)
+    term_count = final_guard.count(old_term)
+    if term_count < 2:
+        raise SystemExit(f"Phase 187 expected support and de-dup Phase133 grace occurrences inside final Phase85 guard, found {term_count}")
+    last_pos = final_guard.rfind(old_term)
+    final_guard = final_guard[:last_pos] + new_term + final_guard[last_pos + len(old_term):]
     source = source[:if_pos] + final_guard + source[if_end + 3:]
 
 required = [

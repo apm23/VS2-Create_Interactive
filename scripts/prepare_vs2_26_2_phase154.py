@@ -6,12 +6,12 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #265 and walk-gate #8 prove bounded normal-key walking can displace the
-# player while remaining grounded and inside one moving Create carriage frame. Strengthen
-# that functional proof from five to twenty ticks. Phase128 now publishes authoritative
-# exact-cell readiness but deliberately defers the historical placement completion marker;
-# publish that marker only after this walk succeeds so production-world keeps the client
-# alive for the complete movement proof. No player/train/physics behavior is changed.
+# Production-world #508 proves the real moving-train fixture remains grounded, broadphase-valid,
+# and support-healthy for the first twelve post-start walking ticks, then the old twenty-tick
+# harness intentionally keeps walking until the finite carriage edge is crossed. Bound this
+# functional proof to twelve ticks so it measures supported native locomotion rather than route
+# length. Phase128 still defers the historical placement completion marker until this walk succeeds.
+# No player position/velocity, train, collision, gravity, carry, or world behavior is changed.
 field_anchor = '''    private static boolean nativeRightClickProbeDispatched;\n'''
 field_insert = field_anchor + '''    private static boolean phase154WalkStarted;\n    private static boolean phase154WalkFinished;\n    private static int phase154WalkStartTick = -1;\n    private static int phase154WalkCarriageId = -1;\n    private static net.minecraft.world.phys.Vec3 phase154WalkStartLocal;\n    private static net.minecraft.world.phys.Vec3 phase154WalkPreviousLocal;\n    private static boolean phase154WalkSupportHealthy = true;\n    private static net.minecraft.world.phys.Vec3 phase154PreWalkPreviousLocal;\n    private static int phase154PreWalkPreviousTick = -1;\n'''
 if "phase154WalkStarted" not in source:
@@ -95,7 +95,7 @@ probe = '''            if (productionSmokeFixture
                             double phase154Step = phase154WalkPreviousLocal == null
                                 ? 0.0 : phase154Local.distanceTo(phase154WalkPreviousLocal);
                             phase154WalkPreviousLocal = phase154Local;
-                            if (player.tickCount <= phase154WalkStartTick + 20) {
+                            if (player.tickCount <= phase154WalkStartTick + 12) {
                                 client.options.keyUp.setDown(true);
                                 LOGGER.info(
                                     "GATE_E_PHASE154_FIXTURE_WALK_SAMPLE player_tick={} carriage_id={} local={} local_step={} on_ground={} broadphase={} support_healthy={} fixture_only=true",
@@ -160,7 +160,7 @@ required = [
     "vs2.productionFixtureWalkConfirmed",
     "client.options.keyUp.setDown(true)",
     "client.options.keyUp.setDown(false)",
-    "phase154WalkStartTick + 20",
+    "phase154WalkStartTick + 12",
     "phase154LocalDistance >= 0.20",
     "phase154LocalDistance <= 6.00",
     "duration_ticks={}",
@@ -168,7 +168,7 @@ required = [
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 154 lost extended walk/pre-walk telemetry anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 154 lost bounded walk/pre-walk telemetry anchors: " + ", ".join(missing))
 
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
@@ -178,5 +178,5 @@ for forbidden in [
         raise SystemExit("Phase 154 introduced forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 154: runs twenty-tick fixture-only forward-key walking and releases placement completion only after supported same-carriage movement succeeds")
+print("Phase 154: bounds fixture-only forward-key walking to twelve supported ticks on the finite carriage")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase155.py")), run_name="__main__")

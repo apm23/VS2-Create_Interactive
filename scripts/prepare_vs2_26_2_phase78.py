@@ -27,10 +27,10 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Phase 78: read-only trace of Create's collidingEntities lease for LocalPlayer.
- * Create refreshes this lease only on surfaceCollision and removes entries once
- * their MutableInt age exceeds three ticks. This mixin proves the exact runtime
- * lease lifetime before any contact-persistence or movement behavior is changed.
+ * Preserve Create Fly's own LocalPlayer contact lease while an already-contacting
+ * player still overlaps the same carriage bounds. Create remains authoritative for
+ * collision and carry: this adapter only prevents its native collidingEntities lease
+ * from expiring during the short surfaceCollision sampling gaps seen on moving trains.
  */
 @Mixin(targets = "com.zurrtum.create.content.contraptions.AbstractContraptionEntity", remap = false)
 public abstract class MixinCreateContactLeaseTrace {
@@ -38,17 +38,17 @@ public abstract class MixinCreateContactLeaseTrace {
     @Unique private static int vs2$leaseSamples;
 
     @Inject(method = "tick", at = @At("HEAD"), remap = false, require = 0)
-    private void vs2$traceContactLeaseHead(CallbackInfo ci) {
-        vs2$traceContactLease("head");
+    private void vs2$preserveAndTraceContactLeaseHead(CallbackInfo ci) {
+        vs2$traceContactLease("head", true);
     }
 
     @Inject(method = "tick", at = @At("TAIL"), remap = false, require = 0)
     private void vs2$traceContactLeaseTail(CallbackInfo ci) {
-        vs2$traceContactLease("tail");
+        vs2$traceContactLease("tail", false);
     }
 
     @Unique
-    private void vs2$traceContactLease(String stage) {
+    private void vs2$traceContactLease(String stage, boolean allowRefresh) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
         Entity self = (Entity) (Object) this;
@@ -88,6 +88,29 @@ public abstract class MixinCreateContactLeaseTrace {
                 }
             }
 
+            boolean refreshed = false;
+            if (allowRefresh
+                    && Boolean.getBoolean("vs2.createCarryCompat")
+                    && lease != null
+                    && age >= 0
+                    && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())) {
+                for (Method method : lease.getClass().getMethods()) {
+                    if (!method.getName().equals("setValue") || method.getParameterCount() != 1) continue;
+                    Class<?> parameter = method.getParameterTypes()[0];
+                    if (parameter == int.class || parameter == Integer.class || Number.class.isAssignableFrom(parameter)) {
+                        method.invoke(lease, Integer.valueOf(0));
+                        refreshed = true;
+                        age = 0;
+                        break;
+                    }
+                }
+                if (refreshed) {
+                    VS2_GATE_E_CONTACT_LEASE_LOGGER.info(
+                        "GATE_E_CREATE_CONTACT_LEASE_REFRESH carriage_id={} player_tick={} native_create_lease=true adapter_only=true",
+                        self.getId(), player.tickCount);
+                }
+            }
+
             Vec3 now = self.position();
             Vec3 frameMotion = Vec3.ZERO;
             try {
@@ -98,8 +121,8 @@ public abstract class MixinCreateContactLeaseTrace {
             }
 
             VS2_GATE_E_CONTACT_LEASE_LOGGER.info(
-                "GATE_E_CREATE_CONTACT_LEASE stage={} sample={} present={} age={} map_size={} player_pos={},{},{} carriage_pos={},{},{} frame_motion={},{},{} on_ground={}",
-                stage, sample, lease != null, age, map.size(),
+                "GATE_E_CREATE_CONTACT_LEASE stage={} sample={} present={} age={} refreshed={} map_size={} player_pos={},{},{} carriage_pos={},{},{} frame_motion={},{},{} on_ground={}",
+                stage, sample, lease != null, age, refreshed, map.size(),
                 player.getX(), player.getY(), player.getZ(),
                 now.x, now.y, now.z,
                 frameMotion.x, frameMotion.y, frameMotion.z,
@@ -118,5 +141,26 @@ if "MixinCreateContactLeaseTrace" not in client:
     client.append("MixinCreateContactLeaseTrace")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("Phase 78: traced Create LocalPlayer collidingEntities lease age and expiry around AbstractContraptionEntity.tick; read-only telemetry only")
+text = java.read_text(encoding="utf-8")
+required = [
+    'Boolean.getBoolean("vs2.createCarryCompat")',
+    'map.get(player)',
+    'method.getName().equals("setValue")',
+    'method.invoke(lease, Integer.valueOf(0))',
+    'self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())',
+    'GATE_E_CREATE_CONTACT_LEASE_REFRESH',
+    'native_create_lease=true',
+    'adapter_only=true',
+]
+missing = [token for token in required if token not in text]
+if missing:
+    raise SystemExit("Phase 78 lost native Create contact-lease anchors: " + ", ".join(missing))
+for forbidden in [
+    'setPos(', 'setDeltaMovement(', '.move(', '.teleport(', 'setBlock(',
+    'getContactPointMotion(', 'cir.setReturnValue(',
+]:
+    if forbidden in text:
+        raise SystemExit("Phase 78 contains forbidden synthetic movement/gameplay mutation: " + forbidden)
+
+print("Phase 78: preserves Create native LocalPlayer contact lease across short moving-train sampling gaps; no synthetic movement or collision response")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase79.py")), run_name="__main__")

@@ -6,22 +6,22 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #389 proves the sampled-input fixture produces real horizontal locomotion
-# while grounded/broadphase-supported at tick 41, then the finite saved route resets the same
-# carriage frame at tick 42. Complete the disposable walk proof as soon as material horizontal
-# locomotion has been observed after at least one full input-sampling interval, before that known
-# route discontinuity can poison the verifier. This only changes fixture completion timing; it
-# does not alter player motion, carry vectors, collision, train/world state, or VS2/Create physics.
+# Production-world #451 proves the repaired headless fixture now enters vanilla aiStep -> travel ->
+# LocalPlayer.move and remains grounded/broadphase-supported for multiple native locomotion ticks.
+# Do not finish M1 movement proof after the first two-tick displacement anymore: require three full
+# post-start native movement ticks and materially larger carriage-local displacement while staying on
+# the same supported carriage. This only strengthens fixture acceptance; it does not alter player
+# motion, carry vectors, collision, train/world state, or VS2/Create physics.
 old = """                            if (player.tickCount <= phase154WalkStartTick + 12) {\n"""
-new = """                            boolean phase188PreResetWalkReady = player.tickCount >= phase154WalkStartTick + 2
+new = """                            boolean phase188PreResetWalkReady = player.tickCount >= phase154WalkStartTick + 3
                                 && phase154WalkSupportHealthy
                                 && phase154Carriage.getId() == phase154WalkCarriageId
                                 && phase154Broadphase && player.onGround()
-                                && phase165WalkPathDistance >= 0.20 && phase165WalkPathDistance <= 4.00
+                                && phase165WalkPathDistance >= 0.35 && phase165WalkPathDistance <= 4.00
                                 && phase154WalkStartLocal != null
                                 && Math.hypot(
                                     phase154Local.x - phase154WalkStartLocal.x,
-                                    phase154Local.z - phase154WalkStartLocal.z) >= 0.20
+                                    phase154Local.z - phase154WalkStartLocal.z) >= 0.35
                                 && Math.hypot(
                                     phase154Local.x - phase154WalkStartLocal.x,
                                     phase154Local.z - phase154WalkStartLocal.z) <= 3.00;
@@ -36,9 +36,9 @@ if "phase188PreResetWalkReady" not in source:
 
 required = [
     "phase188PreResetWalkReady",
-    "player.tickCount >= phase154WalkStartTick + 2",
+    "player.tickCount >= phase154WalkStartTick + 3",
     "phase154WalkSupportHealthy",
-    "phase165WalkPathDistance >= 0.20",
+    "phase165WalkPathDistance >= 0.35",
     "Math.hypot(",
     "phase154Local.x - phase154WalkStartLocal.x",
     "phase154Local.z - phase154WalkStartLocal.z",
@@ -59,5 +59,5 @@ for forbidden in [
         raise SystemExit("Phase 188 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 188: completes bounded walk after material supported horizontal locomotion before the finite-route reset; fixture timing only")
+print("Phase 188: requires three full supported native locomotion ticks before bounded walk completion; fixture acceptance only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase189.py")), run_name="__main__")

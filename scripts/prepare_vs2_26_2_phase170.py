@@ -21,6 +21,11 @@ contact_source = contact_trace.read_text(encoding="utf-8")
 # observation window remains eligible after key release. Phase170 now consumes that abstraction
 # directly instead of pattern-matching the retired inline key clause. This is harness/recovery
 # accounting only; Phase85 remains the sole producer of the existing Create-filtered carry vector.
+#
+# Production-world #435 proved the global Phase170 carriage id is last-writer-wins when multiple
+# sibling Create carriages apply native contact in one LocalPlayer tick. Preserve the historical
+# globals, but also publish a per-carriage application tick so later fixture accounting can observe
+# exact active-carriage native evidence even when a sibling writes afterward in the same tick.
 
 contact_anchor = '''        net.minecraft.world.phys.Vec3 motion = cir.getReturnValue();
         LOGGER.info(
@@ -32,6 +37,7 @@ contact_insert = '''        net.minecraft.world.phys.Vec3 motion = cir.getReturn
         if (phase170NativeClientColliderCall && phase170Player != null && motion.lengthSqr() > 1.0E-8) {
             System.setProperty("vs2.phase170NativeContactApplicationTick", Integer.toString(phase170Player.tickCount));
             System.setProperty("vs2.phase170NativeContactApplicationCarriageId", Integer.toString(self.getId()));
+            System.setProperty("vs2.phase170NativeContactApplicationTick." + self.getId(), Integer.toString(phase170Player.tickCount));
             LOGGER.info(
                 "GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION player_tick={} carriage_id={} motion={} application_call=true source=ContraptionColliderClient read_only=true fixture_accounting=true",
                 phase170Player.tickCount, self.getId(), motion);
@@ -147,6 +153,7 @@ contact_required = [
     "ContraptionColliderClient",
     "vs2.phase170NativeContactApplicationTick",
     "vs2.phase170NativeContactApplicationCarriageId",
+    "vs2.phase170NativeContactApplicationTick.",
     "java.lang.StackWalker",
     "net.minecraft.world.phys.Vec3 motion = cir.getReturnValue()",
     "read_only=true",
@@ -167,4 +174,4 @@ for forbidden in [
 
 contact_trace.write_text(contact_source, encoding="utf-8")
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 170: consumes Phase161 locomotion-window abstraction and suppresses fixture recovery when Create native sibling contact already applied this tick")
+print("Phase 170: consumes Phase161 locomotion-window abstraction, tracks exact native application per carriage, and suppresses fixture recovery when Create native contact already applied this tick")

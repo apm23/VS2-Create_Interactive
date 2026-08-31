@@ -7,17 +7,17 @@ client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client
 source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #312 added read-only native-motion correlation to the bounded walk sample.
-# Phase165 now holds ordinary forward input through one input-sampling interval and bounds the
-# finite-world proof to twelve ticks, so this diagnostic must follow that harness seam instead of
-# rewriting it back to the historical +20/keyUp=false form. Telemetry remains read-only.
+# Phase165 now holds ordinary forward input across three post-start callbacks while keeping the
+# finite-world proof bounded, so this diagnostic must follow that harness seam instead of rewriting
+# it back to the historical +1 pulse form. Telemetry remains read-only.
 anchor = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {
-                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 1;
+                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 3;
                                 client.options.keyUp.setDown(phase165InputPulse);
                                 client.options.keyDown.setDown(false);
                                 LOGGER.info(
                                     "GATE_E_PHASE163_WALK_WORLD_FRAME'''
 insert = '''                            if (player.tickCount <= phase154WalkStartTick + 12) {
-                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 1;
+                                boolean phase165InputPulse = player.tickCount <= phase154WalkStartTick + 3;
                                 client.options.keyUp.setDown(phase165InputPulse);
                                 client.options.keyDown.setDown(false);
                                 String phase167ContactMotionState = "unresolved";
@@ -69,6 +69,7 @@ required = [
     "carryReplayPlayerTick",
     "phase154WalkStartTick + 12",
     "phase165InputPulse",
+    "phase154WalkStartTick + 3",
     "client.options.keyUp.setDown(phase165InputPulse)",
     "client.options.keyDown.setDown(false)",
     "GATE_E_PHASE163_WALK_WORLD_FRAME",
@@ -86,5 +87,5 @@ for forbidden in [
         raise SystemExit("Phase 167 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 167: traces active-carriage contact motion beside the sampled-input walk window; read-only only")
+print("Phase 167: traces active-carriage contact motion beside the extended sampled-input walk window; read-only only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase168.py")), run_name="__main__")

@@ -305,9 +305,26 @@ jobs:
             exit 1
           fi
 
+          JUMP_LANDED=0
+          for i in $(seq 1 80); do
+            if grep -Eq 'GATE_E_M1_NATIVE_JUMP_LANDED.*on_ground=true.*fixture_only=true.*natural_fall=true' ../production-world-smoke.log; then
+              JUMP_LANDED=1
+              break
+            fi
+            if fatal_state; then exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          if [ "$JUMP_LANDED" -ne 1 ]; then
+            echo 'Production world did not prove native jump -> airborne -> natural landing on the moving train.'
+            grep -E 'GATE_E_M1_NATIVE_JUMP_(REQUESTED|AIRBORNE|LANDED)|GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED' ../production-world-smoke.log | tail -120 || true
+            exit 1
+          fi
+          python3 ../scripts/prepare_vs2_26_2_m1_jump_proof.py ../production-world-smoke.log
+
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
-          echo 'M1 production moving-train carry continuity and bounded supported walking passed.'
+          echo 'M1 production moving-train carry continuity, supported sprinting, and native jump landing passed.'
 
       - name: Upload production real-world diagnostics
         if: always()

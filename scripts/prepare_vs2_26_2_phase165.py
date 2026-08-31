@@ -30,11 +30,11 @@ if "phase165WalkPathDistance = 0.0" not in source:
         raise SystemExit("Phase 165 could not find Phase154 walk-start input anchor")
     source = source.replace(start_old, start_new, 1)
 
-path_old = '''                            phase154WalkPreviousLocal = phase154Local;\n                            if (player.tickCount <= phase154WalkStartTick + 20) {\n'''
+path_old = '''                            phase154WalkPreviousLocal = phase154Local;\n                            if (player.tickCount <= phase154WalkStartTick + 12) {\n'''
 path_new = '''                            phase154WalkPreviousLocal = phase154Local;\n                            phase165WalkPathDistance += phase154Step;\n                            if (player.tickCount <= phase154WalkStartTick + 12) {\n'''
 if "phase165WalkPathDistance += phase154Step" not in source:
     if source.count(path_old) != 1:
-        raise SystemExit("Phase 165 expected exactly one cumulative walk-sample tail")
+        raise SystemExit("Phase 165 expected exactly one cumulative bounded walk-sample tail")
     source = source.replace(path_old, path_new, 1)
 else:
     source = source.replace(

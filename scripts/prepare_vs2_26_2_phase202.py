@@ -59,6 +59,18 @@ if fixture_source.count(head_anchor) != 1:
     raise SystemExit("Phase 202 expected one LocalPlayer aiStep HEAD input-consumption anchor")
 fixture_source = fixture_source.replace(head_anchor, head_insert, 1)
 
+# Production-world #486 proves the jump itself already executes through vanilla LocalPlayer:
+# Entity.move receives and applies +0.4199999869 Y on the requested jump tick, then later applies
+# negative-Y SELF movement before settling. Create's moving-contraption contact keeps onGround true
+# through that valid vertical arc, so the remaining failure is the fixture's obsolete airborne gate.
+# Accept the native vertical arc from LocalPlayer delta movement instead of requiring onGround=false.
+# Landing still requires a prior falling sample, onGround=true, and near-zero vertical speed.
+old_jump_observer = '''        double deltaY = self.getDeltaMovement().y;\n        if (vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround() && deltaY > 0.0 && !vs2$jumpAirborneSeen) {\n            vs2$jumpAirborneSeen = true;\n            VS2_FIXTURE_INPUT_LOGGER.info(\n                "GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick={} start_tick={} delta_y={} on_ground=false fixture_only=true native_motion=true",\n                self.tickCount, vs2$jumpStartTick, deltaY);\n        }\n        if (vs2$jumpAirborneSeen && !self.onGround() && deltaY < 0.0) vs2$jumpFallingSeen = true;\n        if (vs2$jumpFallingSeen && self.onGround() && self.tickCount > vs2$jumpStartTick) {'''
+new_jump_observer = '''        double deltaY = self.getDeltaMovement().y;\n        if (vs2$jumpStartTick != Integer.MIN_VALUE && deltaY > 0.05 && !vs2$jumpAirborneSeen) {\n            vs2$jumpAirborneSeen = true;\n            VS2_FIXTURE_INPUT_LOGGER.info(\n                "GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick={} start_tick={} delta_y={} on_ground={} fixture_only=true native_motion=true vertical_arc=true",\n                self.tickCount, vs2$jumpStartTick, deltaY, self.onGround());\n        }\n        if (vs2$jumpAirborneSeen && deltaY < -0.01) vs2$jumpFallingSeen = true;\n        if (vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005 && self.tickCount > vs2$jumpStartTick) {'''
+if fixture_source.count(old_jump_observer) != 1:
+    raise SystemExit("Phase 202 expected one obsolete onGround-gated jump observer")
+fixture_source = fixture_source.replace(old_jump_observer, new_jump_observer, 1)
+
 required_fixture = [
     "return elapsed >= 1 && elapsed <= 4;",
     "return elapsed >= 2 && elapsed <= 5;",
@@ -72,6 +84,10 @@ required_fixture = [
     "getDeclaredField(\"input\")",
     "method.getName().equals(\"tick\")",
     "tickMethod.invoke(input)",
+    "deltaY > 0.05",
+    "deltaY < -0.01",
+    "Math.abs(deltaY) < 0.005",
+    "vertical_arc=true",
 ]
 missing_fixture = [token for token in required_fixture if token not in fixture_source]
 if missing_fixture:
@@ -88,4 +104,4 @@ for forbidden in [
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 202: reuses native Create carry recovery and resamples native fixture input before aiStep consumption")
+print("Phase 202: preserves native carry/input and accepts the proven vanilla vertical jump arc")

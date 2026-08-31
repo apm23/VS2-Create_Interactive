@@ -27,6 +27,10 @@ source = client_probe.read_text(encoding="utf-8")
 # measured samples, while the direct Phase170 fallback is reserved strictly for the #385 missing-sample
 # case. This is fixture readiness/accounting only: no position, velocity, carry vector, collision,
 # train, world, inventory, or VS2/Create physics state is changed.
+#
+# Phase192 owns the final cumulative two-frame direct-native readiness rewrite. Keep this script's
+# historical three-tick composition seam so the downstream cumulative rewrite can target it without
+# weakening or changing the generated final runtime predicate.
 
 field_anchor = "    private static boolean phase154WalkStarted;\n"
 field_insert = field_anchor + (
@@ -85,7 +89,7 @@ if "GATE_E_PHASE185_SETTLED_WALK_READY" not in source:
                         }
                         if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
-                                && phase185WalkReadyTicks >= 2) {'''
+                                && phase185WalkReadyTicks >= 3) {'''
     source = source.replace(walk_gate, settled, 1)
 
 required = [
@@ -107,6 +111,7 @@ required = [
     "GATE_E_PHASE185_SIBLING_GUARD_PREARM",
     "vs2.phase172WalkActiveCarriageId",
     "phase185WalkReadyTicks >= 2",
+    "phase185WalkReadyTicks >= 3",
     "balance_measurement_fresh={}",
     "direct_native_fallback={}",
     "fresh_native_evidence={}",
@@ -129,5 +134,5 @@ for forbidden in [
         raise SystemExit("Phase 185 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 185: starts bounded walk after two settled native-supported frames while preserving measured-bad rejection")
+print("Phase 185: preserves downstream two-frame direct-native composition seam while prearming sibling guard after two settled frames")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase186.py")), run_name="__main__")

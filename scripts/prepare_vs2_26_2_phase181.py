@@ -11,6 +11,10 @@ source = client_probe.read_text(encoding="utf-8")
 # Phase161 publishes supported native-loss recovery eligibility at tick 23, yet the final
 # Phase85 Create-filtered replay does not execute. Trace the final replay guard inputs at the
 # exact guard site before changing any carry/gameplay behavior. Read-only fixture telemetry only.
+#
+# Phase132 is deliberately composed again later and introduces phase133ReplayGrace immediately
+# around the final replay guard. Keep this earlier telemetry independent of that later-scoped
+# local so preparation order cannot make GateEClientProbe uncompilable.
 marker = "GATE_E_PHASE181_FINAL_REPLAY_GUARD"
 if marker not in source:
     token = "carryReplayPlayerTick != player.tickCount"
@@ -35,10 +39,10 @@ if marker not in source:
     probe = (
         f'{indent}if (productionSmokeFixture && phase154WalkStarted && !phase154WalkFinished) {{\n'
         f'{indent}    LOGGER.info(\n'
-        f'{indent}        "GATE_E_PHASE181_FINAL_REPLAY_GUARD carriage_id={{}} player_tick={{}} baseline_captured={{}} baseline_id={{}} strict_support={{}} collision_eligible={{}} broadphase={{}} grounded={{}} phase161_supported_loss={{}} phase133_grace={{}} support_reacquired={{}} replay_tick={{}} rebase_tick={{}} native_health={{}} native_health_tick={{}} native_application_tick={{}} native_application_carriage={{}} fixture_only=true read_only=true",\n'
+        f'{indent}        "GATE_E_PHASE181_FINAL_REPLAY_GUARD carriage_id={{}} player_tick={{}} baseline_captured={{}} baseline_id={{}} strict_support={{}} collision_eligible={{}} broadphase={{}} grounded={{}} phase161_supported_loss={{}} support_reacquired={{}} replay_tick={{}} rebase_tick={{}} native_health={{}} native_health_tick={{}} native_application_tick={{}} native_application_carriage={{}} fixture_only=true read_only=true",\n'
         f'{indent}        carriage.getId(), player.tickCount, carryBaselineCaptured, carryBaselineCarriageId, phase81PhysicalSupport,\n'
         f'{indent}        collisionEligible, broadphaseOverlap, player.onGround(), phase161SupportedLocomotionNativeLoss,\n'
-        f'{indent}        phase133ReplayGrace, phase150SupportReacquired, carryReplayPlayerTick, carryBaselineRebaseTick,\n'
+        f'{indent}        phase150SupportReacquired, carryReplayPlayerTick, carryBaselineRebaseTick,\n'
         f'{indent}        System.getProperty("vs2.phase134NativeCarryHealthy." + carriage.getId(), "missing"),\n'
         f'{indent}        System.getProperty("vs2.phase134NativeCarryHealthyTick." + carriage.getId(), "missing"),\n'
         f'{indent}        System.getProperty("vs2.phase170NativeContactApplicationTick", "missing"),\n'
@@ -50,7 +54,6 @@ if marker not in source:
 required = [
     marker,
     "phase161SupportedLocomotionNativeLoss",
-    "phase133ReplayGrace",
     "phase150SupportReacquired",
     "carryReplayPlayerTick",
     "carryBaselineRebaseTick",
@@ -65,5 +68,5 @@ if missing:
     raise SystemExit("Phase 181 lost final replay guard telemetry anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 181: traces final bounded carry replay guard after Run 362 recovery eligibility mismatch; read-only only")
+print("Phase 181: traces final bounded carry replay guard without late Phase132 local dependencies; read-only only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase182.py")), run_name="__main__")

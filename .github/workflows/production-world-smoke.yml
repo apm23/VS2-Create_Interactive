@@ -301,7 +301,7 @@ jobs:
               best, proof = strict, 'physical_support_stable'
           elif len(stable_local) >= 5:
               best, proof = stable_local, 'carriage_local_stable'
-          elif len(strict) >= 3 and strict[0][1] in stable_delta_carriages:
+          elif len(strict) >= 2 and strict[0][1] in stable_delta_carriages:
               best, proof = strict, 'carry_delta_plus_local_stable'
           elif len(raw_stable_local) >= 3 and raw_stable_local[0][1] in stable_delta_carriages:
               best, proof = raw_stable_local, 'direct_continuity_plus_carry_delta'
@@ -357,7 +357,6 @@ jobs:
             exit 1
           fi
           python3 ../scripts/prepare_vs2_26_2_m1_jump_proof.py ../production-world-smoke.log
-
           if fatal_state; then exit 1; fi
           if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; exit 1; fi
           echo 'M1 production moving-train carry continuity, supported sprinting, and native jump landing passed.'

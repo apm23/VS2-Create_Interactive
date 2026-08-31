@@ -8,18 +8,22 @@ source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #456 proves all four ordinary walk directions through native Minecraft locomotion.
 # Build the existing sustained three-tick acceptance exactly where Phase188 originally owned it,
-# but require Minecraft's native sprinting state as part of that acceptance. This is fixture-only
-# acceptance logic: no position, velocity, collision, train/world, or VS2/Create physics mutation.
+# but require Minecraft's native sprinting state as part of that acceptance. Production-world #496
+# additionally proves the fixture has already produced material native sprint displacement (~0.20
+# blocks) while grounded and strictly supported before the longer forward hold walks off the finite
+# carriage floor. Accept that material three-tick displacement so reverse/strafe/jump can run before
+# the fixture leaves supported geometry. This is fixture-only acceptance logic: no position, velocity,
+# collision, train/world, or VS2/Create physics mutation.
 old = """                            if (player.tickCount <= phase154WalkStartTick + 12) {\n"""
 new = """                            boolean phase188PreResetWalkReady = player.tickCount >= phase154WalkStartTick + 3
                                 && phase154WalkSupportHealthy
                                 && phase154Carriage.getId() == phase154WalkCarriageId
                                 && phase154Broadphase && player.onGround() && player.isSprinting()
-                                && phase165WalkPathDistance >= 0.35 && phase165WalkPathDistance <= 4.00
+                                && phase165WalkPathDistance >= 0.20 && phase165WalkPathDistance <= 4.00
                                 && phase154WalkStartLocal != null
                                 && Math.hypot(
                                     phase154Local.x - phase154WalkStartLocal.x,
-                                    phase154Local.z - phase154WalkStartLocal.z) >= 0.35
+                                    phase154Local.z - phase154WalkStartLocal.z) >= 0.20
                                 && Math.hypot(
                                     phase154Local.x - phase154WalkStartLocal.x,
                                     phase154Local.z - phase154WalkStartLocal.z) <= 3.00;
@@ -68,7 +72,7 @@ required = [
     "player.tickCount >= phase154WalkStartTick + 3",
     "phase154WalkSupportHealthy",
     "phase154Broadphase && player.onGround() && player.isSprinting()",
-    "phase165WalkPathDistance >= 0.35",
+    "phase165WalkPathDistance >= 0.20",
     "Math.hypot(",
     "phase154Local.x - phase154WalkStartLocal.x",
     "phase154Local.z - phase154WalkStartLocal.z",
@@ -92,5 +96,5 @@ for forbidden in [
         raise SystemExit("Phase 188 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 188: requires native sprint for existing supported walk confirmation; fixture acceptance only")
+print("Phase 188: accepts material native sprint before the finite carriage edge; fixture acceptance only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase189.py")), run_name="__main__")

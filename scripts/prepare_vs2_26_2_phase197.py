@@ -10,11 +10,10 @@ mixin_json = ROOT / "fabric/src/main/resources/vs2-create-compat.mixins.json"
 
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #456 proves sustained grounded right-strafe locomotion on the moving train.
-# Keep the exact same LocalPlayer.aiStep boundary but switch the disposable fixture to vanilla
-# forward+sprint KeyMappings so the next production-world run proves sprint through Minecraft's
-# native locomotion path. No position, velocity, collision/carry, train/world, inventory, or
-# VS2/Create physics state is written.
+# Production-world #469 proves sustained grounded native sprinting on the moving train.
+# Keep that subsystem frozen, then use the same disposable vanilla KeyMapping input boundary to
+# request one jump only after the walk proof has already confirmed. Observe airborne -> landed
+# transitions without writing position, velocity, collision/carry, train/world, or VS2/Create physics.
 start_anchor = '''                            phase154WalkStartTick = player.tickCount;\n'''
 start_insert = start_anchor + '''                            System.setProperty("vs2.productionFixtureWalkStartTick", Integer.toString(player.tickCount));\n'''
 if 'vs2.productionFixtureWalkStartTick' not in source:
@@ -27,6 +26,7 @@ required_probe = [
     "GATE_E_PHASE154_FIXTURE_WALK_START",
     "GATE_E_PHASE196_FIXTURE_INPUT_SAMPLE",
     "vs2.productionFixtureWalkStartTick",
+    "vs2.productionFixtureWalkConfirmed",
 ]
 missing_probe = [token for token in required_probe if token not in source]
 if missing_probe:
@@ -49,13 +49,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Disposable production-world smoke input timing bridge. The Gate E observer discovers a strictly
  * supported moving-carriage walk window, then publishes only its start tick. At LocalPlayer.aiStep
  * HEAD we hold vanilla forward+sprint KeyMappings for three ticks so LocalPlayer's own KeyboardInput
- * sampling consumes them in the normal locomotion path. No position, velocity, collision, carry, or
- * world state is written here.
+ * sampling consumes them in the normal locomotion path. Once that existing walk/sprint proof has
+ * confirmed, this same harness requests exactly one vanilla jump and only observes the resulting
+ * airborne/landed states. No position, velocity, collision, carry, or world state is written here.
  */
 @Mixin(LocalPlayer.class)
 public abstract class MixinLocalPlayerFixtureInput {
     @Unique private static final Logger VS2_FIXTURE_INPUT_LOGGER = LogManager.getLogger("VS2-GateE-FixtureInput");
     @Unique private static int vs2$lastLoggedTick = Integer.MIN_VALUE;
+    @Unique private static int vs2$jumpStartTick = Integer.MIN_VALUE;
+    @Unique private static boolean vs2$jumpAirborneSeen;
+    @Unique private static boolean vs2$jumpLandedLogged;
 
     @Inject(method = "aiStep", at = @At("HEAD"), require = 0)
     private void vs2$sampleFixtureMovementBeforeLocalPlayer(CallbackInfo ci) {
@@ -77,6 +81,35 @@ public abstract class MixinLocalPlayerFixtureInput {
         client.options.keyLeft.setDown(false);
         client.options.keyRight.setDown(false);
         client.options.keySprint.setDown(pulse);
+
+        boolean walkConfirmed = Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");
+        if (walkConfirmed && !vs2$jumpLandedLogged) {
+            if (vs2$jumpStartTick == Integer.MIN_VALUE && self.onGround()) {
+                vs2$jumpStartTick = self.tickCount;
+                VS2_FIXTURE_INPUT_LOGGER.info(
+                    "GATE_E_M1_NATIVE_JUMP_REQUESTED player_tick={} on_ground=true fixture_only=true vanilla_keymapping=true",
+                    self.tickCount);
+            }
+            boolean jumpPulse = vs2$jumpStartTick != Integer.MIN_VALUE && self.tickCount == vs2$jumpStartTick;
+            client.options.keyJump.setDown(jumpPulse);
+            if (vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround() && !vs2$jumpAirborneSeen) {
+                vs2$jumpAirborneSeen = true;
+                VS2_FIXTURE_INPUT_LOGGER.info(
+                    "GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick={} start_tick={} delta_y={} on_ground=false fixture_only=true native_motion=true",
+                    self.tickCount, vs2$jumpStartTick, self.getDeltaMovement().y);
+            }
+            if (vs2$jumpAirborneSeen && self.onGround() && self.tickCount > vs2$jumpStartTick) {
+                vs2$jumpLandedLogged = true;
+                client.options.keyJump.setDown(false);
+                System.setProperty("vs2.productionFixtureJumpLanded", "true");
+                VS2_FIXTURE_INPUT_LOGGER.info(
+                    "GATE_E_M1_NATIVE_JUMP_LANDED player_tick={} start_tick={} duration_ticks={} on_ground=true fixture_only=true natural_fall=true",
+                    self.tickCount, vs2$jumpStartTick, self.tickCount - vs2$jumpStartTick);
+            }
+        } else {
+            client.options.keyJump.setDown(false);
+        }
+
         if (self.tickCount != vs2$lastLoggedTick && self.tickCount <= startTick + 5) {
             vs2$lastLoggedTick = self.tickCount;
             VS2_FIXTURE_INPUT_LOGGER.info(
@@ -102,6 +135,16 @@ for forbidden in [
     if forbidden in inserted:
         raise SystemExit("Phase 197 introduced forbidden gameplay mutation token: " + forbidden)
 
+for required in [
+    "client.options.keyJump.setDown(jumpPulse)",
+    "GATE_E_M1_NATIVE_JUMP_REQUESTED",
+    "GATE_E_M1_NATIVE_JUMP_AIRBORNE",
+    "GATE_E_M1_NATIVE_JUMP_LANDED",
+    "vs2.productionFixtureJumpLanded",
+]:
+    if required not in inserted:
+        raise SystemExit("Phase 197 lost native jump proof anchor: " + required)
+
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 197: applies fixture forward+sprint KeyMappings at LocalPlayer.aiStep HEAD before vanilla input sampling; harness-only")
+print("Phase 197: preserves native sprint proof then requests one vanilla jump and observes airborne/landed states; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase198.py")), run_name="__main__")

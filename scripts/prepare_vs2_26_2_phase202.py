@@ -4,8 +4,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 contact_trace = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinAbstractContraptionEntityContactTrace.java"
+fixture_input = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
 probe_source = client_probe.read_text(encoding="utf-8")
 trace_source = contact_trace.read_text(encoding="utf-8")
+fixture_source = fixture_input.read_text(encoding="utf-8")
 
 # Production-world #457 proves native carry, interaction dispatch, and authoritative new-cell
 # replication, but the bounded walk never starts: Phase194 arms carriage 4 on player tick 23 after
@@ -59,6 +61,55 @@ for forbidden in [
     if forbidden in inserted:
         raise SystemExit("Phase 202 introduced forbidden gameplay mutation: " + forbidden)
 
+# Production-world #483 still proved stable carry and supported sprinting, but the fixed eight-tick
+# post-walk delay did not request reverse until the finite-route support seam had already started.
+# Keep the exact same vanilla KeyMapping -> LocalPlayer.aiStep path and acceptance thresholds, but
+# chain reverse, right-strafe, and jump inside the already-proven supported interval. This changes
+# only disposable production-smoke input timing; it does not synthesize position, velocity, carry,
+# collision, gravity, train state, world state, or VS2/Create physics.
+timing_replacements = [
+    (
+        '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;\n        return elapsed >= 8 && elapsed <= 11;''',
+        '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;\n        return elapsed >= 1 && elapsed <= 4;''',
+    ),
+    (
+        '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;\n        return elapsed >= 13 && elapsed <= 16;''',
+        '''        if (vs2$backwardStartTick == Integer.MIN_VALUE) return false;\n        int elapsed = self.tickCount - vs2$backwardStartTick;\n        return elapsed >= 2 && elapsed <= 5;''',
+    ),
+    (
+        '''        return self.tickCount >= vs2$walkConfirmedTick + 24;''',
+        '''        return vs2$strafeStartTick != Integer.MIN_VALUE && self.tickCount >= vs2$strafeStartTick + 4;''',
+    ),
+]
+for old, new in timing_replacements:
+    if fixture_source.count(old) != 1:
+        raise SystemExit("Phase 202 expected one M1 fixture timing boundary: " + old.splitlines()[-1].strip())
+    fixture_source = fixture_source.replace(old, new, 1)
+
+required_fixture = [
+    "return elapsed >= 1 && elapsed <= 4;",
+    "self.tickCount - vs2$backwardStartTick",
+    "return elapsed >= 2 && elapsed <= 5;",
+    "self.tickCount >= vs2$strafeStartTick + 4",
+    "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED",
+    "GATE_E_M1_NATIVE_STRAFE_CONFIRMED",
+    "GATE_E_M1_NATIVE_JUMP_LANDED",
+    "client.options.keyDown.setDown(backwardWindow)",
+    "client.options.keyRight.setDown(strafeWindow)",
+    "client.options.keyJump.setDown(jumpPulse)",
+]
+missing_fixture = [token for token in required_fixture if token not in fixture_source]
+if missing_fixture:
+    raise SystemExit("Phase 202 lost compact native M1 fixture anchors: " + ", ".join(missing_fixture))
+for forbidden in [
+    "self.setPos(", "self.setDeltaMovement(", "self.move(", "player.setPos(",
+    "player.setDeltaMovement(", "player.move(", ".teleport(", "setBlock(",
+    "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(", "cir.setReturnValue(",
+]:
+    if forbidden in fixture_source:
+        raise SystemExit("Phase 202 compact M1 fixture contains forbidden gameplay mutation: " + forbidden)
+
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
-print("Phase 202: correlates Phase194 pre-walk confirmation with Create carriage frame/contact discontinuity; read-only only")
+fixture_input.write_text(fixture_source, encoding="utf-8")
+print("Phase 202: keeps native reverse, right-strafe, and jump inside the proven support window; harness-only")

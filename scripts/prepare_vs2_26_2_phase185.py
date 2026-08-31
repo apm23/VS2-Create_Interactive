@@ -9,7 +9,7 @@ source = client_probe.read_text(encoding="utf-8")
 # Production-world #374 proved the bounded walk can start while the active Create carriage frame is
 # still oscillating between sibling carriage entities. Delay only the disposable fixture's forward
 # key pulse until the same active carriage has satisfied strict support plus fresh native evidence for
-# three consecutive ticks, with no recent baseline rebase.
+# two consecutive ticks, with no recent baseline rebase.
 #
 # Production-world #385 proved phase134 health publication can be absent even while the exact active
 # carriage receives genuine Create native contact every tick. Keep a fallback to same-tick per-carriage
@@ -85,7 +85,7 @@ if "GATE_E_PHASE185_SETTLED_WALK_READY" not in source:
                         }
                         if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
-                                && phase185WalkReadyTicks >= 3) {'''
+                                && phase185WalkReadyTicks >= 2) {'''
     source = source.replace(walk_gate, settled, 1)
 
 required = [
@@ -103,7 +103,6 @@ required = [
     "vs2.phase161MeasurementTick.",
     "&& !phase185BalanceMeasurementFresh",
     "player.tickCount - carryBaselineRebaseTick >= 2",
-    "phase185WalkReadyTicks >= 3",
     "GATE_E_PHASE185_SETTLED_WALK_READY",
     "GATE_E_PHASE185_SIBLING_GUARD_PREARM",
     "vs2.phase172WalkActiveCarriageId",
@@ -130,5 +129,5 @@ for forbidden in [
         raise SystemExit("Phase 185 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 185: rejects explicitly measured bad native carry from fixture walk readiness while preserving missing-sample fallback")
+print("Phase 185: starts bounded walk after two settled native-supported frames while preserving measured-bad rejection")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase186.py")), run_name="__main__")

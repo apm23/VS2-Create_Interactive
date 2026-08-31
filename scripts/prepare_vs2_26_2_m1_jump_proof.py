@@ -63,7 +63,9 @@ if not (airborne_start == request_tick == landed_start):
         f"M1 native jump proof changed start tick: request={request_tick} "
         f"airborne_start={airborne_start} landed_start={landed_start}"
     )
-if not (request_tick < airborne_tick < landed_tick):
+# Vanilla can consume the key and transition off-ground within the same LocalPlayer tick as the
+# request. The proof still requires positive native upward motion and a strictly later landing.
+if not (request_tick <= airborne_tick < landed_tick):
     raise SystemExit(
         f"M1 native jump transitions are out of order: request={request_tick} "
         f"airborne={airborne_tick} landed={landed_tick}"

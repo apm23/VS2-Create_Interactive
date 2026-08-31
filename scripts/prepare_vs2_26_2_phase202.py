@@ -48,6 +48,35 @@ for old, new in timing_replacements:
         raise SystemExit("Phase 202 expected one M1 fixture timing boundary")
     fixture_source = fixture_source.replace(old, new, 1)
 
+# Production-world #488 proves vanilla SELF locomotion is already present during the reverse
+# window while LocalPlayer.aiStep RETURN still reports onGround=false. Create applies the moving-
+# contraption contact later in the same client tick, after which carriage continuity reports
+# on_ground=true. Do not reject native reverse/strafe merely because the pre-Create aiStep timing
+# has not received that later contact flag yet. This changes fixture acceptance only; the input,
+# movement and grounding paths remain vanilla/Create-native.
+locomotion_confirmation_replacements = [
+    (
+        '''        if (self.onGround() && client.options.keyDown.isDown()\n                && self.getDeltaMovement().horizontalDistanceSqr() > 0.0004) {''',
+        '''        if (client.options.keyDown.isDown()\n                && self.getDeltaMovement().horizontalDistanceSqr() > 0.0004) {''',
+    ),
+    (
+        '''                "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick={} start_tick={} duration_ticks={} horizontal_speed_sq={} on_ground=true fixture_only=true vanilla_keymapping=true native_motion=true",''',
+        '''                "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick={} start_tick={} duration_ticks={} horizontal_speed_sq={} grounding_deferred_to_create_contact=true fixture_only=true vanilla_keymapping=true native_motion=true",''',
+    ),
+    (
+        '''        if (self.onGround() && client.options.keyRight.isDown()\n                && self.getDeltaMovement().horizontalDistanceSqr() > 0.0004) {''',
+        '''        if (client.options.keyRight.isDown()\n                && self.getDeltaMovement().horizontalDistanceSqr() > 0.0004) {''',
+    ),
+    (
+        '''                "GATE_E_M1_NATIVE_STRAFE_CONFIRMED player_tick={} start_tick={} duration_ticks={} horizontal_speed_sq={} on_ground=true fixture_only=true vanilla_keymapping=true native_motion=true direction=right",''',
+        '''                "GATE_E_M1_NATIVE_STRAFE_CONFIRMED player_tick={} start_tick={} duration_ticks={} horizontal_speed_sq={} grounding_deferred_to_create_contact=true fixture_only=true vanilla_keymapping=true native_motion=true direction=right",''',
+    ),
+]
+for old, new in locomotion_confirmation_replacements:
+    if fixture_source.count(old) != 1:
+        raise SystemExit("Phase 202 expected one pre-Create-grounding M1 confirmation boundary")
+    fixture_source = fixture_source.replace(old, new, 1)
+
 # Production-world #485 reached the native jump request after carry/walk/reverse/strafe, but never
 # became airborne. Phase196 already proved why: fixture KeyMappings can be set after Minecraft's normal
 # KeyboardInput sampling point. Reuse that same native KeyboardInput.tick sampling boundary immediately
@@ -77,6 +106,7 @@ required_fixture = [
     "self.tickCount >= vs2$strafeStartTick + 4",
     "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED",
     "GATE_E_M1_NATIVE_STRAFE_CONFIRMED",
+    "grounding_deferred_to_create_contact=true",
     "GATE_E_M1_NATIVE_JUMP_LANDED",
     "client.options.keyDown.setDown(backwardWindow)",
     "client.options.keyRight.setDown(strafeWindow)",
@@ -104,4 +134,4 @@ for forbidden in [
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 202: preserves native carry/input and accepts the proven vanilla vertical jump arc")
+print("Phase 202: confirms native M1 locomotion before Create's later same-tick grounding and preserves the proven vanilla vertical jump arc")

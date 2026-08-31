@@ -27,7 +27,8 @@ backward_requested = re.search(
 backward_confirmed = re.search(
     r"GATE_E_M1_NATIVE_BACKWARD_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)"
     r"[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)"
-    r"[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*native_motion=true",
+    r"[^\n]*grounding_deferred_to_create_contact=true[^\n]*fixture_only=true"
+    r"[^\n]*vanilla_keymapping=true[^\n]*native_motion=true",
     text,
 )
 requested = re.search(

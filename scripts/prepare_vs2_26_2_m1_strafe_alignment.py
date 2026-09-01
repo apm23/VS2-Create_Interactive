@@ -44,19 +44,19 @@ source = source.replace(walk_window_anchor, walk_window_replacement, 1)
 
 # Production-world #599 proved same-tick Phase194 acceptance can still start the disposable
 # locomotion fixture on the first settled-ready sample: tick 16 had strict support, fresh native
-# Create application and native-health age 0, but ready_ticks was only 1. The next frames contained
-# the startup carriage-frame discontinuity and the walk start prevented the standing-carry verifier
-# from collecting a clean native plateau. Keep the same-tick path required by #594, but require the
-# existing Phase185 settled-ready counter to have survived one prior consecutive frame. This is only
-# fixture acceptance; no movement, collision, carry vector, train/world state, or VS2/Create physics
-# is changed.
+# Create application and native-health age 0, but ready_ticks was only 1. Production-world #605
+# then proved two consecutive ready samples are still too early: locomotion started at tick 15,
+# leaving only the startup pair before sibling-carriage handoff and preventing the standing-carry
+# verifier from collecting its native plateau. Keep the same native readiness path but require a
+# third consecutive settled frame before any fixture locomotion starts. Harness acceptance only;
+# no movement, collision, carry vector, train/world state, or VS2/Create physics is changed.
 immediate_anchor = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
                             && phase194NativeAuthoritativeSupport
                             && phase185NativeApplicationFresh;'''
 immediate_replacement = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
                             && phase194NativeAuthoritativeSupport
                             && phase185NativeApplicationFresh
-                            && phase185WalkReadyTicks >= 2;'''
+                            && phase185WalkReadyTicks >= 3;'''
 if probe_source.count(immediate_anchor) != 1:
     raise SystemExit("M1 settled-start expected one Phase194 immediate native-ready boundary")
 probe_source = probe_source.replace(immediate_anchor, immediate_replacement, 1)
@@ -165,8 +165,8 @@ required = [
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("M1 fixture refinement lost anchors: " + ", ".join(missing))
-if 'phase185WalkReadyTicks >= 2' not in probe_source:
-    raise SystemExit("M1 settled-start lost Phase185 two-frame readiness guard")
+if 'phase185WalkReadyTicks >= 3' not in probe_source:
+    raise SystemExit("M1 settled-start lost Phase185 three-frame readiness guard")
 for token in [
     'm1JumpFloorSupportNow',
     'Math.abs(phase154PreWalkLocal.y - phase154WalkStartLocal.y) <= 0.05',
@@ -191,4 +191,4 @@ for forbidden in [
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 fixture refinement: gates native jump on live carriage-floor support without changing movement/collision")
+print("M1 fixture refinement: waits for three settled native frames before locomotion and gates jump on live carriage-floor support")

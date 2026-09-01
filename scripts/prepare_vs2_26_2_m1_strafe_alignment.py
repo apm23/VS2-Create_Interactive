@@ -61,15 +61,29 @@ if probe_source.count(immediate_anchor) != 1:
     raise SystemExit("M1 settled-start expected one Phase194 immediate native-ready boundary")
 probe_source = probe_source.replace(immediate_anchor, immediate_replacement, 1)
 
-# Production-world #598 proves the jump itself executes natively at tick 34 (Entity.move applies
-# +0.4199999869 Y) and later performs a real negative-Y descent. A world-Y return test is invalid on
-# the moving train because the carriage frame itself changes world Y during the arc. Production-world
-# #600 then proves the genuine airborne ground-loss can precede the fixture's later falling observer:
-# the jump request at tick 52 immediately produced onGround=false on the supported carriage, while the
-# observer only marked the vertical arc later after a carriage handoff. Preserve that already-observed
-# post-request ground loss and require it together with a later falling sample before accepting a
-# Create/vanilla onGround reacquire. Fixture observation only; no movement, gravity, collision, carry,
-# player transform, train, or world state is written.
+# Production-world #601 proves native right-strafe is already confirmed on its first input tick,
+# but holding it for nine ticks keeps pressing the disposable player through the finite side-wall
+# seam until the later jump starts from a degraded support frame. Four input ticks still provide the
+# existing wall verifier its required three-sample impact plateau, then release the key and permit
+# the jump on the next tick. Harness timing only; no movement, collision, carry, velocity, player
+# position, train state, or VS2/Create physics is changed.
+strafe_window_anchor = 'return strafeElapsed >= 0 && strafeElapsed <= 8;'
+strafe_window_replacement = 'return strafeElapsed >= 0 && strafeElapsed <= 3;'
+if source.count(strafe_window_anchor) != 1:
+    raise SystemExit("M1 wall-bound expected one extended strafe window")
+source = source.replace(strafe_window_anchor, strafe_window_replacement, 1)
+
+jump_delay_anchor = 'self.tickCount >= vs2$strafeStartTick + 9'
+jump_delay_replacement = 'self.tickCount >= vs2$strafeStartTick + 4'
+if source.count(jump_delay_anchor) != 1:
+    raise SystemExit("M1 wall-bound expected one post-strafe jump delay")
+source = source.replace(jump_delay_anchor, jump_delay_replacement, 1)
+
+# Production-world #598 proves the jump itself executes natively and later performs a real descent.
+# A world-Y return test is invalid on the moving train because the carriage frame itself changes
+# world Y during the arc. Production-world #600 then proves genuine airborne ground loss can precede
+# the fixture's falling observer. Preserve any post-request loss and require it together with a later
+# falling sample before accepting a Create/vanilla onGround reacquire. Fixture observation only.
 field_anchor = '    @Unique private static double vs2$jumpStartY = Double.NaN;\n'
 field_replacement = field_anchor + '    @Unique private static boolean vs2$jumpGroundLostAfterFall;\n'
 if source.count(field_anchor) != 1:
@@ -84,8 +98,7 @@ if landing_count != 1:
 source = source.replace(landing_anchor, landing_replacement, 1)
 
 # Production-world #592 reached the authoritative jump request but did not always produce the
-# vertical arc, while #591 proved the exact same one-tick KeyMapping path can work. That makes the
-# remaining boundary a fixture input-sampling race, not a reason to mutate player physics. Hold the
+# vertical arc, while #591 proved the exact same one-tick KeyMapping path can work. Hold the
 # ordinary vanilla jump KeyMapping for the request tick plus one following tick so normal input
 # sampling cannot miss it. This remains input-only and never writes motion or position.
 jump_pulse_anchor = 'boolean jumpPulse = vs2$jumpStartTick != Integer.MIN_VALUE && self.tickCount == vs2$jumpStartTick;'
@@ -100,6 +113,8 @@ required = [
     'self.setYRot(90.0F)',
     'client.options.keyRight.setDown(strafeWindow)',
     '!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
+    'return strafeElapsed >= 0 && strafeElapsed <= 3;',
+    'self.tickCount >= vs2$strafeStartTick + 4',
     'vs2$jumpGroundLostAfterFall',
     'vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround()',
     'vs2$jumpFallingSeen && vs2$jumpGroundLostAfterFall && self.onGround()',
@@ -126,4 +141,4 @@ for forbidden in [
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 fixture refinement: requires settled native-ready frames and accepts post-request ground-loss plus natural fall before landing")
+print("M1 fixture refinement: bounds wall strafe before jump, preserves settled native start, and accepts post-request ground loss")

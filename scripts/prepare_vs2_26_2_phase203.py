@@ -4,8 +4,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 contact_lease = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinCreateContactLeaseTrace.java"
+fixture_input = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
 source = client_probe.read_text(encoding="utf-8")
 lease_source = contact_lease.read_text(encoding="utf-8")
+fixture_source = fixture_input.read_text(encoding="utf-8")
 
 # Production-world #549 proves standing carry itself is stable on carriage 10 at ticks 31-32,
 # but the later Phase185 readiness gate remains permanently false because it requires a fresh
@@ -126,6 +128,28 @@ if lease_log_old in lease_source:
 elif "native_application_age={}" not in lease_source:
     raise SystemExit("Phase 203 could not update Create lease-grace accounting")
 
+# Production-world #620 proves the post-walk fixture itself now burns the last stable support tick:
+# forward sprint is confirmed at tick 61, tick 62 is still exactly carriage-local stable, but the
+# old reverse window waits until tick 63. By then local Y has already fallen below the floor plane;
+# reverse/strafe are subsequently accepted from vanilla horizontal velocity even though native Create
+# applications have stopped and the player later lags a full carriage behind. Start reverse on the
+# already-stable confirmation tick and allow strafe one tick after reverse begins. This changes only
+# disposable KeyMapping timing; it does not move the player or alter Create/VS2 collision/carry.
+backward_old = '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;
+        return elapsed >= 1 && elapsed <= 4;'''
+backward_new = '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;
+        return elapsed >= 0 && elapsed <= 3;'''
+strafe_old = '''        int elapsed = self.tickCount - vs2$backwardStartTick;
+        return elapsed >= 2 && elapsed <= 5;'''
+strafe_new = '''        int elapsed = self.tickCount - vs2$backwardStartTick;
+        return elapsed >= 1 && elapsed <= 4;'''
+if fixture_source.count(backward_old) != 1:
+    raise SystemExit("Phase 203 expected one post-Phase202 reverse timing boundary")
+if fixture_source.count(strafe_old) != 1:
+    raise SystemExit("Phase 203 expected one post-Phase202 strafe timing boundary")
+fixture_source = fixture_source.replace(backward_old, backward_new, 1)
+fixture_source = fixture_source.replace(strafe_old, strafe_new, 1)
+
 required = [
     "phase203CarryHealthCandidate",
     "phase154SupportNow",
@@ -158,7 +182,17 @@ lease_missing = [token for token in lease_required if token not in lease_source]
 if lease_missing:
     raise SystemExit("Phase 203 lost bounded native Create lease anchors: " + ", ".join(lease_missing))
 
-inserted = new_prefix + consumer_replacement + lease_new + lease_log_new
+fixture_required = [
+    "return elapsed >= 0 && elapsed <= 3;",
+    "return elapsed >= 1 && elapsed <= 4;",
+    "client.options.keyDown.setDown(backwardWindow)",
+    "client.options.keyRight.setDown(strafeWindow)",
+]
+fixture_missing = [token for token in fixture_required if token not in fixture_source]
+if fixture_missing:
+    raise SystemExit("Phase 203 lost compact native M1 fixture timing anchors: " + ", ".join(fixture_missing))
+
+inserted = new_prefix + consumer_replacement + lease_new + lease_log_new + backward_new + strafe_new
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -169,4 +203,5 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
-print("Phase 203: preserves bounded Create contact ownership for recent-native grounded and airborne carriage continuity")
+fixture_input.write_text(fixture_source, encoding="utf-8")
+print("Phase 203: preserves bounded Create contact ownership and starts native reverse/strafe before fixture support decays")

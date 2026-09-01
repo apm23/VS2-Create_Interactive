@@ -8,15 +8,17 @@ source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #487 exposed a startup-transient false-positive when two fresh native carry ticks
 # could start the fixture directly before the active carriage lost frame continuity. Phase194 now has
-# a separate strict-support confirmation, so that confirmation—not an extra third ready tick—is the
-# authoritative false-positive guard. Production-world #523 then proved a one-tick sibling-carriage
+# a separate strict-support confirmation. Production-world #523 proved a one-tick sibling-carriage
 # selection can occupy the immediate confirmation tick even though the armed carriage returns one tick
-# later with strict support and an exact current-tick native Create application. Preserve the two fresh
-# supported native-ready ticks required to arm, tolerate only that single intervening sibling seam, and
-# require exact native application again on confirmation. This is fixture acceptance only: no player
-# position/velocity, collision response, carry vector, train/world state, inventory, Create behavior,
-# or VS2 physics is changed. Production-world #495 proved this preparation step must remain aligned
-# with Phase129/162's current 32-attempt acquisition boundary; gameplay behavior is unchanged.
+# later with strict support and an exact current-tick native Create application.
+#
+# Production-world #536 then exposed the remaining fixture boundary: three consecutive ready samples
+# on carriage 5 (ticks 15-17) were followed immediately by a sibling handoff at tick 18. The walk was
+# started at tick 17, remained grounded/broadphase-valid, but necessarily crossed carriage identity and
+# could not satisfy the bounded single-frame proof. Require three fresh same-carriage native-ready ticks
+# before arming, then retain the existing strict next-tick/two-tick confirmation. This makes four stable
+# observations necessary before fixture locomotion starts, without changing player position/velocity,
+# collision response, carry vectors, train/world state, Create behavior, or VS2 physics.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -28,11 +30,6 @@ if "phase194PendingWalkTick" not in source:
         raise SystemExit("Phase 194 could not locate unique Phase185 readiness field anchor")
     source = source.replace(field_anchor, field_insert, 1)
 
-# Phase162 already freezes contact acquisition after the walk starts. Extend that existing harness
-# boundary one tick earlier, but only while a direct-native arm is awaiting confirmation. The composed
-# Phase193 source has one canonical Phase162 acquisition guard. Because the arm is set later in the same
-# client tick, the current acquisition attempt is untouched; the next tick is unassisted, and retries
-# automatically resume one tick later if confirmation did not succeed.
 acquire_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted"
 confirm_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted && phase194PendingWalkTick < player.tickCount - 1"
 if confirm_guard not in source:
@@ -49,7 +46,7 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                             && phase185WalkReadyNow
                             && phase185WalkReadyCarriageId == phase154Carriage.getId()
                             && phase185NativeApplicationFresh
-                            && phase185WalkReadyTicks >= 2;
+                            && phase185WalkReadyTicks >= 3;
                         int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
@@ -114,8 +111,8 @@ else:
             1,
         )
     source = source.replace(
-        "&& phase185WalkReadyTicks >= 3;",
         "&& phase185WalkReadyTicks >= 2;",
+        "&& phase185WalkReadyTicks >= 3;",
         1,
     )
 
@@ -132,7 +129,7 @@ required = [
     "phase81PhysicalSupport",
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase185WalkReadyTicks >= 5",
-    "phase185WalkReadyTicks >= 2",
+    "phase185WalkReadyTicks >= 3",
     "phase185NativeApplicationFresh",
     "arm_age={}",
     "exact_native_application=true",
@@ -154,5 +151,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: confirms a two-tick native walk arm across at most one sibling-carriage seam with exact native reapplication")
+print("Phase 194: requires three native-ready ticks plus strict confirmation before fixture walk")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

@@ -31,6 +31,9 @@ dragger_source = entity_dragger.read_text(encoding="utf-8")
 # the preceding tick. Do not require current-world overlap after takeoff: the bounded exact-carriage
 # native-application lease is the moving reference-space authority during that airborne interval. No
 # synthetic velocity, gravity, collision response, train state, or world state is added.
+# Production-world #677 proved one narrower boundary: Create applied the exact carriage frame step
+# natively on jump tick 27, then this bridge applied the same step again. Suppress the external-frame
+# reanchor only on a same-tick native Create application; it remains available for subsequent gaps.
 dragger_anchor = "object EntityDragger {\n"
 dragger_helper = r'''object EntityDragger {
     /**
@@ -107,11 +110,14 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
                 && phase83ExactBaselineCarriage
                 && phase83SupportedBaselineAge >= 1
                 && phase83SupportedBaselineAge <= 20;
-            // Grounded Create contact/collision stays authoritative. The external VS2 frame bridge
-            // exists only while the player is genuinely airborne after proven carriage support.
+            // Create owns a same-tick native contact application. The VS2 external-frame bridge
+            // fills only native-contact gaps, so the carriage frame step can never be applied twice.
+            boolean phase83NativeAppliedThisTick = phase83NativeApplicationAge == 0;
             boolean phase83NativeFrameEligible = !player.onGround()
+                && !phase83NativeAppliedThisTick
                 && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             boolean phase83ExternalFrameLease = !player.onGround()
+                && !phase83NativeAppliedThisTick
                 && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             boolean phase83CurrentEnvelopeEligible = collisionEligible && broadphaseOverlap;
             if (Boolean.getBoolean("vs2.createCarryCompat")
@@ -188,8 +194,10 @@ required = [
     "phase83RecentNativeApplication",
     "phase83AirborneNativeLease",
     "phase83AirborneSupportedBaselineLease",
+    "phase83NativeAppliedThisTick",
     "phase83NativeFrameEligible = !player.onGround()",
     "phase83ExternalFrameLease = !player.onGround()",
+    "!phase83NativeAppliedThisTick",
     "phase83CurrentEnvelopeEligible",
     "vs2.phase83SupportedBaselineTick.",
     "phase83SupportedBaselineAge <= 20",

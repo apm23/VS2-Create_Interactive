@@ -52,17 +52,24 @@ source = source.replace(
 
 # The current M1 path already has an explicit production opt-in and an external-frame
 # lease in Phase 83. Do not rewrite that guard back to the retired native-contact shape.
-# Older cumulative sources still use the historical guard, so retain the old widening
-# only as a compatibility fallback for those sources.
-external_frame_guard = '''            if (Boolean.getBoolean("vs2.createCarryCompat")
+# Accept both the older baseline-captured form and the current exact-baseline-carriage
+# form; this script is a cumulative build-harness validator, not gameplay logic.
+external_frame_guards = [
+    '''            if (Boolean.getBoolean("vs2.createCarryCompat")
                 && carryBaselineCaptured
                 && phase83NativeFrameEligible
-                && phase83ExternalFrameLease'''
+                && phase83ExternalFrameLease''',
+    '''            if (Boolean.getBoolean("vs2.createCarryCompat")
+                && phase83ExactBaselineCarriage
+                && phase83NativeFrameEligible
+                && phase83ExternalFrameLease''',
+]
+external_frame_guard_present = any(guard in source for guard in external_frame_guards)
 old_carry_guard = '''            if (carryBaselineCaptured
                 && phase83NativeFrameEligible'''
 new_carry_guard = '''            if ((carryBaselineCaptured || explicitCarryCompat)
                 && phase83NativeFrameEligible'''
-if external_frame_guard in source:
+if external_frame_guard_present:
     pass
 else:
     carry_guard_count = source.count(old_carry_guard)
@@ -87,7 +94,6 @@ if old_support_log not in source:
 source = source.replace(old_support_log, new_support_log, 1)
 
 production_required = [
-    '(carryBaselineCaptured || explicitCarryCompat)',
     'phase83NativeFrameEligible',
     'phase81PhysicalSupport',
     'collisionEligible',
@@ -96,11 +102,13 @@ production_required = [
     'GATE_E_PHASE81_SUPPORT_CONTINUITY',
     'productionSmokeFixture',
 ]
-if external_frame_guard in source:
+if external_frame_guard_present:
     production_required.extend([
         'phase83ExternalFrameLease',
         'Boolean.getBoolean("vs2.createCarryCompat")',
     ])
+else:
+    production_required.append('(carryBaselineCaptured || explicitCarryCompat)')
 production_missing = [token for token in production_required if token not in source]
 if production_missing:
     raise SystemExit("Phase 87 lost strict production carry anchors: " + ", ".join(production_missing))

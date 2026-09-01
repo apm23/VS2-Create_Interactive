@@ -9,6 +9,23 @@ source = fixture_input.read_text(encoding="utf-8")
 lease_source = contact_lease.read_text(encoding="utf-8")
 verifier_source = verifier.read_text(encoding="utf-8")
 
+# Production-world #663 proves the negative-Z wall verifier and the actual disposable strafe
+# input are pointed at opposite sides: the verifier is intentionally restored below to z=-2,
+# while M1 strafe alignment still leaves yaw -90, which drives the ordinary right KeyMapping
+# toward +Z. The player therefore walks off the finite +Z edge at tick 56 before jump can arm.
+# Match the already-selected negative-Z proof by flipping only the test orientation to yaw +90.
+# This writes view orientation only; no position, velocity, collision response, carry, gravity,
+# train state, or world state is synthesized.
+strafe_yaw_old = '''        if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE) {
+            self.setYRot(-90.0F);
+        }'''
+strafe_yaw_new = '''        if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE) {
+            self.setYRot(90.0F);
+        }'''
+if source.count(strafe_yaw_old) != 2:
+    raise SystemExit("M1 negative-wall alignment expected two fixed +Z strafe orientation sites")
+source = source.replace(strafe_yaw_old, strafe_yaw_new)
+
 # Production-world #650 proves the post-walk native backward/strafe/jump sequence itself works,
 # including airborne -> natural landing, but starting it at walkStart+3 consumes the exact aiStep
 # tick whose later GateEClientProbe callback owns Phase188's three-tick sprint acceptance. That
@@ -195,10 +212,11 @@ required = [
     'Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
     'System.getProperty("vs2.productionFixtureWalkStartTick")',
     'if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed) return false;',
+    'self.setYRot(90.0F)',
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("M1 input timing lost sequencing anchors: " + ", ".join(missing))
+    raise SystemExit("M1 input timing lost sequencing/negative-wall anchors: " + ", ".join(missing))
 lease_required = [
     'vs2$traceContactLease("tail", true);',
     'vs2.phase170NativeContactApplicationTick.',
@@ -227,10 +245,10 @@ for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(', 'method.invoke(lease, Integer.valueOf(0))',
 ]:
-    if forbidden in new + strafe_guard_new + lease_tail_new + lease_outer_guard_new + lease_airborne_new + lease_grounded_new + lease_grace_overlap_new:
+    if forbidden in strafe_yaw_new + new + strafe_guard_new + lease_tail_new + lease_outer_guard_new + lease_airborne_new + lease_grounded_new + lease_grace_overlap_new:
         raise SystemExit("M1 input/lease patch introduced forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 input timing: preserves sprint/strafe sequencing and extends Create native lease only for the currently authoritative native carriage")
+print("M1 input timing: aligns native strafe with the negative-Z wall proof while preserving authoritative Create movement")

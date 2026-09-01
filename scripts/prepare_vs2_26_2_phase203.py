@@ -67,11 +67,32 @@ lease_new = '''            int vs2$nativeApplicationAge = Integer.MAX_VALUE;
                     && age >= 3
                     && vs2$leaseGraceTicks < vs2$maxGraceTicks
                     && (player.onGround() || vs2$airborneNativeLease)
-                    && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())) {'''
+                    && (vs2$airborneNativeLease
+                        || self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox()))) {'''
 if "vs2$airborneNativeLease" not in lease_source:
     if lease_source.count(lease_old) != 1:
         raise SystemExit("Phase 203 expected one Phase78 native Create lease boundary")
     lease_source = lease_source.replace(lease_old, lease_new, 1)
+else:
+    lease_previous = '''            boolean graced = false;
+            if (allowGrace
+                    && Boolean.getBoolean("vs2.createCarryCompat")
+                    && lease != null
+                    && age >= 3
+                    && vs2$leaseGraceTicks < vs2$maxGraceTicks
+                    && (player.onGround() || vs2$airborneNativeLease)
+                    && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())) {'''
+    if lease_source.count(lease_previous) != 1:
+        raise SystemExit("Phase 203 expected one existing airborne lease overlap boundary")
+    lease_source = lease_source.replace(lease_previous, lease_new.split('            boolean graced = false;\n', 1)[1].join(['            boolean graced = false;\n', '']) if False else '''            boolean graced = false;
+            if (allowGrace
+                    && Boolean.getBoolean("vs2.createCarryCompat")
+                    && lease != null
+                    && age >= 3
+                    && vs2$leaseGraceTicks < vs2$maxGraceTicks
+                    && (player.onGround() || vs2$airborneNativeLease)
+                    && (vs2$airborneNativeLease
+                        || self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox()))) {''', 1)
 
 lease_log_old = '''                        "GATE_E_CREATE_CONTACT_LEASE_GRACE carriage_id={} player_tick={} grace_tick={}/2 native_create_lease=true bounded_bridge=true adapter_only=true",
                         self.getId(), player.tickCount, vs2$leaseGraceTicks);'''
@@ -103,6 +124,7 @@ lease_required = [
     "vs2$maxGraceTicks = vs2$airborneNativeLease ? 20 : 2",
     "vs2$leaseGraceTicks < vs2$maxGraceTicks",
     "player.onGround() || vs2$airborneNativeLease",
+    "vs2$airborneNativeLease\n                        || self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())",
     "method.invoke(lease, Integer.valueOf(2))",
     "native_application_age={}",
     "native_create_lease=true",

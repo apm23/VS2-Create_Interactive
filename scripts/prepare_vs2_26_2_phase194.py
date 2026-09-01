@@ -29,8 +29,17 @@ source = client_probe.read_text(encoding="utf-8")
 # exact native carry, but Create's exact-application sampling became intermittent and the walk could never
 # arm. Reuse Phase137's existing replay-aware native-carry-health result as the settled-carry prerequisite
 # instead of inventing another exact-application streak. The health tick must be at most two ticks old,
-# matching Phase137's bounded health sample window; the final start still requires immediate next-tick
-# exact Create application, same carriage, grounded broadphase support, and strict physical support.
+# matching Phase137's bounded health sample window.
+#
+# Production-world #594 proves the remaining next-tick confirmation can itself starve the finite-world
+# fixture after the stronger Phase137/194 hardening: carriage 8 at tick 23 and carriage 5 at tick 33 both
+# had proven native carry health, strict physical support, exact current-tick native Create application,
+# grounded broadphase overlap, and matching active baseline, but the immediately following tick crossed a
+# real carriage geometry/frame boundary before the confirmation could fire. Those arm ticks already meet
+# every authoritative condition the later confirmation rechecks. Permit the disposable input fixture to
+# start on that exact healthy native-support tick; retain the next-tick path as a fallback. This changes
+# fixture acceptance only and does not write player motion, collision response, carry vectors, train/world
+# state, or VS2/Create physics.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -89,6 +98,9 @@ old_branch = '''                        if (!phase154WalkStarted && phase185Walk
                                     || (phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2))) {'''
 new_branch = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
                             && phase194ProvenNativeCarryHealth;
+                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
+                            && phase194NativeAuthoritativeSupport
+                            && phase185NativeApplicationFresh;
                         int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
@@ -113,10 +125,17 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                                 player.tickCount, phase154Carriage.getId(), phase194PendingWalkTick, phase194PendingWalkAge,
                                 phase81PhysicalSupport, phase194NativeAuthoritativeSupport, phase154SupportNow, carryBaselineCarriageId);
                         }
+                        if (phase194ImmediateHealthyNativeReady) {
+                            LOGGER.info(
+                                "GATE_E_PHASE194_DIRECT_NATIVE_WALK_IMMEDIATE player_tick={} carriage_id={} native_health_tick={} native_health_age={} strict_support=true native_authoritative_support=true exact_native_application=true fixture_only=true accounting_only=true",
+                                player.tickCount, phase154Carriage.getId(), phase194NativeCarryHealthyTick,
+                                phase194NativeCarryHealthyAge);
+                        }
                         if (!phase154WalkStarted
                                 && ((phase185WalkReadyNow
                                     && phase185WalkReadyCarriageId == phase154Carriage.getId()
                                     && phase185WalkReadyTicks >= 5)
+                                    || phase194ImmediateHealthyNativeReady
                                     || phase194ConfirmedDirectNativeReady)) {'''
 if source.count(old_branch) != 1:
     raise SystemExit("Phase 194 expected one Phase192 direct-native start branch")
@@ -133,6 +152,7 @@ required = [
     "vs2.phase134NativeCarryHealthyTick.",
     "phase194NativeCarryHealthyAge <= 2",
     "phase194DirectNativeCandidate",
+    "phase194ImmediateHealthyNativeReady",
     "phase194PendingWalkAge",
     "phase194ConfirmedDirectNativeReady",
     "phase194PendingWalkAge == 1",
@@ -145,6 +165,7 @@ required = [
     "native_health_age={}",
     "exact_native_application=true",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM",
+    "GATE_E_PHASE194_DIRECT_NATIVE_WALK_IMMEDIATE",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_CONFIRMED",
     "GATE_E_PHASE154_FIXTURE_WALK_START",
 ]
@@ -162,5 +183,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: requires strict physical support before arming M1 locomotion; native Create evidence remains authoritative for carry health")
+print("Phase 194: starts the disposable M1 input fixture on proven strict same-carriage native support; next-tick confirmation remains fallback")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

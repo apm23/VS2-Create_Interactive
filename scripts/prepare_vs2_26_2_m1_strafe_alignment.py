@@ -23,14 +23,15 @@ source = source.replace(anchor, replacement)
 # forward sprint had carried the disposable player out of carriage broadphase. The native walk
 # proof itself completed before that loss of support. Stop the bounded forward KeyMapping as soon
 # as the existing walk-confirmed property becomes authoritative, leaving the later reverse/strafe
-# inputs to run from the still-supported carriage surface. Harness input only; no player transform,
-# velocity, collision, carry, train, or world state is synthesized.
+# inputs to run from the still-supported carriage surface. The cumulative input harness contains
+# two equivalent LocalPlayer forward-pulse sites, so gate both consistently. Harness input only;
+# no player transform, velocity, collision, carry, train, or world state is synthesized.
 pulse_anchor = 'boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;'
 pulse_replacement = 'boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
 pulse_count = source.count(pulse_anchor)
-if pulse_count != 1:
-    raise SystemExit(f"M1 forward-stop expected one LocalPlayer forward pulse boundary, found {pulse_count}")
-source = source.replace(pulse_anchor, pulse_replacement, 1)
+if pulse_count != 2:
+    raise SystemExit(f"M1 forward-stop expected two LocalPlayer forward pulse boundaries, found {pulse_count}")
+source = source.replace(pulse_anchor, pulse_replacement)
 
 walk_window_anchor = 'boolean walkWindow = self.tickCount >= startTick && self.tickCount <= startTick + 3;'
 walk_window_replacement = 'boolean walkWindow = self.tickCount >= startTick && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
@@ -57,4 +58,4 @@ for forbidden in [
         raise SystemExit("M1 strafe/forward fixture found forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
-print("M1 fixture alignment: stops forward input after native walk proof and points right-strafe toward the side wall")
+print("M1 fixture alignment: stops both forward input paths after native walk proof and points right-strafe toward the side wall")

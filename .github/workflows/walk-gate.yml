@@ -81,3 +81,47 @@ jobs:
           fi
 
           echo 'PRODUCTION_M1_NATIVE_LOCOMOTION sprint_reverse_strafe_jump_land_replay_free'
+
+      - name: Require stable floor recovery after native landing
+        if: env.STALE_SOURCE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=diagnostics/production-world-smoke.log
+          python3 - "$LOG" <<'PY'
+          import re, sys
+
+          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+          landed = re.search(r'GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)[^\n]*on_ground=true[^\n]*natural_fall=true', text)
+          if not landed:
+              raise SystemExit('native landing marker missing')
+          landing_tick = int(landed.group(1))
+
+          continuity = re.compile(
+              r'GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
+              r'[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)[^\n]*baseline_frame=(true|false)'
+          )
+          samples = [
+              (int(m.group(1)), int(m.group(2)))
+              for m in continuity.finditer(text)
+              if int(m.group(1)) >= landing_tick
+              and m.group(3) == 'true'
+              and m.group(4) == 'true'
+              and m.group(5) == 'true'
+          ]
+
+          best = 0
+          streak = 0
+          previous = None
+          for sample in samples:
+              if previous and sample[0] == previous[0] + 1 and sample[1] == previous[1]:
+                  streak += 1
+              else:
+                  streak = 1
+              previous = sample
+              best = max(best, streak)
+
+          if best < 3:
+              raise SystemExit(f'post-landing grounded carriage-floor continuity too short: best={best}')
+          print(f'PRODUCTION_M1_FLOOR_RECOVERY landing_tick={landing_tick} grounded_same_carriage_ticks={best}')
+          PY

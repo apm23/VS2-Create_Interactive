@@ -79,23 +79,16 @@ if source.count(jump_delay_anchor) != 1:
     raise SystemExit("M1 wall-bound expected one post-strafe jump delay")
 source = source.replace(jump_delay_anchor, jump_delay_replacement, 1)
 
-# Production-world #598 proves the jump itself executes natively and later performs a real descent.
-# A world-Y return test is invalid on the moving train because the carriage frame itself changes
-# world Y during the arc. Production-world #600 then proves genuine airborne ground loss can precede
-# the fixture's falling observer. Preserve any post-request loss and require it together with a later
-# falling sample before accepting a Create/vanilla onGround reacquire. Fixture observation only.
-field_anchor = '    @Unique private static double vs2$jumpStartY = Double.NaN;\n'
-field_replacement = field_anchor + '    @Unique private static boolean vs2$jumpGroundLostAfterFall;\n'
-if source.count(field_anchor) != 1:
-    raise SystemExit("M1 landing proof expected one jump-start-Y field anchor")
-source = source.replace(field_anchor, field_replacement, 1)
-
+# Production-world #598 proved the jump executes natively and later performs a real descent.
+# Phase202 also established that Create's moving-contraption contact can legitimately keep
+# LocalPlayer.onGround true through that vertical arc. Production-world #602 reproduces exactly
+# that native shape: jump request at tick 37 and positive vertical arc at tick 38 while on_ground
+# remains true. Do not require an onGround=false edge that Create is not required to publish.
+# Restore the existing native landing boundary: a prior falling sample, Create/vanilla onGround,
+# and near-zero vertical speed. Fixture observation only; no motion/collision/carry is synthesized.
 landing_anchor = 'if (vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005 && self.tickCount > vs2$jumpStartTick) {'
-landing_replacement = '''if (vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround()) {\n            vs2$jumpGroundLostAfterFall = true;\n        }\n        if (vs2$jumpFallingSeen && vs2$jumpGroundLostAfterFall && self.onGround() && self.tickCount > vs2$jumpStartTick) {'''
-landing_count = source.count(landing_anchor)
-if landing_count != 1:
-    raise SystemExit(f"M1 landing proof expected one delta-settle boundary, found {landing_count}")
-source = source.replace(landing_anchor, landing_replacement, 1)
+if source.count(landing_anchor) != 1:
+    raise SystemExit("M1 landing proof expected the Phase202 falling/onGround settle boundary")
 
 # Production-world #592 reached the authoritative jump request but did not always produce the
 # vertical arc, while #591 proved the exact same one-tick KeyMapping path can work. Hold the
@@ -115,9 +108,7 @@ required = [
     '!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
     'return strafeElapsed >= 0 && strafeElapsed <= 3;',
     'self.tickCount >= vs2$strafeStartTick + 4',
-    'vs2$jumpGroundLostAfterFall',
-    'vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround()',
-    'vs2$jumpFallingSeen && vs2$jumpGroundLostAfterFall && self.onGround()',
+    'vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005',
     'self.tickCount <= vs2$jumpStartTick + 1',
 ]
 missing = [token for token in required if token not in source]
@@ -141,4 +132,4 @@ for forbidden in [
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 fixture refinement: bounds wall strafe before jump, preserves settled native start, and accepts post-request ground loss")
+print("M1 fixture refinement: bounds wall strafe before jump, preserves settled native start, and restores Create-compatible native landing observation")

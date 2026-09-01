@@ -7,9 +7,13 @@ client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client
 source = fixture_input.read_text(encoding="utf-8")
 probe_source = client_probe.read_text(encoding="utf-8")
 
-# Keep ordinary Minecraft right-strafe aimed at the verified carriage side wall.
+# Production-world #610 proved yaw +90 sends ordinary right-strafe from local Z=-1.899
+# across the negative edge of the verified floor: Entity.move reaches local Z=-2.049 and
+# onGround immediately becomes false. Aim the same vanilla right-strafe toward positive local Z,
+# across the supported carriage interior instead of off its finite floor edge. Test orientation
+# only; no player position/velocity, collision, carry, train, or world state is synthesized.
 anchor = '''        client.options.keyLeft.setDown(false);\n        client.options.keyRight.setDown(strafeWindow);'''
-replacement = '''        client.options.keyLeft.setDown(false);\n        if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE) {\n            self.setYRot(90.0F);\n        }\n        client.options.keyRight.setDown(strafeWindow);'''
+replacement = '''        client.options.keyLeft.setDown(false);\n        if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE) {\n            self.setYRot(-90.0F);\n        }\n        client.options.keyRight.setDown(strafeWindow);'''
 if source.count(anchor) != 2:
     raise SystemExit("M1 strafe alignment expected two fixture KeyMapping sites")
 source = source.replace(anchor, replacement)
@@ -109,7 +113,7 @@ source = source.replace(jump_pulse_anchor, jump_pulse_replacement)
 
 required_source = [
     'if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE)',
-    'self.setYRot(90.0F)',
+    'self.setYRot(-90.0F)',
     'client.options.keyRight.setDown(strafeWindow)',
     '!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
     'return strafeElapsed >= 0 && strafeElapsed <= 3;',
@@ -151,4 +155,4 @@ for forbidden in [
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 fixture refinement: waits for three settled native frames and gates jump on live active-carriage support")
+print("M1 fixture refinement: aims native strafe across supported floor and gates jump on live active-carriage support")

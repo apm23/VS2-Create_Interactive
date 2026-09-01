@@ -104,8 +104,8 @@ if probe_source.count(hard_walk_gate) != hard_walk_gate_count:
     raise SystemExit("Phase 201 failed to preserve every hard 32-tick walk acquisition gate")
 
 class_anchor = "public final class GateEClientProbe implements ClientModInitializer {\n"
-field_insert = class_anchor + "    private boolean vs2Phase201NativeAcquired;\n"
-if "private boolean vs2Phase201NativeAcquired;" not in probe_source:
+field_insert = class_anchor + "    private static boolean vs2Phase201NativeAcquired;\n"
+if "private static boolean vs2Phase201NativeAcquired;" not in probe_source:
     if probe_source.count(class_anchor) != 1:
         raise SystemExit("Phase 201 expected one GateE client class declaration for native-acquisition latch")
     probe_source = probe_source.replace(class_anchor, field_insert, 1)
@@ -145,7 +145,7 @@ if retarget_new not in probe_source:
 required_fixture = [
     "vs2.phase170NativeContactApplicationTick",
     "Integer.toString(player.tickCount).equals",
-    "private boolean vs2Phase201NativeAcquired;",
+    "private static boolean vs2Phase201NativeAcquired;",
     "vs2Phase201NativeAcquired = true;",
     "fixtureContactAcquireTicks < 32",
     "fixtureContactAcquireTicks >= 32",

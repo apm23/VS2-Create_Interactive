@@ -62,6 +62,12 @@ runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase202.py")), ru
 # to the existing 32-attempt ceiling; walk readiness remains unassisted only on exact native-contact
 # ticks or after that ceiling. Harness-only: no player motion, collision response, carry vector,
 # train/world state, or VS2 physics behavior is changed.
+#
+# Production-world #613 proves this tick-fresh rewrite must not relax Phase194/203's separate hard
+# 32-tick walk-start acquisition invariant. The old global >=32 replacement also rewrote
+# (!productionSmokeFixture || fixtureContactAcquireTicks >= 32), allowing exact native contact to
+# start locomotion around tick 18 and contaminate the standing-carry verifier. Protect that existing
+# walk gate while rewriting the acquisition/unassisted boundaries, then restore it unchanged.
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 probe_source = client_probe.read_text(encoding="utf-8")
 old_acquire = "fixtureContactAcquireTicks < 32"
@@ -72,19 +78,29 @@ new_acquire = '''(fixtureContactAcquireTicks < 32
 new_unassisted = '''(fixtureContactAcquireTicks >= 32
             || Integer.toString(player.tickCount).equals(
                 System.getProperty("vs2.phase170NativeContactApplicationTick")))'''
+hard_walk_gate = "(!productionSmokeFixture || fixtureContactAcquireTicks >= 32)"
+protected_walk_gate = "(!productionSmokeFixture || VS2_PHASE201_HARD_WALK_ACQUIRE)"
+hard_walk_gate_count = probe_source.count(hard_walk_gate)
+if hard_walk_gate_count < 1:
+    raise SystemExit("Phase 201 expected the Phase194/203 hard 32-tick walk acquisition gate")
+probe_source = probe_source.replace(hard_walk_gate, protected_walk_gate)
 acquire_count = probe_source.count(old_acquire)
 unassisted_count = probe_source.count(old_unassisted)
-if acquire_count < 2 or unassisted_count < 2:
+if acquire_count < 2 or unassisted_count < 1:
     raise SystemExit(
-        f"Phase 201 expected cumulative 32-attempt fixture boundaries, found acquire={acquire_count} unassisted={unassisted_count}"
+        f"Phase 201 expected cumulative fixture boundaries after protecting walk gate, found acquire={acquire_count} unassisted={unassisted_count}"
     )
 probe_source = probe_source.replace(old_acquire, new_acquire)
 probe_source = probe_source.replace(old_unassisted, new_unassisted)
+probe_source = probe_source.replace(protected_walk_gate, hard_walk_gate)
+if probe_source.count(hard_walk_gate) != hard_walk_gate_count:
+    raise SystemExit("Phase 201 failed to preserve every hard 32-tick walk acquisition gate")
 required_fixture = [
     "vs2.phase170NativeContactApplicationTick",
     "Integer.toString(player.tickCount).equals",
     "fixtureContactAcquireTicks < 32",
     "fixtureContactAcquireTicks >= 32",
+    hard_walk_gate,
 ]
 missing_fixture = [token for token in required_fixture if token not in probe_source]
 if missing_fixture:
@@ -97,4 +113,4 @@ for forbidden in [
     if forbidden in new_acquire + new_unassisted:
         raise SystemExit("Phase 201 fixture-boundary alignment introduced forbidden gameplay mutation")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("Phase 201: fixture acquisition ignores stale native-contact state and stops only on tick-fresh Create contact or the 32-attempt ceiling")
+print("Phase 201: tick-fresh acquisition stays bounded while the proven 32-tick walk-start gate remains hard")

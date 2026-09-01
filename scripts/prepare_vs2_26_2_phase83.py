@@ -19,8 +19,12 @@ dragger_source = entity_dragger.read_text(encoding="utf-8")
 # player and the current-frame broadphase test necessarily became false. Preserve the exact supported
 # baseline carriage as a bounded airborne reference frame for up to 20 ticks. This is a reference-
 # space lease only: Create still owns the carriage transforms and VS2 EntityDragger applies the
-# previous->current frame transform. No synthetic velocity, gravity, collision response, train state,
-# or world state is added.
+# previous->current frame transform. Production-world #555 proved the previous implementation passed
+# prevAnchor=true to BOTH transform calls. Create-Fly's AbstractContraptionEntity defines that flag as
+# selecting getPrevAnchorVec(), so the supposed current-world target still used the previous anchor and
+# the player lost exactly one carriage frame-step per tick while the adapter logged as active. Use the
+# previous anchor only for world->local, and the current anchor for local->world. No synthetic velocity,
+# gravity, collision response, train state, or world state is added.
 dragger_anchor = "object EntityDragger {\n"
 dragger_helper = r'''object EntityDragger {
     /**
@@ -120,11 +124,11 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
                     Vec3 phase83PreviousLocal = (Vec3) phase83ToPreviousLocal.invoke(
                         carriage, phase83PreviousReference, 0.0f, true);
                     Vec3 phase83CurrentTarget = (Vec3) phase83ToCurrentWorld.invoke(
-                        carriage, phase83PreviousLocal, 1.0f, true);
+                        carriage, phase83PreviousLocal, 1.0f, false);
                     org.valkyrienskies.mod.common.util.EntityDragger.reanchorEntityWithExternalFrame(
                         player, phase83CurrentTarget);
                     LOGGER.info(
-                        "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_age={} airborne_native_lease={} supported_baseline_age={} airborne_supported_baseline_lease={} current_envelope={} native_frame_eligible=true external_reference_frame=true create_authoritative_transform=true vs2_entity_dragger=true",
+                        "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_age={} airborne_native_lease={} supported_baseline_age={} airborne_supported_baseline_lease={} current_envelope={} previous_anchor_to_current_anchor=true native_frame_eligible=true external_reference_frame=true create_authoritative_transform=true vs2_entity_dragger=true",
                         carriage.getId(), player.tickCount, phase81PhysicalSupport, !player.onGround(), phase81VerticalGap, player.onGround(),
                         phase83NativeApplicationAge, phase83AirborneNativeLease, phase83SupportedBaselineAge,
                         phase83AirborneSupportedBaselineLease, phase83CurrentEnvelopeEligible);
@@ -191,10 +195,13 @@ required = [
     'Boolean.getBoolean("vs2.createCarryCompat")',
     '"toLocalVector", Vec3.class, float.class, boolean.class',
     '"toGlobalVector", Vec3.class, float.class, boolean.class',
+    "carriage, phase83PreviousReference, 0.0f, true",
+    "carriage, phase83PreviousLocal, 1.0f, false",
     "phase83PreviousReference",
     "phase83PreviousLocal",
     "phase83CurrentTarget",
     "EntityDragger.reanchorEntityWithExternalFrame",
+    "previous_anchor_to_current_anchor=true",
     "external_reference_frame=true",
     "create_authoritative_transform=true",
     "vs2_entity_dragger=true",
@@ -231,7 +238,7 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 entity_dragger.write_text(dragger_source, encoding="utf-8")
-print("Phase 85: keeps the exact supported Create carriage as a bounded VS2 reference frame through airborne gaps; Create transform remains authoritative and no synthetic velocity is added")
+print("Phase 85: maps the previous Create anchor into the current Create anchor before VS2 EntityDragger reanchor; no synthetic velocity is added")
 
 # Phase 86 separates verified compatibility movement from archived-save fixture normalization.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase86.py")), run_name="__main__")

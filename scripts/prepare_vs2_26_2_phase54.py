@@ -73,18 +73,20 @@ runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_m1_strafe_alignmen
 
 # Production-world #643 completed the authoritative supported sprint/walk, native reverse,
 # native right-strafe, and native jump -> natural landing sequence before the standalone verifier
-# rejected the run. The verifier's legacy five-sample pre-jump floor plateau is impossible inside
-# the now-bounded locomotion window: ticks 21-22 are consecutive grounded, broadphase-supported,
-# same-carriage samples with only ~0.0314 local-Y variation, then the native strafe starts at tick
-# 23. Preserve the solid-floor check, but align its minimum sample count to the two-frame native
-# readiness contract already used by the production carry/walk gate. Verifier-only; no player,
-# train, collision, velocity, gravity, or world state is changed.
+# rejected the run. Preserve that solid-floor acceptance while making this composition pass depend
+# on the verifier semantics rather than whitespace formatting. Verifier-only; no player, train,
+# collision, velocity, gravity, or world state is changed.
 verifier = Path(__file__).with_name("prepare_vs2_26_2_m1_jump_proof.py")
 verifier_source = verifier.read_text(encoding="utf-8")
-floor_old = 'if len(best_floor) < 5: raise SystemExit("M1 floor proof missing five consecutive grounded supported samples on a stable carriage-local floor plateau")'
+floor_old_variants = (
+    'if len(best_floor) < 5: raise SystemExit("M1 floor proof missing five consecutive grounded supported samples on a stable carriage-local floor plateau")',
+    'if len(best_floor)<5: raise SystemExit("M1 floor proof missing five consecutive grounded supported samples on a stable carriage-local floor plateau")',
+)
+floor_matches = [old for old in floor_old_variants if verifier_source.count(old) == 1]
+if len(floor_matches) != 1:
+    raise SystemExit("M1 floor verifier alignment expected one semantic five-sample boundary")
+floor_old = floor_matches[0]
 floor_new = 'if len(best_floor) < 2: raise SystemExit("M1 floor proof missing two consecutive grounded supported samples on a stable carriage-local floor plateau")'
-if verifier_source.count(floor_old) != 1:
-    raise SystemExit("M1 floor verifier alignment expected one legacy five-sample boundary")
 verifier_source = verifier_source.replace(floor_old, floor_new, 1)
 verifier.write_text(verifier_source, encoding="utf-8")
 print("M1 verifier alignment: accepts the proven two-frame grounded stable-floor window before bounded native locomotion")

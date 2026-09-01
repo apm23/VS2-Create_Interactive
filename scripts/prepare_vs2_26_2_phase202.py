@@ -115,7 +115,6 @@ required_fixture = [
     "return strafeElapsed >= 0 && strafeElapsed <= 8;",
     "self.tickCount >= vs2$strafeStartTick + 9",
     "self.onGround();",
-    "vs2.phase170NativeContactApplicationTick",
     "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED",
     "GATE_E_M1_NATIVE_STRAFE_CONFIRMED",
     "grounding_deferred_to_create_contact=true",

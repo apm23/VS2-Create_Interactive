@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate native M1 locomotion plus real carriage wall collision from production-world smoke."""
+"""Validate native M1 locomotion plus real carriage floor/wall collision from production-world smoke."""
 import math
 import re
 import sys
@@ -141,6 +141,35 @@ for match in continuity_pattern.finditer(text):
         match.group(6) == "true", match.group(7) == "true", match.group(8) == "true",
     ))
 
+# A grounded flag alone is not enough for M1: the player must stay on the same carriage-local
+# floor plane while native walk/reverse/strafe input runs. Harden the existing real-world proof
+# without adding telemetry or touching movement: require a consecutive supported pre-jump segment
+# with no material vertical sink/drift. This is verifier-only and consumes the already-emitted
+# carriage-local continuity samples.
+floor_window = [
+    s for s in samples
+    if walk_tick <= s[0] < request_tick and s[5] and s[6] and s[7]
+]
+best_floor = []
+floor_streak = []
+for sample in floor_window:
+    if not floor_streak:
+        floor_streak = [sample]
+    else:
+        previous = floor_streak[-1]
+        if sample[0] == previous[0] + 1 and sample[1] == previous[1]:
+            floor_streak.append(sample)
+        else:
+            floor_streak = [sample]
+    if len(floor_streak) > len(best_floor):
+        best_floor = list(floor_streak)
+if len(best_floor) < 5:
+    raise SystemExit("M1 floor proof missing five consecutive grounded supported carriage-local samples")
+floor_y = [sample[3] for sample in best_floor]
+floor_y_span = max(floor_y) - min(floor_y)
+if floor_y_span > 0.05:
+    raise SystemExit(f"M1 floor plane did not remain solid during native locomotion: local_y={floor_y}")
+
 # Production-world #552 proves the material train-speed change occurs while the harness is
 # intentionally right-strafing, so requiring a nearly stationary carriage-local player rejects
 # valid native locomotion. Reuse the verifier's existing 0.75-block bounded locomotion limit while
@@ -266,7 +295,8 @@ print(
     "M1_NATIVE_LOCOMOTION_PROOF "
     f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} "
     f"reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} "
-    f"strafe_speed_sq={strafe_speed_sq} wall_solid=true wall_local_z_min={min_z:.6f} "
+    f"strafe_speed_sq={strafe_speed_sq} floor_solid=true floor_samples={len(best_floor)} floor_y_span={floor_y_span:.9f} "
+    f"wall_solid=true wall_local_z_min={min_z:.6f} "
     f"wall_impact_ticks={plateau[0][0]}-{plateau[-1][0]} wall_impact_span={max(impact_z)-min(impact_z):.9f} "
     f"speed_change_stable=true speed_change_ticks={speed_prev[0]}-{speed_now[0]} "
     f"frame_speed={speed_before:.6f}->{speed_after:.6f} speed_change_local_step={speed_local_step:.9f} "

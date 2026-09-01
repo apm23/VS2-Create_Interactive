@@ -93,7 +93,7 @@ active_refresh_replacement = '''            boolean vs2$activeNativeContactRefre
                     && lease != null
                     && age == 1
                     && vs2$nativeApplicationAge == 1
-                    && vs2$recentNativeOwner
+                    && Integer.toString(self.getId()).equals(System.getProperty("vs2.phase170NativeContactApplicationCarriageId"))
                     && player.onGround()
                     && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())) {
                 for (Method method : lease.getClass().getMethods()) {

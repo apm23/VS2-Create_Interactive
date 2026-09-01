@@ -3,7 +3,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
+contact_lease = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinCreateContactLeaseTrace.java"
 source = client_probe.read_text(encoding="utf-8")
+lease_source = contact_lease.read_text(encoding="utf-8")
 
 # Production-world #549 proves standing carry itself is stable on carriage 10 at ticks 31-32,
 # but the later Phase185 readiness gate remains permanently false because it requires a fresh
@@ -26,6 +28,61 @@ if source.count(old) != 1:
     raise SystemExit("Phase 203 expected one Phase194 direct-native candidate")
 source = source.replace(old, new, 1)
 
+# Production-world #585 proves the next M1 boundary directly. The native jump executes through
+# vanilla LocalPlayer (Entity.move applies +0.4199999869 Y), Create applies the exact carriage
+# contact through tick 40, then its collidingEntities lease expires for the airborne player. The
+# player remains in the correct moving reference frame but the native Create contact disappears
+# during descent; it later reacquires a sibling carriage and the player passes through the train
+# floor before landing on world Y=-60. Preserve Create's own already-existing contact lease at its
+# expiry edge while airborne, but only for the exact carriage that itself published native contact
+# within the preceding 20 ticks. We do not manufacture contact age 0, collision normals, movement,
+# velocity or gravity: this only keeps Create's native contact/collision ownership alive across the
+# bounded jump interval, analogous to the existing two-tick grounded lease bridge.
+lease_old = '''            boolean graced = false;
+            if (allowGrace
+                    && Boolean.getBoolean("vs2.createCarryCompat")
+                    && lease != null
+                    && age >= 3
+                    && vs2$leaseGraceTicks < 2
+                    && player.onGround()
+                    && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())) {'''
+lease_new = '''            int vs2$nativeApplicationAge = Integer.MAX_VALUE;
+            String vs2$nativeApplicationTick = System.getProperty(
+                "vs2.phase170NativeContactApplicationTick." + self.getId());
+            if (vs2$nativeApplicationTick != null) {
+                try {
+                    vs2$nativeApplicationAge = player.tickCount - Integer.parseInt(vs2$nativeApplicationTick);
+                } catch (NumberFormatException ignored) {
+                    vs2$nativeApplicationAge = Integer.MAX_VALUE;
+                }
+            }
+            boolean vs2$airborneNativeLease = !player.onGround()
+                && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;
+            int vs2$maxGraceTicks = vs2$airborneNativeLease ? 20 : 2;
+
+            boolean graced = false;
+            if (allowGrace
+                    && Boolean.getBoolean("vs2.createCarryCompat")
+                    && lease != null
+                    && age >= 3
+                    && vs2$leaseGraceTicks < vs2$maxGraceTicks
+                    && (player.onGround() || vs2$airborneNativeLease)
+                    && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())) {'''
+if "vs2$airborneNativeLease" not in lease_source:
+    if lease_source.count(lease_old) != 1:
+        raise SystemExit("Phase 203 expected one Phase78 native Create lease boundary")
+    lease_source = lease_source.replace(lease_old, lease_new, 1)
+
+lease_log_old = '''                        "GATE_E_CREATE_CONTACT_LEASE_GRACE carriage_id={} player_tick={} grace_tick={}/2 native_create_lease=true bounded_bridge=true adapter_only=true",
+                        self.getId(), player.tickCount, vs2$leaseGraceTicks);'''
+lease_log_new = '''                        "GATE_E_CREATE_CONTACT_LEASE_GRACE carriage_id={} player_tick={} grace_tick={}/{} airborne={} native_application_age={} native_create_lease=true bounded_bridge=true adapter_only=true",
+                        self.getId(), player.tickCount, vs2$leaseGraceTicks, vs2$maxGraceTicks,
+                        vs2$airborneNativeLease, vs2$nativeApplicationAge);'''
+if lease_log_old in lease_source:
+    lease_source = lease_source.replace(lease_log_old, lease_log_new, 1)
+elif "native_application_age={}" not in lease_source:
+    raise SystemExit("Phase 203 could not update Create lease-grace accounting")
+
 required = [
     "phase203CarryHealthCandidate",
     "phase154SupportNow",
@@ -40,14 +97,30 @@ missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 203 lost bounded carry-health walk-start anchors: " + ", ".join(missing))
 
-inserted = new
+lease_required = [
+    "vs2$airborneNativeLease",
+    "vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20",
+    "vs2$maxGraceTicks = vs2$airborneNativeLease ? 20 : 2",
+    "vs2$leaseGraceTicks < vs2$maxGraceTicks",
+    "player.onGround() || vs2$airborneNativeLease",
+    "method.invoke(lease, Integer.valueOf(2))",
+    "native_application_age={}",
+    "native_create_lease=true",
+    "bounded_bridge=true",
+]
+lease_missing = [token for token in lease_required if token not in lease_source]
+if lease_missing:
+    raise SystemExit("Phase 203 lost bounded airborne native Create lease anchors: " + ", ".join(lease_missing))
+
+inserted = new + lease_new + lease_log_new
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
-    "cir.setReturnValue(",
+    "cir.setReturnValue(", "method.invoke(lease, Integer.valueOf(0))",
 ]:
     if forbidden in inserted:
         raise SystemExit("Phase 203 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 203: arms direct-native walk from bounded proven carry health while retaining exact next-tick same-carriage confirmation")
+contact_lease.write_text(lease_source, encoding="utf-8")
+print("Phase 203: retains direct-native walk gating and keeps Create native contact lease bounded across the M1 jump")

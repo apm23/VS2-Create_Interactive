@@ -29,6 +29,12 @@ if previous_native_scope not in probe_source:
     raise SystemExit("Phase 202 expected the Phase189 sibling-only native-gap boundary")
 probe_source = probe_source.replace(previous_native_scope, previous_native_same_or_sibling, 1)
 
+# Production-world #529 proves the fixture can request jump four ticks after strafe while
+# Create has not applied genuine ContraptionColliderClient carriage contact since that strafe.
+# The Phase83 registerColliding lease is intentionally not treated as equivalent: local carriage
+# X still drifted until native Create application resumed. Keep the fixture's vanilla jump pulse
+# dormant until the immediately previous tick has genuine native Create contact. This changes
+# harness sequencing only; it does not move the player or synthesize carry/collision/physics.
 timing_replacements = [
     (
         '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;\n        return elapsed >= 8 && elapsed <= 11;''',
@@ -40,7 +46,7 @@ timing_replacements = [
     ),
     (
         '''        return self.tickCount >= vs2$walkConfirmedTick + 24;''',
-        '''        return vs2$strafeStartTick != Integer.MIN_VALUE && self.tickCount >= vs2$strafeStartTick + 4;''',
+        '''        return vs2$strafeStartTick != Integer.MIN_VALUE\n            && self.tickCount >= vs2$strafeStartTick + 4\n            && Integer.toString(self.tickCount - 1).equals(\n                System.getProperty("vs2.phase170NativeContactApplicationTick"));''',
     ),
 ]
 for old, new in timing_replacements:
@@ -104,6 +110,7 @@ required_fixture = [
     "return elapsed >= 1 && elapsed <= 4;",
     "return elapsed >= 2 && elapsed <= 5;",
     "self.tickCount >= vs2$strafeStartTick + 4",
+    "vs2.phase170NativeContactApplicationTick",
     "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED",
     "GATE_E_M1_NATIVE_STRAFE_CONFIRMED",
     "grounding_deferred_to_create_contact=true",

@@ -50,13 +50,14 @@ source = source.replace(
     1,
 )
 
-# Phase 83 now retires the legacy LocalPlayer replay before Phase 87 runs. Only the
-# remaining native-contact compatibility guard should be widened for explicit
-# production opt-in; the disabled replay guard must stay disabled.
+# Phase 83 retires the legacy LocalPlayer replay before Phase 87 runs. Only the
+# remaining native-contact compatibility guard is widened for explicit production
+# opt-in. Phase 83 now names its supported-or-airborne native carriage membership
+# predicate phase83NativeFrameEligible; keep that native predicate intact here.
 old_carry_guard = '''            if (carryBaselineCaptured
-                && phase81PhysicalSupport'''
+                && phase83NativeFrameEligible'''
 new_carry_guard = '''            if ((carryBaselineCaptured || explicitCarryCompat)
-                && phase81PhysicalSupport'''
+                && phase83NativeFrameEligible'''
 carry_guard_count = source.count(old_carry_guard)
 if carry_guard_count < 1:
     raise SystemExit(f"Phase 87 expected the remaining native-contact production guard, found {carry_guard_count}")
@@ -80,6 +81,7 @@ source = source.replace(old_support_log, new_support_log, 1)
 
 production_required = [
     '(carryBaselineCaptured || explicitCarryCompat)',
+    'phase83NativeFrameEligible',
     'phase81PhysicalSupport',
     'collisionEligible',
     'broadphaseOverlap',

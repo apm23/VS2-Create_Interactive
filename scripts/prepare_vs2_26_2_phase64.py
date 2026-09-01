@@ -24,10 +24,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Adapter around the actual Create Fly client collision path. Create remains authoritative for
  * carriage contact and horizontal carry. When vanilla LocalPlayer has a real upward jump velocity,
  * however, a same-tick moving-contraption contact must not rewrite that airborne state back to
- * grounded or snap the player's Y to Create's grounded contact correction. Preserve vanilla's
- * rising Y only at that first Create setPos call while still forwarding Create's X/Z and leaving
- * every grounded/non-rising collision unchanged. No synthetic velocity, gravity, carry vector,
- * train state, or world state is introduced here.
+ * grounded; doing so suppresses vanilla gravity on the following ticks and pins the player at the
+ * jump apex. Preserve vanilla airborne semantics only for a rising LocalPlayer while the explicit
+ * VS2/Create carry compatibility mode is enabled. No position, velocity, gravity, collision vector,
+ * train state, or world state is synthesized here.
  */
 @Mixin(targets = "com.zurrtum.create.client.content.contraptions.ContraptionColliderClient", remap = false)
 public abstract class MixinContraptionColliderClientTrace {
@@ -52,24 +52,6 @@ public abstract class MixinContraptionColliderClientTrace {
             && "net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName())
             && entity.getDeltaMovement().y > 0.05;
         entity.setOnGround(onGround && !risingLocalPlayer);
-    }
-
-    @Redirect(
-        method = "collideEntities",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/world/entity/Entity;setPos(DDD)V",
-            ordinal = 0
-        ),
-        remap = false,
-        require = 0
-    )
-    private static void vs2$preserveVanillaRisingYDuringCreateContact(Entity entity, double x, double y, double z) {
-        boolean risingLocalPlayer = Boolean.getBoolean("vs2.createCarryCompat")
-            && "net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName())
-            && entity.getDeltaMovement().y > 0.05
-            && y > entity.getY() + 0.05;
-        entity.setPos(x, risingLocalPlayer ? entity.getY() : y, z);
     }
 }
 ''', encoding="utf-8")
@@ -110,14 +92,12 @@ source = source.replace(old, new, 1)
 trace.write_text(source, encoding="utf-8")
 
 inserted = java.read_text(encoding="utf-8")
-if inserted.count("entity.setPos(") != 1:
-    raise SystemExit("Phase 64 airborne adapter expected exactly one native Create setPos forwarding boundary")
 for forbidden in [
-    "setDeltaMovement(", ".move(", ".teleport(", "setVelocity(",
+    "setPos(", "setDeltaMovement(", ".move(", ".teleport(", "setVelocity(",
     "setBlock(", "syncCarriage(",
 ]:
     if forbidden in inserted:
         raise SystemExit("Phase 64 airborne adapter introduced forbidden gameplay mutation: " + forbidden)
 
-print("Phase 64: keeps Create horizontal carry authoritative while preserving vanilla rising Y across the first grounded contact correction")
+print("Phase 64: keeps Create carry authoritative while preserving vanilla LocalPlayer airborne state on upward jump")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase65.py")), run_name="__main__")

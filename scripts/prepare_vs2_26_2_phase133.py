@@ -18,9 +18,13 @@ source = client_probe.read_text(encoding="utf-8")
 # a later physical-support handoff. Accepting only that one-tick publication-order seam keeps Create
 # authoritative and changes identity/bookkeeping only; it does not synthesize carry or movement.
 # Production-world #580 proved the accepted Phase136 rebase must also sync Phase172's duplicate-native
-# guard, and #612 proved it must update the existing Phase83 airborne reference owner. This remains
-# identity/bookkeeping only: it never applies motion, teleports, sets velocity, alters collision
-# response, or mutates train/world state.
+# guard, and #612 proved it must update the existing Phase83 airborne reference owner. Production-world
+# #674 proves one more identity seam: after a validated physical-support rebase to carriage 10, the
+# global Phase170 owner can still name carriage 8 even though carriage 10 has its own recent native
+# application record. The existing Create-lease adapter consequently lets carriage 10 age out and the
+# stationary player lags behind the moving frame. Sync the global native-owner identity at the already
+# validated baseline handoff; lease extension still independently requires that carriage's own recent
+# native-application tick, so stale siblings cannot inherit the lease. This remains bookkeeping only.
 if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
@@ -76,6 +80,9 @@ if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
         f'{replay_indent}    carryBaselineRebaseTick = player.tickCount;\n'
         f'{replay_indent}    System.setProperty("vs2.phase172WalkActiveCarriageId", Integer.toString(carryBaselineCarriageId));\n'
         f'{replay_indent}    System.setProperty("vs2.phase83SupportedBaselineCarriageId", Integer.toString(carryBaselineCarriageId));\n'
+        f'{replay_indent}    if (System.getProperty("vs2.phase170NativeContactApplicationTick." + carryBaselineCarriageId) != null) {{\n'
+        f'{replay_indent}        System.setProperty("vs2.phase170NativeContactApplicationCarriageId", Integer.toString(carryBaselineCarriageId));\n'
+        f'{replay_indent}    }}\n'
         f'{replay_indent}    carryPlayerX = player.getX();\n'
         f'{replay_indent}    carryPlayerY = player.getY();\n'
         f'{replay_indent}    carryPlayerZ = player.getZ();\n'
@@ -84,7 +91,7 @@ if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
         f'{replay_indent}    carryCarriageZ = carriage.getZ();\n'
         f'{replay_indent}    carryDeltaReported = false;\n'
         f'{replay_indent}    LOGGER.info(\n'
-        f'{replay_indent}        "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE previous_carriage_id={{}} carriage_id={{}} player_tick={{}} physical_support={{}} native_contact_owner={{}} collision_eligible=true broadphase=true on_ground=true previous_baseline_support_lease={{}} settle_one_tick=true identity_only=true phase172_guard_synced=true phase83_frame_owner_synced=true",\n'
+        f'{replay_indent}        "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE previous_carriage_id={{}} carriage_id={{}} player_tick={{}} physical_support={{}} native_contact_owner={{}} collision_eligible=true broadphase=true on_ground=true previous_baseline_support_lease={{}} settle_one_tick=true identity_only=true phase172_guard_synced=true phase83_frame_owner_synced=true native_lease_owner_synced=true",\n'
         f'{replay_indent}        phase136PreviousCarriageId, carriage.getId(), player.tickCount, phase81PhysicalSupport,\n'
         f'{replay_indent}        phase133SoleNativeOwner, phase133PreviousBaselineSupportLease);\n'
         f'{replay_indent}}}\n\n'
@@ -103,6 +110,8 @@ required = [
     "phase133BaselineNativeAppliedRecent",
     "phase133SoleNativeOwner",
     "vs2.phase170NativeContactApplicationTick.",
+    "vs2.phase170NativeContactApplicationCarriageId",
+    "native_lease_owner_synced=true",
     "player.tickCount - 1",
     "carryBaselineCarriageId != carriage.getId()",
     "(!phase133PreviousBaselineSupportLease || phase133SoleNativeOwner)",
@@ -124,7 +133,7 @@ if missing:
     raise SystemExit("Phase 133 lost native-owner sibling handoff anchors: " + ", ".join(missing))
 
 marker_pos = source.index("GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE")
-handoff_slice = source[max(0, marker_pos - 5000):marker_pos + 2000]
+handoff_slice = source[max(0, marker_pos - 6000):marker_pos + 2500]
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     ".put(", ".remove(", "setSchedule", "setTrain", "setVelocity", "syncCarriage(",

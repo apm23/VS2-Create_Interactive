@@ -12,8 +12,11 @@ source = client_probe.read_text(encoding="utf-8")
 # the rest of the walk proof. Treat at most one bounded (<=1.10 block) post-pulse displacement
 # as fixture locomotion accounting while strict support remains valid. Production-world #446
 # later proved that a larger local-frame seam is not itself physical support loss, so this phase
-# must not reintroduce the old >0.75 support-health latch. Fixture bookkeeping only: no movement
-# vector, player/world/train state, collision response or VS2/Create physics behavior is changed.
+# must not reintroduce the old >0.75 support-health latch. Production-world #551 then showed the
+# Phase166 source-rewrite anchor still expected the pre-#550 support predicate; preserve the new
+# first-frame accounting-seam exclusion when inserting the existing delayed-pulse bookkeeping.
+# Fixture bookkeeping only: no movement vector, player/world/train state, collision response or
+# VS2/Create physics behavior is changed.
 
 field_old = '''    private static double phase165WalkPathDistance;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
 field_new = '''    private static double phase165WalkPathDistance;\n    private static boolean phase166FixturePulseConsumed;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
@@ -46,7 +49,7 @@ if "phase166FixturePulseObservation" not in source:
         raise SystemExit("Phase 166 expected exactly one Phase158 locomotion-health hold")
     source = source.replace(health_old, health_new, 1)
 
-guard_old = '''                            if (!phase154SupportNow) {
+guard_old = '''                            if (!phase154SupportNow && !phase156InitialStartFrameSeam) {
                                 phase154WalkSupportHealthy = false;
                             }
                             LOGGER.info(
@@ -62,14 +65,14 @@ guard_new = '''                            boolean phase166FixturePulseStep = pr
                                     "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE player_tick={} carriage_id={} local_step={} max_fixture_pulse_step=1.10 strict_support=true replay_suppression_accounting=true fixture_only=true",
                                     player.tickCount, phase154Carriage.getId(), phase160GuardStep);
                             }
-                            if (!phase154SupportNow) {
+                            if (!phase154SupportNow && !phase156InitialStartFrameSeam) {
                                 phase154WalkSupportHealthy = false;
                             }
                             LOGGER.info(
                                 "GATE_E_PHASE156_WALK_FRAME_GUARD'''
 if "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE" not in source:
     if source.count(guard_old) != 1:
-        raise SystemExit("Phase 166 expected exactly one support-only Phase156/160 frame guard")
+        raise SystemExit("Phase 166 expected exactly one seam-aware Phase156/160 frame guard")
     source = source.replace(guard_old, guard_new, 1)
 
 required = [
@@ -79,7 +82,8 @@ required = [
     "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE",
     "phase160GuardStep > 0.75 && phase160GuardStep <= 1.10",
     "phase166FixturePulseConsumed = true",
-    "if (!phase154SupportNow)",
+    "if (!phase154SupportNow && !phase156InitialStartFrameSeam)",
+    "phase156InitialStartFrameSeam",
     "productionSmokeFixture",
     "phase154WalkStarted && !phase154WalkFinished",
     "GATE_E_PHASE85_CARRY_REPLAY",
@@ -101,4 +105,4 @@ for forbidden in [
         raise SystemExit("Phase 166 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 166: accounts for one bounded delayed fixture pulse while keeping walk support health tied only to actual support loss")
+print("Phase 166: keeps delayed fixture-pulse accounting compatible with the first-frame seam guard")

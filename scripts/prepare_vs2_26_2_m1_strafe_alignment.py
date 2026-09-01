@@ -90,6 +90,19 @@ landing_anchor = 'if (vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY)
 if source.count(landing_anchor) != 1:
     raise SystemExit("M1 landing proof expected the Phase202 falling/onGround settle boundary")
 
+# Production-world #603 proves the native jump observer itself is being switched off too early.
+# The jump starts at tick 44 and native/Create movement subsequently exposes descending deltas
+# (-0.0122 by tick 61, settling below 0.005 by tick 64) while carriage-local continuity remains
+# broadphase/onGround. The existing jumpArmReady predicate is intentionally a pre-jump admission
+# gate based on recent native Create contact; once the jump is already armed, a later contact-age
+# change must not stop observation of that already-authoritative native arc. Keep the arm gate only
+# before vs2$jumpStartTick is assigned. This changes fixture observation lifetime only.
+jump_observer_gate_anchor = '''        boolean jumpArmReady = vs2$jumpArmReady(self);\n        if (!jumpArmReady || vs2$jumpLandedLogged) {'''
+jump_observer_gate_replacement = '''        boolean jumpArmReady = vs2$jumpArmReady(self);\n        if ((vs2$jumpStartTick == Integer.MIN_VALUE && !jumpArmReady) || vs2$jumpLandedLogged) {'''
+if source.count(jump_observer_gate_anchor) != 1:
+    raise SystemExit("M1 jump observer expected one pre-jump native-contact admission gate")
+source = source.replace(jump_observer_gate_anchor, jump_observer_gate_replacement, 1)
+
 # Production-world #592 reached the authoritative jump request but did not always produce the
 # vertical arc, while #591 proved the exact same one-tick KeyMapping path can work. Hold the
 # ordinary vanilla jump KeyMapping for the request tick plus one following tick so normal input
@@ -109,6 +122,7 @@ required = [
     'return strafeElapsed >= 0 && strafeElapsed <= 3;',
     'self.tickCount >= vs2$strafeStartTick + 4',
     'vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005',
+    '(vs2$jumpStartTick == Integer.MIN_VALUE && !jumpArmReady) || vs2$jumpLandedLogged',
     'self.tickCount <= vs2$jumpStartTick + 1',
 ]
 missing = [token for token in required if token not in source]
@@ -132,4 +146,4 @@ for forbidden in [
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 fixture refinement: bounds wall strafe before jump, preserves settled native start, and restores Create-compatible native landing observation")
+print("M1 fixture refinement: keeps native jump observation alive after admission while preserving frozen carry/walk/collision behavior")

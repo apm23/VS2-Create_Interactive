@@ -122,10 +122,10 @@ for match in continuity_pattern.finditer(text):
     ))
 
 # The archived r0v3 carriage fixture has occupied side geometry at local z=-2 around the player.
-# In run #533 the ordinary right-strafe moves the feet from the interior toward that side, then the
-# native Create collision solver stops the player's 0.6-wide box at local z ~= -1.8 instead of
-# allowing it through z=-2. Reuse the existing local continuity + nearby occupied-cell telemetry;
-# no new gameplay movement or collision response is introduced by this verifier.
+# Production-world #534 proves the previous verifier stopped sampling before impact: the supported
+# native strafe begins at tick 27, reaches local z=-1.800100 at tick 32, then remains exactly on
+# that boundary through ticks 33-34. Sample through that already-existing supported plateau instead
+# of extending or synthesizing movement. This is verifier-only; Create collision stays authoritative.
 client_state_pattern = re.compile(
     r"GATE_E_CLIENT_STATE[^\n]*local_support=local_feet=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+);"
     r"[^\n]*nearby_blocks=([^;]*)"
@@ -141,12 +141,12 @@ if not wall_geometry_seen:
     raise SystemExit("M1 wall proof missing occupied carriage side geometry near local z=-2")
 
 before = [s for s in samples if s[0] == strafe_request_tick - 1 and s[5] and s[6] and s[7]]
-after = [s for s in samples if strafe_request_tick <= s[0] <= strafe_request_tick + 4 and s[5] and s[6] and s[7]]
-if not before or len(after) < 3:
+after = [s for s in samples if strafe_request_tick <= s[0] <= strafe_request_tick + 7 and s[5] and s[6] and s[7]]
+if not before or len(after) < 6:
     raise SystemExit("M1 wall proof missing supported carriage-local samples around native right-strafe")
 wall_carriage = after[0][1]
 after = [s for s in after if s[1] == wall_carriage]
-if len(after) < 3 or before[-1][1] != wall_carriage:
+if len(after) < 6 or before[-1][1] != wall_carriage:
     raise SystemExit("M1 wall proof crossed carriage identity during the collision sample")
 start_z = before[-1][4]
 wall_z = [s[4] for s in after]
@@ -154,8 +154,15 @@ if not (start_z > -1.70 and min(wall_z) <= -1.79):
     raise SystemExit(f"M1 right-strafe never reached the carriage side: before_z={start_z} samples={wall_z}")
 if min(wall_z) < -1.82:
     raise SystemExit(f"M1 player penetrated the carriage side wall: local_z_samples={wall_z}")
-if max(wall_z[1:]) - min(wall_z[1:]) > 0.02:
-    raise SystemExit(f"M1 carriage side did not hold a stable collision boundary: local_z_samples={wall_z}")
+impact = [s for s in after if s[4] <= -1.79]
+if len(impact) < 3:
+    raise SystemExit(f"M1 carriage side impact plateau too short: local_z_samples={wall_z}")
+impact = impact[-3:]
+if not (impact[1][0] == impact[0][0] + 1 and impact[2][0] == impact[1][0] + 1):
+    raise SystemExit(f"M1 carriage side impact samples are not consecutive: ticks={[s[0] for s in impact]}")
+impact_z = [s[4] for s in impact]
+if max(impact_z) - min(impact_z) > 0.005:
+    raise SystemExit(f"M1 carriage side did not hold a stable collision boundary: impact_z={impact_z}")
 
 post_land = [s for s in samples if s[0] > landed_tick]
 best_streak = []
@@ -185,6 +192,7 @@ print(
     f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} "
     f"reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} "
     f"strafe_speed_sq={strafe_speed_sq} wall_solid=true wall_local_z_min={min(wall_z):.6f} "
+    f"wall_impact_ticks={impact[0][0]}-{impact[-1][0]} wall_impact_span={max(impact_z)-min(impact_z):.9f} "
     f"jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} duration={duration} delta_y={delta_y} "
     f"natural_fall=true replay_free=true recovery_free=true post_land_stable_samples={len(best_streak)}"
 )

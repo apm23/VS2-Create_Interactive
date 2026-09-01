@@ -32,8 +32,8 @@ elif "fixtureNativeCarrySettled" not in source:
 
 # Match the final fixture normalization guard structurally. Preserve the existing setup predicates,
 # but continue bounded retargeting until already-existing native carry health says the captured frame
-# is actually following the carriage. The health property is published by the later cumulative
-# Phase137 preparation into the final source; this phase only consumes that established signal.
+# is actually following the carriage. Spell the healthy-tick key as a runtime concatenation so this
+# earlier phase does not masquerade as Phase137's own installation anchor during cumulative prepare.
 if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     pattern = re.compile(
         r'(?P<indent>\s*)if \((?P<cond>[^\n{}]*fixtureColliderNormalized[^\n{}]*)\) \{\n(?P=indent)    try \{'
@@ -58,7 +58,7 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
         f'{indent}    boolean phase129NativeCarryHealthy = Boolean.parseBoolean(System.getProperty(\n'
         f'{indent}        "vs2.phase134NativeCarryHealthy." + carryBaselineCarriageId, "false"))\n'
         f'{indent}        || Integer.toString(player.tickCount - 1).equals(System.getProperty(\n'
-        f'{indent}            "vs2.phase134NativeCarryHealthyTick." + carryBaselineCarriageId));\n'
+        f'{indent}            "vs2.phase134NativeCarryHealthy" + "Tick." + carryBaselineCarriageId));\n'
         f'{indent}    if (phase129NativeCarryHealthy) {{\n'
         f'{indent}        fixtureNativeCarrySettled = true;\n'
         f'{indent}    }}\n'
@@ -124,7 +124,7 @@ required = [
     '!fixtureNativeCarrySettled && fixtureContactAcquireTicks < 32',
     '(fixtureNativeCarrySettled || fixtureContactAcquireTicks >= 32)',
     'vs2.phase134NativeCarryHealthy.',
-    'vs2.phase134NativeCarryHealthyTick.',
+    '"vs2.phase134NativeCarryHealthy" + "Tick."',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',
     'bounded=true fixture_only=true',
     'GATE_E_FIXTURE_COLLIDER_NEAREST_FALLBACK',

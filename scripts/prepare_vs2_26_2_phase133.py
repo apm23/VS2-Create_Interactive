@@ -11,14 +11,16 @@ source = client_probe.read_text(encoding="utf-8")
 # Create's native contact application becomes uniquely owned by sibling carriage 4, followed by 2;
 # the stale frame then diverges by tens of blocks even though Create continues producing native
 # contact motion. Prefer strict physical-support handoff as before. Additionally permit a baseline
-# identity rebase when the candidate sibling has a native contact application this exact tick and
-# the old baseline does not. Production-world #580 then proved the accepted Phase136 rebase can
-# move the baseline from the original walk carriage while Phase172 still guards the stale walk id;
-# sync that existing duplicate-native guard to the accepted baseline identity at the same boundary.
-# Production-world #612 then proved the same accepted handoff must also update the existing Phase83
-# airborne reference owner; otherwise the later vanilla jump has a valid Create contact lease but
-# never enters the VS2 external-frame bridge. This remains identity/bookkeeping only: it never
-# applies motion, teleports, sets velocity, alters collision response, or mutates train/world state.
+# identity rebase when the candidate sibling has a native contact application from the exact current
+# or previous client tick and the old baseline does not at that same sample. Production-world #662
+# proves the GateE carriage loop can execute before Create publishes the new owner's same-tick native
+# contact: carriage 5 starts native application at tick 24 while the baseline remains stale on 7 until
+# a later physical-support handoff. Accepting only that one-tick publication-order seam keeps Create
+# authoritative and changes identity/bookkeeping only; it does not synthesize carry or movement.
+# Production-world #580 proved the accepted Phase136 rebase must also sync Phase172's duplicate-native
+# guard, and #612 proved it must update the existing Phase83 airborne reference owner. This remains
+# identity/bookkeeping only: it never applies motion, teleports, sets velocity, alters collision
+# response, or mutates train/world state.
 if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
@@ -51,13 +53,17 @@ if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
         f'{replay_indent}boolean phase133PreviousBaselineSupportLease = carryBaselineCaptured\n'
         f'{replay_indent}    && Integer.toString(carryBaselineCarriageId).equals(System.getProperty("vs2.phase133BaselineSupportCarriageId"))\n'
         f'{replay_indent}    && Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase133BaselineSupportTick"));\n'
-        f'{replay_indent}boolean phase133CandidateNativeAppliedNow = Integer.toString(player.tickCount).equals(\n'
-        f'{replay_indent}    System.getProperty("vs2.phase170NativeContactApplicationTick." + carriage.getId()));\n'
-        f'{replay_indent}boolean phase133BaselineNativeAppliedNow = carryBaselineCaptured && Integer.toString(player.tickCount).equals(\n'
-        f'{replay_indent}    System.getProperty("vs2.phase170NativeContactApplicationTick." + carryBaselineCarriageId));\n'
+        f'{replay_indent}String phase133CandidateNativeTick = System.getProperty("vs2.phase170NativeContactApplicationTick." + carriage.getId());\n'
+        f'{replay_indent}String phase133BaselineNativeTick = carryBaselineCaptured\n'
+        f'{replay_indent}    ? System.getProperty("vs2.phase170NativeContactApplicationTick." + carryBaselineCarriageId) : null;\n'
+        f'{replay_indent}boolean phase133CandidateNativeAppliedRecent = Integer.toString(player.tickCount).equals(phase133CandidateNativeTick)\n'
+        f'{replay_indent}    || Integer.toString(player.tickCount - 1).equals(phase133CandidateNativeTick);\n'
+        f'{replay_indent}boolean phase133BaselineNativeAppliedRecent = carryBaselineCaptured\n'
+        f'{replay_indent}    && (Integer.toString(player.tickCount).equals(phase133BaselineNativeTick)\n'
+        f'{replay_indent}        || Integer.toString(player.tickCount - 1).equals(phase133BaselineNativeTick));\n'
         f'{replay_indent}boolean phase133SoleNativeOwner = carryBaselineCaptured\n'
         f'{replay_indent}    && carryBaselineCarriageId != carriage.getId()\n'
-        f'{replay_indent}    && phase133CandidateNativeAppliedNow && !phase133BaselineNativeAppliedNow;\n'
+        f'{replay_indent}    && phase133CandidateNativeAppliedRecent && !phase133BaselineNativeAppliedRecent;\n'
         f'{replay_indent}boolean phase136SupportedSiblingHandoff = productionSmoke && explicitCarryCompat\n'
         f'{replay_indent}    && carryBaselineCaptured && carryBaselineCarriageId != carriage.getId()\n'
         f'{replay_indent}    && (!phase133PreviousBaselineSupportLease || phase133SoleNativeOwner)\n'
@@ -91,10 +97,13 @@ required = [
     "vs2.phase133BaselineSupportTick",
     "vs2.phase133BaselineSupportCarriageId",
     "phase133PreviousBaselineSupportLease",
-    "phase133CandidateNativeAppliedNow",
-    "phase133BaselineNativeAppliedNow",
+    "phase133CandidateNativeTick",
+    "phase133BaselineNativeTick",
+    "phase133CandidateNativeAppliedRecent",
+    "phase133BaselineNativeAppliedRecent",
     "phase133SoleNativeOwner",
     "vs2.phase170NativeContactApplicationTick.",
+    "player.tickCount - 1",
     "carryBaselineCarriageId != carriage.getId()",
     "(!phase133PreviousBaselineSupportLease || phase133SoleNativeOwner)",
     "(phase81PhysicalSupport || phase133SoleNativeOwner)",
@@ -115,7 +124,7 @@ if missing:
     raise SystemExit("Phase 133 lost native-owner sibling handoff anchors: " + ", ".join(missing))
 
 marker_pos = source.index("GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE")
-handoff_slice = source[max(0, marker_pos - 4400):marker_pos + 2000]
+handoff_slice = source[max(0, marker_pos - 5000):marker_pos + 2000]
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
     ".put(", ".remove(", "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
@@ -124,4 +133,4 @@ for forbidden in [
         raise SystemExit("Phase 133 found forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 133: rebases frame identity and synchronizes the existing airborne frame owner")
+print("Phase 133: rebases frame identity from current/previous-tick Create-native owner and synchronizes existing frame guards")

@@ -27,6 +27,10 @@ source = client_probe.read_text(encoding="utf-8")
 # Production-world #576 then proved the first implementation spliced statements into the argument
 # list of LOGGER.info, producing an illegal-start-of-expression compile failure. Replace the complete
 # LOGGER.info call so the refresh executes immediately before the logger rather than inside it.
+# Production-world #577 proved the remaining boundary bug: the current collider already exposed
+# xz_inside_any=true and vertical_gap=0/0.0001, but the parser handed Double.parseDouble the entire
+# remaining collider suffix (for example "0.0;lowest_bottom_over_head=..."). Bound the value at the
+# next semicolon so the existing strict-support semantics consume the actual current Create gap.
 old_log = '''                            LOGGER.info(
                                 "GATE_E_PHASE185_SETTLED_WALK_READY player_tick={} carriage_id={} ready_now={} ready_ticks={} baseline_rebase_age={} strict_support={} phase134_fresh_native={} exact_native_application={} balance_measurement_fresh={} direct_native_fallback={} fresh_native_evidence={} fixture_only=true accounting_only=true",
                                 player.tickCount, phase154Carriage.getId(), phase185WalkReadyNow, phase185WalkReadyTicks,
@@ -36,7 +40,11 @@ old_log = '''                            LOGGER.info(
 new_log = '''                            if (simplifiedColliderState.contains(";xz_inside_any=true")) {
                                 int phase193GapIndex = simplifiedColliderState.lastIndexOf(";vertical_gap=");
                                 if (phase193GapIndex >= 0) {
-                                    String phase193GapText = simplifiedColliderState.substring(phase193GapIndex + 14);
+                                    int phase193GapStart = phase193GapIndex + 14;
+                                    int phase193GapEnd = simplifiedColliderState.indexOf(';', phase193GapStart);
+                                    String phase193GapText = phase193GapEnd >= 0
+                                        ? simplifiedColliderState.substring(phase193GapStart, phase193GapEnd)
+                                        : simplifiedColliderState.substring(phase193GapStart);
                                     try {
                                         phase81VerticalGap = Double.parseDouble(phase193GapText);
                                         phase81PhysicalSupport = Double.isFinite(phase81VerticalGap)
@@ -85,7 +93,10 @@ required = [
     "phase185BalanceMeasurementFresh",
     "phase185DirectNativeFallback",
     "phase193GapIndex",
+    "phase193GapStart",
+    "phase193GapEnd",
     "phase193GapText",
+    "simplifiedColliderState.indexOf(';', phase193GapStart)",
     "Double.parseDouble(phase193GapText)",
     "Math.abs(phase81VerticalGap) <= 0.05",
     "xz_inside_any=true",
@@ -104,5 +115,5 @@ for forbidden in [
         raise SystemExit("Phase 193 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 193: refreshes strict support before the complete Phase185 readiness logger; fixture accounting only")
+print("Phase 193: refreshes strict support from the bounded current collider vertical gap; fixture accounting only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase194.py")), run_name="__main__")

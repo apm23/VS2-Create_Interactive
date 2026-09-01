@@ -3,7 +3,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 fixture_input = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
+client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = fixture_input.read_text(encoding="utf-8")
+probe_source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #588 proved the right-strafe KeyMapping executed natively, but the
 # deterministic fixture still had world yaw 0 while the train corridor runs along world X.
@@ -39,6 +41,25 @@ walk_window_count = source.count(walk_window_anchor)
 if walk_window_count != 1:
     raise SystemExit(f"M1 forward-stop expected one headless forward pulse boundary, found {walk_window_count}")
 source = source.replace(walk_window_anchor, walk_window_replacement, 1)
+
+# Production-world #599 proved same-tick Phase194 acceptance can still start the disposable
+# locomotion fixture on the first settled-ready sample: tick 16 had strict support, fresh native
+# Create application and native-health age 0, but ready_ticks was only 1. The next frames contained
+# the startup carriage-frame discontinuity and the walk start prevented the standing-carry verifier
+# from collecting a clean native plateau. Keep the same-tick path required by #594, but require the
+# existing Phase185 settled-ready counter to have survived one prior consecutive frame. This is only
+# fixture acceptance; no movement, collision, carry vector, train/world state, or VS2/Create physics
+# is changed.
+immediate_anchor = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
+                            && phase194NativeAuthoritativeSupport
+                            && phase185NativeApplicationFresh;'''
+immediate_replacement = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
+                            && phase194NativeAuthoritativeSupport
+                            && phase185NativeApplicationFresh
+                            && phase185WalkReadyTicks >= 2;'''
+if probe_source.count(immediate_anchor) != 1:
+    raise SystemExit("M1 settled-start expected one Phase194 immediate native-ready boundary")
+probe_source = probe_source.replace(immediate_anchor, immediate_replacement, 1)
 
 # Production-world #598 proves the jump itself executes natively at tick 34 (Entity.move applies
 # +0.4199999869 Y) and later performs a real negative-Y descent. A world-Y return test is invalid on
@@ -86,6 +107,8 @@ required = [
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("M1 fixture refinement lost anchors: " + ", ".join(missing))
+if 'phase185WalkReadyTicks >= 2' not in probe_source:
+    raise SystemExit("M1 settled-start lost Phase185 two-frame readiness guard")
 
 for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
@@ -93,6 +116,13 @@ for forbidden in [
 ]:
     if forbidden in source:
         raise SystemExit("M1 fixture refinement found forbidden gameplay mutation: " + forbidden)
+for forbidden in [
+    'player.setPos(', 'player.setDeltaMovement(', 'player.move(', '.teleport(',
+    'setBlock(', 'syncCarriage(', 'setVelocity(',
+]:
+    if forbidden in immediate_replacement:
+        raise SystemExit("M1 settled-start found forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
-print("M1 fixture refinement: stops forward input, aligns strafe, holds native jump pulse two ticks, and recognizes fall-to-ground reacquire landing")
+client_probe.write_text(probe_source, encoding="utf-8")
+print("M1 fixture refinement: requires two settled native-ready frames, stops forward input, aligns strafe, holds native jump pulse two ticks, and recognizes fall-to-ground reacquire landing")

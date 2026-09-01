@@ -34,6 +34,23 @@ new_prefix = '''                        boolean phase203CarryHealthCandidate = !
 if source.count(old_prefix) != 1:
     raise SystemExit("Phase 203 expected one Phase194 direct-native candidate prefix")
 source = source.replace(old_prefix, new_prefix, 1)
+
+# Production-world #646 proves the hard 32-attempt acquisition gate has become stale for the
+# direct-native branch. The real train supplied three consecutive Phase185 ready frames at ticks
+# 21-23 with strict support and exact native Create evidence, but input was still withheld; later the
+# player again held a long carriage-local stable interval without ever starting the walk fixture.
+# Allow only the already-settled three-frame native readiness to satisfy this direct fixture gate.
+# The candidate still requires Phase194 proven native carry health, same-baseline support, grounded
+# broadphase collision and the existing immediate native-application checks. This changes only
+# disposable fixture admission; it does not move the player or modify Create/VS2 physics.
+settled_walk_gate_old = '''                            && phase194ProvenNativeCarryHealth
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);'''
+settled_walk_gate_new = '''                            && phase194ProvenNativeCarryHealth
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32 || phase185WalkReadyTicks >= 3);'''
+if source.count(settled_walk_gate_old) != 1:
+    raise SystemExit("Phase 203 expected one hard direct-native walk acquisition gate")
+source = source.replace(settled_walk_gate_old, settled_walk_gate_new, 1)
+
 consumer_anchor = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate'''
 consumer_replacement = '''                        boolean phase194DirectNativeCandidate = phase203CarryHealthCandidate;
                         boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate'''
@@ -172,6 +189,7 @@ required = [
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase194ProvenNativeCarryHealth",
     "fixtureContactAcquireTicks >= 32",
+    "phase185WalkReadyTicks >= 3",
     "phase194ConfirmedDirectNativeReady",
     "phase194PendingWalkAge == 1",
     "phase185NativeApplicationFresh",
@@ -208,7 +226,7 @@ fixture_missing = [token for token in fixture_required if token not in fixture_s
 if fixture_missing:
     raise SystemExit("Phase 203 lost compact native M1 fixture timing anchors: " + ", ".join(fixture_missing))
 
-inserted = new_prefix + consumer_replacement + lease_new + lease_log_new + backward_new + strafe_new + jump_fallback_new
+inserted = new_prefix + settled_walk_gate_new + consumer_replacement + lease_new + lease_log_new + backward_new + strafe_new + jump_fallback_new
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -220,4 +238,4 @@ for forbidden in [
 client_probe.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 203: preserves bounded Create contact ownership, starts native reverse/strafe before fixture support decays, and keeps native aiStep alive through the headless jump arc")
+print("Phase 203: preserves bounded Create contact ownership, admits already-settled native walk readiness, starts native reverse/strafe before fixture support decays, and keeps native aiStep alive through the headless jump arc")

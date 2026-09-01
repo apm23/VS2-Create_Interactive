@@ -49,6 +49,14 @@ source = source.replace(consumer_anchor, consumer_replacement, 1)
 # within the preceding 20 ticks. We do not manufacture contact age 0, collision normals, movement,
 # velocity or gravity: this only keeps Create's native contact/collision ownership alive across the
 # bounded jump interval, analogous to the existing two-tick grounded lease bridge.
+#
+# Production-world #618 proves the same native-ownership boundary now fails while grounded before
+# locomotion starts: exact same-carriage Create applications stop at tick 19, the native lease reaches
+# age 3 at tick 23, and the existing two-tick grounded bridge expires at tick 24 while the player is
+# still onGround and overlapping the same carriage. Keep that already-existing Create lease at age 2
+# for the same bounded 20-tick recent-native window used by airborne continuity. This does not replay
+# motion or synthesize velocity; it preserves Create's own collision/contact ownership only while the
+# player remains grounded, overlapping, and recently owned by that exact carriage.
 lease_old = '''            boolean graced = false;
             if (allowGrace
                     && Boolean.getBoolean("vs2.createCarryCompat")
@@ -69,7 +77,10 @@ lease_new = '''            int vs2$nativeApplicationAge = Integer.MAX_VALUE;
             }
             boolean vs2$airborneNativeLease = !player.onGround()
                 && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;
-            int vs2$maxGraceTicks = vs2$airborneNativeLease ? 20 : 2;
+            boolean vs2$groundedNativeLease = player.onGround()
+                && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())
+                && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;
+            int vs2$maxGraceTicks = (vs2$airborneNativeLease || vs2$groundedNativeLease) ? 20 : 2;
 
             boolean graced = false;
             if (allowGrace
@@ -132,8 +143,9 @@ if missing:
 
 lease_required = [
     "vs2$airborneNativeLease",
+    "vs2$groundedNativeLease",
     "vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20",
-    "vs2$maxGraceTicks = vs2$airborneNativeLease ? 20 : 2",
+    "(vs2$airborneNativeLease || vs2$groundedNativeLease) ? 20 : 2",
     "vs2$leaseGraceTicks < vs2$maxGraceTicks",
     "player.onGround() || vs2$airborneNativeLease",
     "vs2$airborneNativeLease\n                        || self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())",
@@ -144,7 +156,7 @@ lease_required = [
 ]
 lease_missing = [token for token in lease_required if token not in lease_source]
 if lease_missing:
-    raise SystemExit("Phase 203 lost bounded airborne native Create lease anchors: " + ", ".join(lease_missing))
+    raise SystemExit("Phase 203 lost bounded native Create lease anchors: " + ", ".join(lease_missing))
 
 inserted = new_prefix + consumer_replacement + lease_new + lease_log_new
 for forbidden in [
@@ -157,4 +169,4 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
-print("Phase 203: composes after tick-fresh acquisition rewrite and keeps bounded Create jump lease")
+print("Phase 203: preserves bounded Create contact ownership for recent-native grounded and airborne carriage continuity")

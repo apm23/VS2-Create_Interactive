@@ -46,8 +46,12 @@ source = client_probe.read_text(encoding="utf-8")
 # exact same-carriage native Create application before attempt 32, but a 48-attempt acquisition leaves
 # only two unassisted ready ticks before the finite-route frame disappears. Phase129 now stops fixture
 # assistance at 32; require that same completed boundary here before accumulating walk readiness.
-# This is fixture-only acceptance gating; production carry, player motion, collision response, train
-# state, and VS2/Create physics are unchanged.
+# Production-world #675 then proves Phase129 can correctly end assistance earlier when native carry
+# itself settles: acquisition stops at attempt 14 after a healthy native sample, yet this gate remained
+# permanently closed because it required the numeric fallback counter to reach 32. Match Phase129's
+# authoritative release condition instead: readiness is unassisted once native carry has settled OR
+# the hard 32-attempt fallback was reached. Harness acceptance only; gameplay movement/collision is
+# untouched.
 #
 # Production-world #492 proved that rewriting the runtime continuity observation guard here is brittle:
 # cumulative preparation no longer exposes the historical guard shape, so the harness aborts before
@@ -66,14 +70,22 @@ old_phase192_readiness = '''                        boolean phase185WalkReadyNow
                             && phase185FreshNativeEvidence
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 4);'''
-new_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
+old_phase192_acquire_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
                             && phase185FreshNativeEvidence
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32)
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 2);'''
+new_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
+                            && phase81PhysicalSupport
+                            && phase185FreshNativeEvidence
+                            && (!productionSmokeFixture || fixtureNativeCarrySettled || fixtureContactAcquireTicks >= 32)
+                            && (carryBaselineRebaseTick == Integer.MIN_VALUE
+                                || player.tickCount - carryBaselineRebaseTick >= 2);'''
 if new_readiness not in source:
-    if source.count(old_readiness) == 1:
+    if source.count(old_phase192_acquire_readiness) == 1:
+        source = source.replace(old_phase192_acquire_readiness, new_readiness, 1)
+    elif source.count(old_readiness) == 1:
         source = source.replace(old_readiness, new_readiness, 1)
     elif source.count(old_phase192_readiness) == 1:
         source = source.replace(old_phase192_readiness, new_readiness, 1)
@@ -187,7 +199,7 @@ required = [
     "phase185WalkReadyCarriageId == phase154Carriage.getId()",
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2",
-    "fixtureContactAcquireTicks >= 32",
+    "fixtureNativeCarrySettled || fixtureContactAcquireTicks >= 32",
     "!productionSmokeFixture",
     "player.tickCount - carryBaselineRebaseTick >= 2",
     "phase81PhysicalSupport",
@@ -213,4 +225,4 @@ for forbidden in [
         raise SystemExit("Phase 192 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 192: excludes fixture-assisted walk readiness after bounded 32-tick acquisition")
+print("Phase 192: releases walk readiness when Phase129 native carry settlement ends fixture assistance")

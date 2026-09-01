@@ -33,9 +33,13 @@ if old_server not in server:
 server = server.replace(old_server, new_server, 1)
 server_probe.write_text(server, encoding="utf-8")
 
-for source_text in (client, server):
-    if "new Vec3(0.0, -0.08, 0.0)" in source_text or "Vec3(0.0, -0.08, 0.0)" in source_text:
-        raise SystemExit("Phase 70 retained obsolete synthetic downward fixture motion")
+# Guard only the Phase70 replacement itself. The generated probes contain older
+# diagnostic code from earlier phases, so scanning the entire files for a numeric
+# velocity literal can reject unrelated code before the production client even builds.
+if "player.setDeltaMovement(net.minecraft.world.phys.Vec3.ZERO)" not in new_server:
+    raise SystemExit("Phase 70 lost zero-motion server fixture normalization")
+if "player.setDeltaMovement(Vec3.ZERO)" not in client_surface:
+    raise SystemExit("Phase 70 lost zero-motion client fixture normalization")
 
 print("Phase 70: synchronized the fixture on the block-referenced simplified collision surface with zero injected motion; native Create/Minecraft gravity and collision own M1")
 

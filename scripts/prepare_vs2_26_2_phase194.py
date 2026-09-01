@@ -48,6 +48,13 @@ source = client_probe.read_text(encoding="utf-8")
 # native walk path. The legacy readiness path still keeps its historical >=32 rule. This is harness
 # acceptance only: no player position, velocity, collision response, carry vector, train/world state,
 # or VS2/Create physics is changed.
+#
+# Production-world #632 proves the cumulative runtime can publish the complete direct-native arm on tick
+# 32 (fresh Phase134 healthy carry, strict support, exact Create application, matching baseline and
+# authoritative support) yet never enter the immediate walk branch before the next tick crosses to a
+# sibling frame. Consume that already-complete arm predicate directly in the start branch instead of
+# depending on the downstream immediate-ready alias. This is still only fixture KeyMapping acceptance;
+# it does not move the player or alter carry/collision/physics.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -148,6 +155,7 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                                 && ((phase185WalkReadyNow
                                     && phase185WalkReadyCarriageId == phase154Carriage.getId()
                                     && phase185WalkReadyTicks >= 5)
+                                    || (phase194DirectNativeCandidate && phase194NativeAuthoritativeSupport)
                                     || phase194ImmediateHealthyNativeReady
                                     || phase194ConfirmedDirectNativeReady)) {'''
 if source.count(old_branch) != 1:
@@ -174,9 +182,9 @@ required = [
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh",
-    "phase81PhysicalSupport",
     "fixtureContactAcquireTicks >= 32",
     "fixtureNativeCarrySettled",
+    "phase194DirectNativeCandidate && phase194NativeAuthoritativeSupport",
     "native_health_age={}",
     "exact_native_application=true",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM",
@@ -198,5 +206,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: starts M1 after proven native carry handoff or bounded acquisition fallback")
+print("Phase 194: consumes the proven direct-native arm without waiting for a sibling-frame tick")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

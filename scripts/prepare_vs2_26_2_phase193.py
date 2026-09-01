@@ -24,24 +24,24 @@ source = client_probe.read_text(encoding="utf-8")
 # exact Phase81 support semantics but refresh those existing local variables from the current collider
 # state here, immediately before Phase194 consumes them. Fixture readiness only; no player motion,
 # carry vector, collision response, train/world state, Create behavior, or VS2 physics is changed.
-old_log = '''                                "GATE_E_PHASE185_SETTLED_WALK_READY player_tick={} carriage_id={} ready_now={} ready_ticks={} baseline_rebase_age={} strict_support={} phase134_fresh_native={} exact_native_application={} balance_measurement_fresh={} direct_native_fallback={} fresh_native_evidence={} fixture_only=true accounting_only=true",
+# Production-world #576 then proved the first implementation spliced statements into the argument
+# list of LOGGER.info, producing an illegal-start-of-expression compile failure. Replace the complete
+# LOGGER.info call so the refresh executes immediately before the logger rather than inside it.
+old_log = '''                            LOGGER.info(
+                                "GATE_E_PHASE185_SETTLED_WALK_READY player_tick={} carriage_id={} ready_now={} ready_ticks={} baseline_rebase_age={} strict_support={} phase134_fresh_native={} exact_native_application={} balance_measurement_fresh={} direct_native_fallback={} fresh_native_evidence={} fixture_only=true accounting_only=true",
                                 player.tickCount, phase154Carriage.getId(), phase185WalkReadyNow, phase185WalkReadyTicks,
                                 carryBaselineRebaseTick == Integer.MIN_VALUE ? -1 : player.tickCount - carryBaselineRebaseTick,
                                 phase81PhysicalSupport, phase158FreshNativeCarry, phase185NativeApplicationFresh,
                                 phase185BalanceMeasurementFresh, phase185DirectNativeFallback, phase185FreshNativeEvidence);'''
-new_log = '''                                if (simplifiedColliderState.contains(";xz_inside_any=true")) {
-                                    int phase193GapIndex = simplifiedColliderState.lastIndexOf(";vertical_gap=");
-                                    if (phase193GapIndex >= 0) {
-                                        String phase193GapText = simplifiedColliderState.substring(phase193GapIndex + 14);
-                                        try {
-                                            phase81VerticalGap = Double.parseDouble(phase193GapText);
-                                            phase81PhysicalSupport = Double.isFinite(phase81VerticalGap)
-                                                && Math.abs(phase81VerticalGap) <= 0.05;
-                                        } catch (NumberFormatException ignored) {
-                                            phase81VerticalGap = Double.NaN;
-                                            phase81PhysicalSupport = false;
-                                        }
-                                    } else {
+new_log = '''                            if (simplifiedColliderState.contains(";xz_inside_any=true")) {
+                                int phase193GapIndex = simplifiedColliderState.lastIndexOf(";vertical_gap=");
+                                if (phase193GapIndex >= 0) {
+                                    String phase193GapText = simplifiedColliderState.substring(phase193GapIndex + 14);
+                                    try {
+                                        phase81VerticalGap = Double.parseDouble(phase193GapText);
+                                        phase81PhysicalSupport = Double.isFinite(phase81VerticalGap)
+                                            && Math.abs(phase81VerticalGap) <= 0.05;
+                                    } catch (NumberFormatException ignored) {
                                         phase81VerticalGap = Double.NaN;
                                         phase81PhysicalSupport = false;
                                     }
@@ -49,18 +49,22 @@ new_log = '''                                if (simplifiedColliderState.contain
                                     phase81VerticalGap = Double.NaN;
                                     phase81PhysicalSupport = false;
                                 }
-                                LOGGER.info(
-                                    "GATE_E_PHASE185_SETTLED_WALK_READY player_tick={} carriage_id={} ready_now={} ready_ticks={} baseline_rebase_age={} support_now={} strict_support={} vertical_gap={} collider_state={} on_ground={} collision_eligible={} broadphase_overlap={} phase134_fresh_native={} exact_native_application={} balance_measurement_fresh={} direct_native_fallback={} fresh_native_evidence={} fixture_only=true accounting_only=true",
-                                    player.tickCount, phase154Carriage.getId(), phase185WalkReadyNow, phase185WalkReadyTicks,
-                                    carryBaselineRebaseTick == Integer.MIN_VALUE ? -1 : player.tickCount - carryBaselineRebaseTick,
-                                    phase154SupportNow, phase81PhysicalSupport, phase81VerticalGap, simplifiedColliderState,
-                                    player.onGround(), collisionEligible, broadphaseOverlap,
-                                    phase158FreshNativeCarry, phase185NativeApplicationFresh,
-                                    phase185BalanceMeasurementFresh, phase185DirectNativeFallback, phase185FreshNativeEvidence);'''
+                            } else {
+                                phase81VerticalGap = Double.NaN;
+                                phase81PhysicalSupport = false;
+                            }
+                            LOGGER.info(
+                                "GATE_E_PHASE185_SETTLED_WALK_READY player_tick={} carriage_id={} ready_now={} ready_ticks={} baseline_rebase_age={} support_now={} strict_support={} vertical_gap={} collider_state={} on_ground={} collision_eligible={} broadphase_overlap={} phase134_fresh_native={} exact_native_application={} balance_measurement_fresh={} direct_native_fallback={} fresh_native_evidence={} fixture_only=true accounting_only=true",
+                                player.tickCount, phase154Carriage.getId(), phase185WalkReadyNow, phase185WalkReadyTicks,
+                                carryBaselineRebaseTick == Integer.MIN_VALUE ? -1 : player.tickCount - carryBaselineRebaseTick,
+                                phase154SupportNow, phase81PhysicalSupport, phase81VerticalGap, simplifiedColliderState,
+                                player.onGround(), collisionEligible, broadphaseOverlap,
+                                phase158FreshNativeCarry, phase185NativeApplicationFresh,
+                                phase185BalanceMeasurementFresh, phase185DirectNativeFallback, phase185FreshNativeEvidence);'''
 if new_log not in source:
     count = source.count(old_log)
     if count != 1:
-        raise SystemExit(f"Phase 193 expected one current Phase185 readiness logger, found {count}")
+        raise SystemExit(f"Phase 193 expected one complete current Phase185 readiness logger, found {count}")
     source = source.replace(old_log, new_log, 1)
 
 required = [
@@ -100,5 +104,5 @@ for forbidden in [
         raise SystemExit("Phase 193 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 193: refreshes strict support from current Create collider state at locomotion readiness; fixture accounting only")
+print("Phase 193: refreshes strict support before the complete Phase185 readiness logger; fixture accounting only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase194.py")), run_name="__main__")

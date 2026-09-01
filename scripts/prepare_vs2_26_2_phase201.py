@@ -81,6 +81,13 @@ runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase202.py")), ru
 # published, so the mandatory >=32 walk gate became unreachable even though real native carry later
 # stabilized on carriage 2 at ticks 56-58. Keep the latch only on the retarget mutation. Acquisition
 # accounting must continue to the existing 32-attempt ceiling so the hard walk gate can actually open.
+#
+# Production-world #647 proves the remaining latch must be carriage-scoped. A native application from
+# carriage 8 at tick 14 set the old global boolean, while the fixture's active nearest-collider candidate
+# moved to carriage 10 on the following ticks. The global latch then froze Phase119 retargeting for the
+# wrong carriage, so baseline capture never occurred and the moving train outran the fixture. Preserve
+# the anti-churn latch, but only suppress retargeting when the currently examined carriage is the exact
+# native owner that established the latch. Harness ownership only; no player/carry/physics mutation.
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 probe_source = client_probe.read_text(encoding="utf-8")
 old_acquire = "fixtureContactAcquireTicks < 32"
@@ -110,23 +117,48 @@ if probe_source.count(hard_walk_gate) != hard_walk_gate_count:
     raise SystemExit("Phase 201 failed to preserve every hard 32-tick walk acquisition gate")
 
 class_anchor = "public final class GateEClientProbe implements ClientModInitializer {\n"
-field_insert = class_anchor + "    private static boolean vs2Phase201NativeAcquired;\n"
+field_insert = class_anchor + (
+    "    private static boolean vs2Phase201NativeAcquired;\n"
+    "    private static int vs2Phase201NativeAcquiredCarriageId = Integer.MIN_VALUE;\n"
+)
 if "private static boolean vs2Phase201NativeAcquired;" not in probe_source:
     if probe_source.count(class_anchor) != 1:
         raise SystemExit("Phase 201 expected one GateE client class declaration for native-acquisition latch")
     probe_source = probe_source.replace(class_anchor, field_insert, 1)
+else:
+    existing_field = "    private static boolean vs2Phase201NativeAcquired;\n"
+    if "vs2Phase201NativeAcquiredCarriageId" not in probe_source:
+        if probe_source.count(existing_field) != 1:
+            raise SystemExit("Phase 201 expected one existing native-acquisition latch field")
+        probe_source = probe_source.replace(existing_field, field_insert[len(class_anchor):], 1)
 
 player_anchor = "            var player = client.player;\n"
 latch_block = player_anchor + '''            if (Boolean.getBoolean("vs2.productionSmokeFixture")
                     && Integer.toString(player.tickCount).equals(
                         System.getProperty("vs2.phase170NativeContactApplicationTick"))) {
                 vs2Phase201NativeAcquired = true;
+                try {
+                    vs2Phase201NativeAcquiredCarriageId = Integer.parseInt(System.getProperty(
+                        "vs2.phase170NativeContactApplicationCarriageId", "-2147483648"));
+                } catch (NumberFormatException ignored) {
+                    vs2Phase201NativeAcquiredCarriageId = Integer.MIN_VALUE;
+                }
             }
 '''
 if "vs2Phase201NativeAcquired = true;" not in probe_source:
     if probe_source.count(player_anchor) != 1:
         raise SystemExit("Phase 201 expected one GateE client player acquisition anchor")
     probe_source = probe_source.replace(player_anchor, latch_block, 1)
+else:
+    old_latch = player_anchor + '''            if (Boolean.getBoolean("vs2.productionSmokeFixture")
+                    && Integer.toString(player.tickCount).equals(
+                        System.getProperty("vs2.phase170NativeContactApplicationTick"))) {
+                vs2Phase201NativeAcquired = true;
+            }
+'''
+    if probe_source.count(old_latch) != 1:
+        raise SystemExit("Phase 201 expected one existing global native-acquisition latch block")
+    probe_source = probe_source.replace(old_latch, latch_block, 1)
 
 latched_acquire = '''(fixtureContactAcquireTicks < 32)'''
 latched_unassisted = '''(fixtureContactAcquireTicks >= 32
@@ -141,25 +173,32 @@ probe_source = probe_source.replace(new_acquire, latched_acquire)
 probe_source = probe_source.replace(new_unassisted, latched_unassisted)
 
 retarget_old = "best < 0 && productionSmokeFixture && colliderCount > 0"
-retarget_new = "best < 0 && productionSmokeFixture && !vs2Phase201NativeAcquired && colliderCount > 0"
+retarget_previous = "best < 0 && productionSmokeFixture && !vs2Phase201NativeAcquired && colliderCount > 0"
+retarget_new = "best < 0 && productionSmokeFixture && vs2Phase201NativeAcquiredCarriageId != carriage.getId() && colliderCount > 0"
 if retarget_new not in probe_source:
-    if probe_source.count(retarget_old) != 1:
+    if probe_source.count(retarget_previous) == 1:
+        probe_source = probe_source.replace(retarget_previous, retarget_new, 1)
+    elif probe_source.count(retarget_old) == 1:
+        probe_source = probe_source.replace(retarget_old, retarget_new, 1)
+    else:
         raise SystemExit("Phase 201 expected one Phase119 fixture nearest-collider retarget boundary")
-    probe_source = probe_source.replace(retarget_old, retarget_new, 1)
 
 required_fixture = [
     "vs2.phase170NativeContactApplicationTick",
+    "vs2.phase170NativeContactApplicationCarriageId",
     "Integer.toString(player.tickCount).equals",
     "private static boolean vs2Phase201NativeAcquired;",
+    "private static int vs2Phase201NativeAcquiredCarriageId = Integer.MIN_VALUE;",
     "vs2Phase201NativeAcquired = true;",
+    "vs2Phase201NativeAcquiredCarriageId = Integer.parseInt",
     "fixtureContactAcquireTicks < 32",
     "fixtureContactAcquireTicks >= 32",
-    "!vs2Phase201NativeAcquired && colliderCount > 0",
+    "vs2Phase201NativeAcquiredCarriageId != carriage.getId() && colliderCount > 0",
     hard_walk_gate,
 ]
 missing_fixture = [token for token in required_fixture if token not in probe_source]
 if missing_fixture:
-    raise SystemExit("Phase 201 lost current-pass native-contact latch anchors: " + ", ".join(missing_fixture))
+    raise SystemExit("Phase 201 lost carriage-scoped native-contact latch anchors: " + ", ".join(missing_fixture))
 if "fixtureContactAcquireTicks < 32\n            && !vs2Phase201NativeAcquired" in probe_source:
     raise SystemExit("Phase 201 native latch still blocks passive acquisition accounting")
 for forbidden in [
@@ -170,4 +209,4 @@ for forbidden in [
     if forbidden in latched_acquire + latched_unassisted + retarget_new + latch_block:
         raise SystemExit("Phase 201 fixture-boundary latch introduced forbidden gameplay mutation")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("Phase 201: native latch freezes retarget only while passive acquisition accounting reaches the hard 32-tick walk gate")
+print("Phase 201: native latch freezes retarget only for the exact native-owning carriage while passive acquisition accounting reaches the hard walk gate")

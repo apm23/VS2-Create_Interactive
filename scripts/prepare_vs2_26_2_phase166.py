@@ -15,11 +15,11 @@ source = client_probe.read_text(encoding="utf-8")
 # must not reintroduce the old >0.75 support-health latch. Production-world #551 then showed the
 # Phase166 source-rewrite anchor still expected the pre-#550 support predicate; preserve the new
 # first-frame accounting-seam exclusion when inserting the existing delayed-pulse bookkeeping.
-# Production-world #670 proves this reset must also stay outside the cumulative M1 walk-start
-# anchor consumed after Phase203. Keep the reset in the same callback but place it immediately
-# before Phase165 path reset so later harness composition does not depend on an interleaved line.
-# Fixture bookkeeping only: no movement vector, player/world/train state, collision response or
-# VS2/Create physics behavior is changed.
+# Production-world #670/#671 prove this reset must stay outside the exact cumulative Phase165
+# walk-start anchor consumed after Phase203. Keep the reset in the same callback, but append it
+# after Phase165's key cleanup so phase154WalkPreviousLocal/path/support/keyUp/keyDown remain a
+# contiguous composition-stable block. Fixture bookkeeping only: no movement vector, player/world/
+# train state, collision response or VS2/Create physics behavior is changed.
 
 field_old = '''    private static double phase165WalkPathDistance;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
 field_new = '''    private static double phase165WalkPathDistance;\n    private static boolean phase166FixturePulseConsumed;\n    private static boolean phase154WalkSupportHealthy = true;\n'''
@@ -28,8 +28,8 @@ if "phase166FixturePulseConsumed" not in source:
         raise SystemExit("Phase 166 expected exactly one Phase165 walk field tail")
     source = source.replace(field_old, field_new, 1)
 
-start_old = '''                            phase165WalkPathDistance = 0.0;\n                            phase154WalkSupportHealthy = true;\n'''
-start_new = '''                            phase166FixturePulseConsumed = false;\n                            phase165WalkPathDistance = 0.0;\n                            phase154WalkSupportHealthy = true;\n'''
+start_old = '''                            phase165WalkPathDistance = 0.0;\n                            phase154WalkSupportHealthy = true;\n                            client.options.keyUp.setDown(true);\n                            client.options.keyDown.setDown(false);\n'''
+start_new = '''                            phase165WalkPathDistance = 0.0;\n                            phase154WalkSupportHealthy = true;\n                            client.options.keyUp.setDown(true);\n                            client.options.keyDown.setDown(false);\n                            phase166FixturePulseConsumed = false;\n'''
 if "phase166FixturePulseConsumed = false" not in source:
     if source.count(start_old) != 1:
         raise SystemExit("Phase 166 expected exactly one Phase165 walk-start reset")

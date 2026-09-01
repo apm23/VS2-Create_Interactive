@@ -20,14 +20,19 @@ if "phase182WalkAccumulatedLocalDistance" not in source:
         raise SystemExit("Phase 182 expected exactly one Phase154 support-health field")
     source = source.replace(field_anchor, field_insert, 1)
 
-# Keep this anchored to the actual Phase154 walk initialization block. Phase156 may also
-# restore support health on a validated sibling handoff, so matching the assignment alone
-# is intentionally no longer unique.
-start_anchor = '''                            phase154WalkStartLocal = phase154Local;\n                            phase154WalkPreviousLocal = phase154Local;\n                            phase154WalkSupportHealthy = true;\n'''
-start_insert = start_anchor + "                            phase182WalkAccumulatedLocalDistance = 0.0;\n"
+# Anchor the reset to the actual input transition, not to surrounding initialization lines.
+# Later harness patches may insert accounting between phase154WalkStartLocal/PreviousLocal,
+# while the validated sibling-handoff recovery never immediately presses the forward key.
+start_anchor = '''                            phase154WalkSupportHealthy = true;
+                            client.options.keyUp.setDown(true);
+'''
+start_insert = '''                            phase154WalkSupportHealthy = true;
+                            phase182WalkAccumulatedLocalDistance = 0.0;
+                            client.options.keyUp.setDown(true);
+'''
 if "phase182WalkAccumulatedLocalDistance = 0.0;" not in source:
     if source.count(start_anchor) != 1:
-        raise SystemExit("Phase 182 expected exactly one Phase154 walk-start initialization block")
+        raise SystemExit("Phase 182 expected exactly one Phase154 walk input-start block")
     source = source.replace(start_anchor, start_insert, 1)
 
 marker = "GATE_E_PHASE156_WALK_FRAME_GUARD"

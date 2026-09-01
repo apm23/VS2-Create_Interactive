@@ -34,11 +34,12 @@ probe_source = probe_source.replace(previous_native_scope, previous_native_same_
 # wall verifier requires six grounded same-carriage samples. Run #547 supplied those samples but
 # reached the most-negative side boundary only for the final two ticks, one sample short of the
 # verifier's three-consecutive-sample impact plateau. Keep reverse timing unchanged and hold native
-# right-strafe for one additional grounded tick. Run #565 then proved the exact previous-tick native
-# contact requirement can miss the jump window even while Create continuity remains grounded and
-# broadphase-supported. Gate the fixture jump on the native onGround state after the ninth strafe
-# sample instead. This changes harness sequencing only; no player motion, collision response, carry
-# vector, train/world state, or VS2 physics behavior is changed.
+# right-strafe for one additional grounded tick. Run #565 proved an exact previous-tick contact gate
+# can miss a healthy window. Run #573 then proved onGround alone is too weak: the fixture requested
+# jump after the active baseline had already left broadphase and the last native Create contact was
+# stale, producing the same lag-behind arc M1 is supposed to reject. Require a native Create contact
+# application from the current or preceding three ticks before issuing the fixture jump. This only
+# delays test input until Create still owns the moving reference; it does not synthesize movement.
 timing_replacements = [
     (
         '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;\n        return elapsed >= 8 && elapsed <= 11;''',
@@ -50,7 +51,7 @@ timing_replacements = [
     ),
     (
         '''        return self.tickCount >= vs2$walkConfirmedTick + 24;''',
-        '''        return vs2$strafeStartTick != Integer.MIN_VALUE\n            && self.tickCount >= vs2$strafeStartTick + 9\n            && self.onGround();''',
+        '''        return vs2$strafeStartTick != Integer.MIN_VALUE\n            && self.tickCount >= vs2$strafeStartTick + 9\n            && self.onGround()\n            && (Integer.toString(self.tickCount).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 1).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 2).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 3).equals(System.getProperty("vs2.phase170NativeContactApplicationTick")));''',
     ),
 ]
 for old, new in timing_replacements:
@@ -137,7 +138,7 @@ required_fixture = [
     "return elapsed >= 1 && elapsed <= 4;",
     "return strafeElapsed >= 0 && strafeElapsed <= 8;",
     "self.tickCount >= vs2$strafeStartTick + 9",
-    "self.onGround();",
+    "System.getProperty(\"vs2.phase170NativeContactApplicationTick\")",
     "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED",
     "GATE_E_M1_NATIVE_STRAFE_CONFIRMED",
     "grounding_deferred_to_create_contact=true",
@@ -171,4 +172,4 @@ for forbidden in [
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 202: observes the native jump from actual vertical displacement when transient deltaY is unavailable; no gameplay mutation")
+print("Phase 202: gates fixture jump on recent native Create contact and observes the vertical arc without gameplay mutation")

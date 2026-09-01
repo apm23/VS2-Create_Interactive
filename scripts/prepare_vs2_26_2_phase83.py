@@ -26,8 +26,11 @@ dragger_source = entity_dragger.read_text(encoding="utf-8")
 # previous anchor only for world->local, and the current anchor for local->world. Production-world #556
 # then proved grounded Create carry is already healthy and that applying this external-frame bridge
 # while grounded duplicates the authoritative carry during ordinary locomotion. Therefore keep this
-# bridge strictly airborne-only. No synthetic velocity, gravity, collision response, train state, or
-# world state is added.
+# bridge strictly airborne-only. Production-world #557 then proved the jump leaves the current
+# carriage broadphase immediately even though the exact baseline carriage had native Create carry on
+# the preceding tick. Do not require current-world overlap after takeoff: the bounded exact-carriage
+# native-application lease is the moving reference-space authority during that airborne interval. No
+# synthetic velocity, gravity, collision response, train state, or world state is added.
 dragger_anchor = "object EntityDragger {\n"
 dragger_helper = r'''object EntityDragger {
     /**
@@ -112,10 +115,10 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
                 && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             boolean phase83CurrentEnvelopeEligible = collisionEligible && broadphaseOverlap;
             if (Boolean.getBoolean("vs2.createCarryCompat")
-                && carryBaselineCaptured
+                && phase83ExactBaselineCarriage
                 && phase83NativeFrameEligible
                 && phase83ExternalFrameLease
-                && (phase83CurrentEnvelopeEligible || phase83AirborneSupportedBaselineLease)) {
+                && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {
                 try {
                     java.lang.reflect.Method phase83ToPreviousLocal = carriage.getClass().getMethod(
                         "toLocalVector", Vec3.class, float.class, boolean.class);
@@ -190,7 +193,7 @@ required = [
     "phase83CurrentEnvelopeEligible",
     "vs2.phase83SupportedBaselineTick.",
     "phase83SupportedBaselineAge <= 20",
-    "phase83CurrentEnvelopeEligible || phase83AirborneSupportedBaselineLease",
+    "phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease",
     "vs2.phase170NativeContactApplicationTick.",
     "phase83NativeApplicationAge <= 20",
     'Boolean.getBoolean("vs2.createCarryCompat")',
@@ -240,7 +243,7 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 entity_dragger.write_text(dragger_source, encoding="utf-8")
-print("Phase 85: leaves grounded Create carry authoritative and uses previous->current VS2 frame reanchor only across bounded airborne gaps")
+print("Phase 85: leaves grounded Create carry authoritative and keeps the exact Create frame through bounded airborne native-contact lease")
 
 # Phase 86 separates verified compatibility movement from archived-save fixture normalization.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase86.py")), run_name="__main__")

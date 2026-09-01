@@ -189,6 +189,7 @@ server_probe.write_text(server, encoding="utf-8")
 
 if cumulative_prepared:
     print("Phase 98: cumulative Phase 130 already prepared; retained existing native interaction/held-block entrypoint telemetry without reapplying obsolete fixed-tick fixture guards")
+    runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_m1_input_timing.py")), run_name="__main__")
     runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase132.py")), run_name="__main__")
 else:
     print("Phase 98: retained read-only native interaction/held-block entrypoint profiling and narrowed the one-shot production fixture to tick 14 after startup discontinuity; no interaction dispatch or gameplay mutation")

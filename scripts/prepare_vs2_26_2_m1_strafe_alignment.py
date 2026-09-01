@@ -4,8 +4,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 fixture_input = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
+verifier = Path(__file__).resolve().parent / "prepare_vs2_26_2_m1_jump_proof.py"
 source = fixture_input.read_text(encoding="utf-8")
 probe_source = client_probe.read_text(encoding="utf-8")
+verifier_source = verifier.read_text(encoding="utf-8")
 
 # Production-world #610 proved yaw +90 sends ordinary right-strafe from local Z=-1.899
 # across the negative edge of the verified floor: Entity.move reaches local Z=-2.049 and
@@ -111,6 +113,37 @@ if source.count(jump_pulse_anchor) < 1:
     raise SystemExit("M1 jump pulse expected at least one vanilla KeyMapping boundary")
 source = source.replace(jump_pulse_anchor, jump_pulse_replacement)
 
+# Production-world #611 proved the supported +Z strafe reaches the opposite real side wall and
+# then completes the native jump/landing sequence. The standalone verifier still hard-coded the
+# old -Z wall used by the unsafe edge-facing fixture. Rebase only that read-only verifier contract
+# to the +Z occupied side; gameplay code and collision response remain untouched.
+verifier_replacements = [
+    (
+        'wall_geometry_seen = any(re.search(r"(?:^|\\|)-?\\d+, [123], -2(?:\\||$)", m.group(4)) for m in client_state_pattern.finditer(text))',
+        'wall_geometry_seen = any(re.search(r"(?:^|\\|)-?\\d+, [123], 2(?:\\||$)", m.group(4)) for m in client_state_pattern.finditer(text))',
+    ),
+    (
+        'if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")',
+        'if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=2")',
+    ),
+    (
+        'start_z=before[-1][4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)\nif min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+        'start_z=before[-1][4]; wall_z=[s[4] for s in after]; max_z=max(wall_z)\nif max_z>=2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+    ),
+    (
+        'strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) <= -0.02\nmaterial_approach = start_z-min_z >= 0.015',
+        'strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) >= 0.02\nmaterial_approach = max_z-start_z >= 0.015',
+    ),
+    (
+        'if stable_plateau and (start_z-min(candidate_z)>=0.015 or strafe_requested_toward_wall):',
+        'if stable_plateau and (max(candidate_z)-start_z>=0.015 or strafe_requested_toward_wall):',
+    ),
+]
+for old, new in verifier_replacements:
+    if verifier_source.count(old) != 1:
+        raise SystemExit("M1 +Z wall verifier expected one exact legacy boundary: " + old[:72])
+    verifier_source = verifier_source.replace(old, new, 1)
+
 required_source = [
     'if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE)',
     'self.setYRot(-90.0F)',
@@ -139,6 +172,15 @@ required_probe = [
 missing = [token for token in required_probe if token not in probe_source]
 if missing:
     raise SystemExit("M1 live-frame jump gate lost anchors: " + ", ".join(missing))
+required_verifier = [
+    'local block z=2',
+    'max_z=max(wall_z)',
+    'float(strafe_move.group(3)) >= 0.02',
+    'max(candidate_z)-start_z>=0.015',
+]
+missing = [token for token in required_verifier if token not in verifier_source]
+if missing:
+    raise SystemExit("M1 +Z wall verifier lost anchors: " + ", ".join(missing))
 
 for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
@@ -155,4 +197,5 @@ for forbidden in [
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 fixture refinement: aims native strafe across supported floor and gates jump on live active-carriage support")
+verifier.write_text(verifier_source, encoding="utf-8")
+print("M1 fixture refinement: aims native strafe across supported floor, verifies +Z wall, and gates jump on live active-carriage support")

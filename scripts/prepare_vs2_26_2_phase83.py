@@ -9,14 +9,15 @@ source = client_probe.read_text(encoding="utf-8")
 # Keep Create's own collidingEntities contact publication alive only across a proven short
 # sampling seam. Production-world #522 showed that unconditional physical-support refresh can
 # publish contact for a carriage after Create's native surface-collision/carry application has
-# already stopped. That leaves contact_now=true while player_delta remains zero against a moving
-# carriage and can make the fixture follow a false support frame. Require a current- or previous-
-# tick non-zero native Create contact application for this exact carriage before refreshing its
-# lease. Phase170 publishes that evidence from the real ContraptionColliderClient call site.
-# This remains a contact-lease adapter only: no position, velocity, collision response, carry
+# already stopped. Require a current- or previous-tick non-zero native Create contact application
+# for this exact carriage before refreshing its lease. Phase170 publishes that evidence from the
+# real ContraptionColliderClient call site. Once that native evidence exists, retain the same
+# Create contact while the player is airborne but still collision-eligible and inside the carriage
+# broadphase. This keeps a vanilla jump in Create's authoritative moving carriage frame instead of
+# dropping the contact lease at onGround=false. No position, velocity, collision response, carry
 # vector, train/world state, gravity, or VS2 physics is synthesized here.
 condition_anchor = '''            if (carryBaselineCaptured\n                && phase81PhysicalSupport\n                && carryReplayPlayerTick != player.tickCount'''
-condition_replacement = '''            boolean phase83RecentNativeApplication = Integer.toString(player.tickCount).equals(\n                System.getProperty("vs2.phase170NativeContactApplicationTick." + carriage.getId()))\n                || Integer.toString(player.tickCount - 1).equals(\n                    System.getProperty("vs2.phase170NativeContactApplicationTick." + carriage.getId()));\n            if (carryBaselineCaptured\n                && phase81PhysicalSupport\n                && phase83RecentNativeApplication\n                && collisionEligible\n                && broadphaseOverlap) {\n                try {\n                    java.lang.reflect.Method registerCollidingMethod = null;\n                    Class<?> registerOwner = carriage.getClass();\n                    while (registerOwner != null && registerCollidingMethod == null) {\n                        try {\n                            registerCollidingMethod = registerOwner.getDeclaredMethod("registerColliding", Entity.class);\n                        } catch (NoSuchMethodException ignored) {\n                            registerOwner = registerOwner.getSuperclass();\n                        }\n                    }\n                    if (registerCollidingMethod != null) {\n                        registerCollidingMethod.setAccessible(true);\n                        registerCollidingMethod.invoke(carriage, player);\n                        LOGGER.info(\n                            "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} vertical_gap={} on_ground={} native_application_recent=true phase84_on_ground_independent=true",\n                            carriage.getId(), player.tickCount, phase81PhysicalSupport, phase81VerticalGap, player.onGround());\n                    } else {\n                        LOGGER.info("GATE_E_PHASE83_CONTACT_REFRESH_MISSING carriage_id={}", carriage.getId());\n                    }\n                } catch (ReflectiveOperationException | RuntimeException exception) {\n                    LOGGER.info("GATE_E_PHASE83_CONTACT_REFRESH_ERROR type={}", exception.getClass().getSimpleName());\n                }\n            }\n\n            if (carryBaselineCaptured\n                && phase81PhysicalSupport\n                && carryReplayPlayerTick != player.tickCount'''
+condition_replacement = '''            boolean phase83RecentNativeApplication = Integer.toString(player.tickCount).equals(\n                System.getProperty("vs2.phase170NativeContactApplicationTick." + carriage.getId()))\n                || Integer.toString(player.tickCount - 1).equals(\n                    System.getProperty("vs2.phase170NativeContactApplicationTick." + carriage.getId()));\n            boolean phase83NativeFrameEligible = phase81PhysicalSupport || !player.onGround();\n            if (carryBaselineCaptured\n                && phase83NativeFrameEligible\n                && phase83RecentNativeApplication\n                && collisionEligible\n                && broadphaseOverlap) {\n                try {\n                    java.lang.reflect.Method registerCollidingMethod = null;\n                    Class<?> registerOwner = carriage.getClass();\n                    while (registerOwner != null && registerCollidingMethod == null) {\n                        try {\n                            registerCollidingMethod = registerOwner.getDeclaredMethod("registerColliding", Entity.class);\n                        } catch (NoSuchMethodException ignored) {\n                            registerOwner = registerOwner.getSuperclass();\n                        }\n                    }\n                    if (registerCollidingMethod != null) {\n                        registerCollidingMethod.setAccessible(true);\n                        registerCollidingMethod.invoke(carriage, player);\n                        LOGGER.info(\n                            "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_recent=true native_frame_eligible=true phase84_on_ground_independent=true",\n                            carriage.getId(), player.tickCount, phase81PhysicalSupport, !player.onGround(), phase81VerticalGap, player.onGround());\n                    } else {\n                        LOGGER.info("GATE_E_PHASE83_CONTACT_REFRESH_MISSING carriage_id={}", carriage.getId());\n                    }\n                } catch (ReflectiveOperationException | RuntimeException exception) {\n                    LOGGER.info("GATE_E_PHASE83_CONTACT_REFRESH_ERROR type={}", exception.getClass().getSimpleName());\n                }\n            }\n\n            if (carryBaselineCaptured\n                && phase81PhysicalSupport\n                && carryReplayPlayerTick != player.tickCount'''
 if "phase83RecentNativeApplication" not in source:
     if condition_anchor not in source:
         raise SystemExit("Phase 85 could not find Phase 81 replay guard")
@@ -45,9 +46,12 @@ source = source.replace(
 
 required = [
     "phase83RecentNativeApplication",
+    "phase83NativeFrameEligible",
+    "phase81PhysicalSupport || !player.onGround()",
     "vs2.phase170NativeContactApplicationTick.",
     "player.tickCount - 1",
     "native_application_recent=true",
+    "native_frame_eligible=true",
     "registerCollidingMethod.invoke(carriage, player)",
     "collisionEligible",
     "broadphaseOverlap",
@@ -70,7 +74,7 @@ for forbidden in [
         raise SystemExit("Phase 85 contact refresh introduced forbidden movement/physics mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 85: refreshes Create contact only after exact-carriage native carry evidence and leaves legacy LocalPlayer carry replay disabled")
+print("Phase 85: retains exact-carriage Create-native contact through airborne frame continuity and leaves legacy LocalPlayer carry replay disabled")
 
 # Phase 86 separates the verified compatibility movement from archived-save fixture
 # normalization before the client source is compiled by CI.

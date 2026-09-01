@@ -14,8 +14,14 @@ source = client_probe.read_text(encoding="utf-8")
 # the confirmation remains exactly the next tick (arm_age == 1) and still requires an exact current-tick
 # Create native application on the same baseline carriage.
 #
-# Production-world #538 proved Create exact same-carriage contact can be authoritative even when the
-# simplified Phase81 support diagnostic is false-negative, so native support remains accepted here.
+# Production-world #538 showed exact same-carriage Create contact can exist while the simplified
+# Phase81 support diagnostic is false. Production-world #574 then supplied the missing acceptance
+# boundary: starting the locomotion fixture from that false-support state produced immediate local-frame
+# escape once exact native application stopped, while the last green production-world #572 started from
+# strict support and completed the same locomotion proof. Keep native contact as evidence, but do not use
+# it to waive strict physical support when arming movement. This is fixture acceptance only; it changes
+# no player position/velocity, carry vector, collision response, train/world state, Create behavior, or
+# VS2 physics.
 #
 # Production-world #541 showed that merely seeing three exact-native ready ticks can start too early,
 # before native carry itself has been proven stable. Production-world #542 then showed the opposite
@@ -24,9 +30,7 @@ source = client_probe.read_text(encoding="utf-8")
 # arm. Reuse Phase137's existing replay-aware native-carry-health result as the settled-carry prerequisite
 # instead of inventing another exact-application streak. The health tick must be at most two ticks old,
 # matching Phase137's bounded health sample window; the final start still requires immediate next-tick
-# exact Create application, same carriage, grounded broadphase support. Fixture acceptance only: no player
-# position/velocity, collision response, carry vector, train/world state, Create behavior, or VS2 physics
-# is changed.
+# exact Create application, same carriage, grounded broadphase support, and strict physical support.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -66,10 +70,11 @@ new_readiness = '''                        boolean phase194NativeAuthoritativeSu
                             && phase194NativeCarryHealthyTick != Integer.MIN_VALUE
                             && phase194NativeCarryHealthyAge >= 0 && phase194NativeCarryHealthyAge <= 2
                             && phase154SupportNow
+                            && phase81PhysicalSupport
                             && phase154Carriage.getId() == carryBaselineCarriageId
                             && collisionEligible && broadphaseOverlap && player.onGround();
                         boolean phase185WalkReadyNow = phase154SupportNow
-                            && (phase81PhysicalSupport || phase194NativeAuthoritativeSupport)
+                            && phase81PhysicalSupport
                             && phase185FreshNativeEvidence
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32)
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
@@ -88,6 +93,7 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
                             && phase194PendingWalkAge == 1
+                            && phase81PhysicalSupport
                             && phase194NativeAuthoritativeSupport
                             && phase185NativeApplicationFresh
                             && phase154Carriage.getId() == carryBaselineCarriageId
@@ -135,6 +141,7 @@ required = [
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh",
+    "phase81PhysicalSupport",
     "native_health_age={}",
     "exact_native_application=true",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM",
@@ -155,5 +162,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: gates walk on proven native carry health while preserving immediate exact-carriage seam rejection")
+print("Phase 194: requires strict physical support before arming M1 locomotion; native Create evidence remains authoritative for carry health")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

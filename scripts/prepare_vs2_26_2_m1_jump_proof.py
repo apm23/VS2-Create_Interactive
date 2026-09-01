@@ -141,6 +141,36 @@ for match in continuity_pattern.finditer(text):
         match.group(6) == "true", match.group(7) == "true", match.group(8) == "true",
     ))
 
+# Run #548 already contains the required M1 speed-change case: while the player remains at the
+# same supported carriage-local feet position, Create's authoritative frame step drops materially
+# on the next tick. Reuse that existing read-only Phase171 signal to prove no lag-behind/drift from
+# train speed change; do not add input, movement, carry, collision, or physics behavior.
+frame_pattern = re.compile(
+    r"GATE_E_PHASE171_CARRIAGE_FRAME_STEP[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)"
+    r"[^\n]*frame_step=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)"
+)
+frame_speed = {}
+for match in frame_pattern.finditer(text):
+    key = (int(match.group(1)), int(match.group(2)))
+    speed = math.sqrt(sum(float(match.group(i)) ** 2 for i in range(3, 6)))
+    frame_speed[key] = max(frame_speed.get(key, 0.0), speed)
+
+speed_change_proof = None
+supported = [s for s in samples if s[5] and s[6] and s[7]]
+for previous, current in zip(supported, supported[1:]):
+    if current[0] != previous[0] + 1 or current[1] != previous[1]:
+        continue
+    local_step = math.dist(previous[2:5], current[2:5])
+    previous_speed = frame_speed.get((previous[0], previous[1]))
+    current_speed = frame_speed.get((current[0], current[1]))
+    if previous_speed is None or current_speed is None:
+        continue
+    if local_step <= 0.01 and abs(current_speed - previous_speed) >= 1.0:
+        speed_change_proof = (previous, current, previous_speed, current_speed, local_step)
+        break
+if speed_change_proof is None:
+    raise SystemExit("M1 speed-change stability missing: no consecutive supported local-stable samples across material carriage speed change")
+
 # The r0v3 fixture exposes occupied side geometry at local block z=-2. Runs #534 and #540
 # reached that same side through different carriage-local player offsets: #534 plateaued near
 # z=-1.800 while #540 plateaued near z=-0.715. A fixed player-coordinate threshold therefore
@@ -216,12 +246,15 @@ if len(best_streak) < 5:
     detail = "none" if not best_streak else f"carriage={best_streak[0][1]} ticks={best_streak[0][0]}-{best_streak[-1][0]} samples={len(best_streak)}"
     raise SystemExit("M1 post-landing carriage stability missing: " + detail)
 
+speed_prev, speed_now, speed_before, speed_after, speed_local_step = speed_change_proof
 print(
     "M1_NATIVE_LOCOMOTION_PROOF "
     f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} "
     f"reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} "
     f"strafe_speed_sq={strafe_speed_sq} wall_solid=true wall_local_z_min={min_z:.6f} "
     f"wall_impact_ticks={plateau[0][0]}-{plateau[-1][0]} wall_impact_span={max(impact_z)-min(impact_z):.9f} "
+    f"speed_change_stable=true speed_change_ticks={speed_prev[0]}-{speed_now[0]} "
+    f"frame_speed={speed_before:.6f}->{speed_after:.6f} speed_change_local_step={speed_local_step:.9f} "
     f"jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} duration={duration} delta_y={delta_y} "
     f"natural_fall=true replay_free=true recovery_free=true post_land_stable_samples={len(best_streak)}"
 )

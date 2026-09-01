@@ -3,8 +3,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 fixture_input = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
+contact_lease = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinCreateContactLeaseTrace.java"
 verifier = Path(__file__).resolve().with_name("prepare_vs2_26_2_m1_jump_proof.py")
 source = fixture_input.read_text(encoding="utf-8")
+lease_source = contact_lease.read_text(encoding="utf-8")
 verifier_source = verifier.read_text(encoding="utf-8")
 
 # Production-world #650 proves the post-walk native backward/strafe/jump sequence itself works,
@@ -55,6 +57,56 @@ strafe_guard_new = 'if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed) re
 if source.count(strafe_guard_old) != 1:
     raise SystemExit("M1 sustained strafe expected one confirmation-short-circuit boundary")
 source = source.replace(strafe_guard_old, strafe_guard_new, 1)
+
+# Production-world #653 proves the remaining movement failure is at Create's native contact-lease
+# expiry boundary on a fast carriage frame step. Carriage 10 applies native contact through tick 18,
+# then the carriage advances about 10.9 blocks before the next client contact sample. The existing
+# lease adapter tests world-space AABB overlap after that frame advance, so it returns before it can
+# preserve the already-existing Create collidingEntities lease; the player then lags behind while the
+# carriage continues moving. Use the exact per-carriage recent native-application identity that the
+# adapter already publishes instead of stale post-frame world overlap, and allow the TAIL hook to
+# catch an expiry transition occurring inside AbstractContraptionEntity.tick. This only preserves
+# Create's own age-2 lease edge; it does not invent contact age 0, movement, velocity, collision,
+# gravity, position, or train state.
+lease_tail_old = '        vs2$traceContactLease("tail", false);'
+lease_tail_new = '        vs2$traceContactLease("tail", true);'
+if lease_source.count(lease_tail_old) != 1:
+    raise SystemExit("M1 native lease expected one TAIL observation boundary")
+lease_source = lease_source.replace(lease_tail_old, lease_tail_new, 1)
+
+lease_outer_guard_old = '        if (!self.getBoundingBox().inflate(4.0).intersects(player.getBoundingBox())) return;'
+lease_outer_guard_new = '''        String vs2$recentNativeTick = System.getProperty(
+            "vs2.phase170NativeContactApplicationTick." + self.getId());
+        boolean vs2$recentNativeOwner = false;
+        if (vs2$recentNativeTick != null) {
+            try {
+                int vs2$recentNativeAge = player.tickCount - Integer.parseInt(vs2$recentNativeTick);
+                vs2$recentNativeOwner = vs2$recentNativeAge >= 0 && vs2$recentNativeAge <= 20;
+            } catch (NumberFormatException ignored) {
+                vs2$recentNativeOwner = false;
+            }
+        }
+        if (!vs2$recentNativeOwner
+                && !self.getBoundingBox().inflate(4.0).intersects(player.getBoundingBox())) return;'''
+if lease_source.count(lease_outer_guard_old) != 1:
+    raise SystemExit("M1 native lease expected one stale world-overlap outer guard")
+lease_source = lease_source.replace(lease_outer_guard_old, lease_outer_guard_new, 1)
+
+lease_grounded_old = '''            boolean vs2$groundedNativeLease = player.onGround()
+                && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())
+                && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;'''
+lease_grounded_new = '''            boolean vs2$groundedNativeLease = player.onGround()
+                && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;'''
+if lease_source.count(lease_grounded_old) != 1:
+    raise SystemExit("M1 native lease expected one grounded stale world-overlap guard")
+lease_source = lease_source.replace(lease_grounded_old, lease_grounded_new, 1)
+
+lease_grace_overlap_old = '''                    && (vs2$airborneNativeLease
+                        || self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox()))) {'''
+lease_grace_overlap_new = '''                    && (vs2$airborneNativeLease || vs2$groundedNativeLease)) {'''
+if lease_source.count(lease_grace_overlap_old) != 1:
+    raise SystemExit("M1 native lease expected one final stale world-overlap guard")
+lease_source = lease_source.replace(lease_grace_overlap_old, lease_grace_overlap_new, 1)
 
 # Production-world #651 proves the native right-strafe itself is valid and material: the request at
 # tick 32 has negative-Z motion, carriage 8 then supplies four consecutive grounded/broadphase
@@ -128,6 +180,17 @@ required = [
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("M1 input timing lost sequencing anchors: " + ", ".join(missing))
+lease_required = [
+    'vs2$traceContactLease("tail", true);',
+    'vs2.phase170NativeContactApplicationTick.',
+    'vs2$recentNativeOwner',
+    'vs2$groundedNativeLease = player.onGround()',
+    'vs2$airborneNativeLease || vs2$groundedNativeLease',
+    'method.invoke(lease, Integer.valueOf(2))',
+]
+lease_missing = [token for token in lease_required if token not in lease_source]
+if lease_missing:
+    raise SystemExit("M1 native lease lost frame-identity anchors: " + ", ".join(lease_missing))
 verifier_required = [
     'local block z=-2',
     'min_z=min(wall_z)',
@@ -140,11 +203,12 @@ if verifier_missing:
     raise SystemExit("M1 wall verifier lost run-651 native proof anchors: " + ", ".join(verifier_missing))
 for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
-    'setBlock(', 'syncCarriage(', 'setVelocity(',
+    'setBlock(', 'syncCarriage(', 'setVelocity(', 'method.invoke(lease, Integer.valueOf(0))',
 ]:
-    if forbidden in new + strafe_guard_new:
-        raise SystemExit("M1 input timing introduced forbidden gameplay mutation: " + forbidden)
+    if forbidden in new + strafe_guard_new + lease_tail_new + lease_outer_guard_new + lease_grounded_new + lease_grace_overlap_new:
+        raise SystemExit("M1 input/lease patch introduced forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
+contact_lease.write_text(lease_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 input timing: preserves sprint callback, keeps bounded native strafe active after confirmation, and aligns the read-only wall verifier")
+print("M1 input timing: preserves sprint callback and bounded strafe, and keeps Create native contact lease in its exact recent carriage frame")

@@ -54,7 +54,7 @@ walk = need(r"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*player_tick=(\d+)[^\n]
 backward_requested = need(r"GATE_E_M1_NATIVE_BACKWARD_REQUESTED[^\n]*player_tick=(\d+)[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true", "native backward request")
 backward_confirmed = need(r"GATE_E_M1_NATIVE_BACKWARD_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)[^\n]*grounding_deferred_to_create_contact=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*native_motion=true", "native grounded backward confirmation")
 strafe_requested = need(r"GATE_E_M1_NATIVE_STRAFE_REQUESTED[^\n]*player_tick=(\d+)[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*direction=right", "native right-strafe request")
-strafe_confirmed = need(r"GATE_E_M1_NATIVE_STRAFE_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)[^\n]*grounding_deferred_to_create_contact=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*native_motion=true[^\n]*direction=right", "native right-strafe confirmation")
+strafe_confirmed = need(r"GATE_E_M1_NATIVE_STRAFE_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)[^\n]*grounding_deferred_to_create_contact=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*native_motion=true[^\n]*direction=right", "native grounded right-strafe confirmation")
 requested = need(r"GATE_E_M1_NATIVE_JUMP_REQUESTED[^\n]*player_tick=(\d+)[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true", "native jump request")
 airborne = need(r"GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*delta_y=([-+0-9.eE]+)[^\n]*on_ground=(?:true|false)[^\n]*fixture_only=true[^\n]*native_motion=true[^\n]*vertical_arc=true", "native airborne transition")
 landed = need(r"GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*duration_ticks=(\d+)[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*natural_fall=true", "natural landing")
@@ -125,21 +125,31 @@ for sample in after_window:
     after.append(sample); expected_tick+=1
 if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")
 start_z=before[-1][4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)
-if start_z-min_z<0.015: raise SystemExit(f"M1 right-strafe did not make material progress toward the carriage side: before_z={start_z} samples={wall_z}")
 if min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")
-# Run #579 proved the verifier was selecting the final minimum rather than the actual collision
-# plateau: ticks 43-49 held exactly z=1.774802 for seven supported samples, then the last sampled
-# tick drifted only 0.014 after the strafe pulse. Find a consecutive stable plateau directly,
-# while still requiring material progress and retaining the independent no-penetration guard above.
+# Production-world #606 reached the actual side collision boundary before the strafe request:
+# the pre-strafe local center was z=-0.6957 and the next eight supported samples were pinned at
+# z=-0.69929 while vanilla right-strafe requested a material negative-Z Entity.move. Requiring
+# additional center displacement from an already-contacting player falsely rejects a solid wall.
+# Accept either material approach or an already-pinned stable plateau, but the latter is valid only
+# when the exact native strafe tick contains a material movement request toward negative local Z.
+strafe_move_pattern = re.compile(
+    rf"GATE_E_PHASE201_WALK_MOVE_CALLER[^\n]*player_tick={strafe_request_tick}[^\n]*mover=SELF[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)")
+strafe_move = strafe_move_pattern.search(text)
+strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) <= -0.02
+material_approach = start_z-min_z >= 0.015
 plateau=None
 for i in range(len(after)-2):
     candidate=after[i:i+3]
     if candidate[1][0]!=candidate[0][0]+1 or candidate[2][0]!=candidate[1][0]+1: continue
     candidate_z=[s[4] for s in candidate]
-    if start_z-min(candidate_z)>=0.015 and max(candidate_z)-min(candidate_z)<=0.005:
+    stable_plateau=max(candidate_z)-min(candidate_z)<=0.005
+    if stable_plateau and (start_z-min(candidate_z)>=0.015 or strafe_requested_toward_wall):
         plateau=candidate
         break
-if plateau is None: raise SystemExit(f"M1 carriage side stable collision plateau missing: local_z_samples={wall_z}")
+if plateau is None:
+    if not material_approach and not strafe_requested_toward_wall:
+        raise SystemExit(f"M1 wall proof lacks a native strafe request toward the occupied side: before_z={start_z} samples={wall_z}")
+    raise SystemExit(f"M1 carriage side stable collision plateau missing: local_z_samples={wall_z}")
 impact_z=[s[4] for s in plateau]
 
 post_land=[s for s in samples if s[0]>landed_tick]; best_streak=[]; streak=[]

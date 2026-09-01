@@ -53,12 +53,25 @@ if landing_count != 1:
     raise SystemExit(f"M1 landing proof expected one delta-settle boundary, found {landing_count}")
 source = source.replace(landing_anchor, landing_replacement, 1)
 
+# Production-world #592 reached the authoritative jump request but did not always produce the
+# vertical arc, while #591 proved the exact same one-tick KeyMapping path can work. That makes the
+# remaining boundary a fixture input-sampling race, not a reason to mutate player physics. Hold the
+# ordinary vanilla jump KeyMapping for the request tick plus one following tick so normal input
+# sampling cannot miss it. This remains input-only and never writes motion or position.
+jump_pulse_anchor = 'boolean jumpPulse = vs2$jumpStartTick != Integer.MIN_VALUE && self.tickCount == vs2$jumpStartTick;'
+jump_pulse_replacement = 'boolean jumpPulse = vs2$jumpStartTick != Integer.MIN_VALUE && self.tickCount >= vs2$jumpStartTick && self.tickCount <= vs2$jumpStartTick + 1;'
+jump_pulse_count = source.count(jump_pulse_anchor)
+if jump_pulse_count < 1:
+    raise SystemExit(f"M1 jump pulse expected at least one vanilla KeyMapping boundary, found {jump_pulse_count}")
+source = source.replace(jump_pulse_anchor, jump_pulse_replacement)
+
 required = [
     'if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE)',
     'self.setYRot(90.0F)',
     'client.options.keyRight.setDown(strafeWindow)',
     '!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
     'Math.abs(self.getY() - vs2$jumpStartY) < 0.08',
+    'self.tickCount <= vs2$jumpStartTick + 1',
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -72,4 +85,4 @@ for forbidden in [
         raise SystemExit("M1 fixture refinement found forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
-print("M1 fixture refinement: stops forward input, aligns strafe, and recognizes natural landing by returned fixture height")
+print("M1 fixture refinement: stops forward input, aligns strafe, holds native jump pulse two ticks, and recognizes natural landing")

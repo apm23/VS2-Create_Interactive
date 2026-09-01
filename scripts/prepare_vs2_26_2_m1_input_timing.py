@@ -9,6 +9,28 @@ source = fixture_input.read_text(encoding="utf-8")
 lease_source = contact_lease.read_text(encoding="utf-8")
 verifier_source = verifier.read_text(encoding="utf-8")
 
+# Production-world #668 proves the two-frame native readiness is sufficient to identify the
+# correct supported carriage, but the fixture immediately presses forward in the same callback
+# that records WALK_START. That consumes the next frame before the production-world verifier can
+# finish its standing-carry window: tick 36 is the first baseline-captured strict sample and tick
+# 37 already has a large carriage-local displacement. Keep the readiness threshold unchanged and
+# delay only the disposable forward KeyMapping until the following fixture tick. The existing
+# bounded branch then supplies forward input from start+1 through start+12. Fixture sequencing only:
+# no player position/velocity, collision response, carry, gravity, train, or world state is changed.
+walk_start_press_old = '''                            phase154WalkPreviousLocal = phase154Local;
+                            phase154WalkSupportHealthy = true;
+                            client.options.keyUp.setDown(true);
+                            LOGGER.info(
+                                "GATE_E_PHASE154_FIXTURE_WALK_START'''
+walk_start_press_new = '''                            phase154WalkPreviousLocal = phase154Local;
+                            phase154WalkSupportHealthy = true;
+                            client.options.keyUp.setDown(false);
+                            LOGGER.info(
+                                "GATE_E_PHASE154_FIXTURE_WALK_START'''
+if source.count(walk_start_press_old) != 1:
+    raise SystemExit("M1 input timing expected one immediate forward walk-start press")
+source = source.replace(walk_start_press_old, walk_start_press_new, 1)
+
 # Production-world #663 proves the negative-Z wall verifier and the actual disposable strafe
 # input are pointed at opposite sides: the verifier is intentionally restored below to z=-2,
 # while M1 strafe alignment still leaves yaw -90, which drives the ordinary right KeyMapping
@@ -180,7 +202,7 @@ for old_wall, new_wall in wall_direction_replacements:
 
 late_handoff = '''pre_wall_carriage=before[-1][1]
 rebase_pattern=re.compile(
-    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\\n]*previous_carriage_id={pre_wall_carriage}[^\\n]*carriage_id=(\\d+)[^\\n]*player_tick=(\\d+)[^\\n]*native_contact_owner=true[^\\n]*identity_only=true")
+    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\n]*previous_carriage_id={pre_wall_carriage}[^\n]*carriage_id=(\d+)[^\n]*player_tick=(\d+)[^\n]*native_contact_owner=true[^\n]*identity_only=true")
 rebase_match=next((m for m in rebase_pattern.finditer(text) if strafe_request_tick <= int(m.group(2)) <= strafe_request_tick+7), None)
 wall_carriage=int(rebase_match.group(1)) if rebase_match is not None else pre_wall_carriage
 wall_start_tick=int(rebase_match.group(2)) if rebase_match is not None else strafe_request_tick
@@ -192,7 +214,7 @@ for sample in after_window:
 if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")'''
 bounded_handoff = '''pre_wall_carriage=before[-1][1]
 rebase_pattern=re.compile(
-    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\\n]*previous_carriage_id={pre_wall_carriage}[^\\n]*carriage_id=(\\d+)[^\\n]*player_tick=(\\d+)[^\\n]*native_contact_owner=true[^\\n]*identity_only=true")
+    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\n]*previous_carriage_id={pre_wall_carriage}[^\n]*carriage_id=(\d+)[^\n]*player_tick=(\d+)[^\n]*native_contact_owner=true[^\n]*identity_only=true")
 rebase_match=next((m for m in rebase_pattern.finditer(text) if strafe_request_tick <= int(m.group(2)) <= strafe_request_tick+1), None)
 wall_carriage=int(rebase_match.group(1)) if rebase_match is not None else pre_wall_carriage
 wall_start_tick=int(rebase_match.group(2)) if rebase_match is not None else strafe_request_tick
@@ -213,6 +235,7 @@ required = [
     'System.getProperty("vs2.productionFixtureWalkStartTick")',
     'if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed) return false;',
     'self.setYRot(90.0F)',
+    'phase154WalkSupportHealthy = true;\n                            client.options.keyUp.setDown(false);',
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -246,10 +269,10 @@ for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(', 'method.invoke(lease, Integer.valueOf(0))',
 ]:
-    if forbidden in strafe_yaw_new + new + strafe_guard_new + lease_tail_new + lease_outer_guard_new + lease_airborne_new + lease_grounded_new + lease_grace_overlap_new:
+    if forbidden in walk_start_press_new + strafe_yaw_new + new + strafe_guard_new + lease_tail_new + lease_outer_guard_new + lease_airborne_new + lease_grounded_new + lease_grace_overlap_new:
         raise SystemExit("M1 input/lease patch introduced forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 input timing: accepts only request/+1 native strafe handoff while preserving authoritative Create movement")
+print("M1 input timing: delays fixture forward input one tick so standing carry proof completes before native locomotion")

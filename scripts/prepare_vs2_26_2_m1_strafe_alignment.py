@@ -40,22 +40,36 @@ if walk_window_count != 1:
     raise SystemExit(f"M1 forward-stop expected one headless forward pulse boundary, found {walk_window_count}")
 source = source.replace(walk_window_anchor, walk_window_replacement, 1)
 
+# Production-world #591 proves the vanilla jump request executes and produces a native vertical
+# arc, but Create can keep LocalPlayer.onGround() true while owning the moving-contact frame and
+# the post-aiStep vertical delta does not necessarily settle to almost exactly zero. The observer
+# already records the request Y and requires a real falling sample. Treat return to the request
+# height while grounded after that falling sample as the natural landing proof. This changes only
+# fixture acceptance; it never writes position, velocity, gravity, collision, carry, or train state.
+landing_anchor = 'if (vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005 && self.tickCount > vs2$jumpStartTick) {'
+landing_replacement = 'if (vs2$jumpFallingSeen && self.onGround() && Double.isFinite(vs2$jumpStartY) && Math.abs(self.getY() - vs2$jumpStartY) < 0.08 && self.tickCount > vs2$jumpStartTick) {'
+landing_count = source.count(landing_anchor)
+if landing_count != 1:
+    raise SystemExit(f"M1 landing proof expected one delta-settle boundary, found {landing_count}")
+source = source.replace(landing_anchor, landing_replacement, 1)
+
 required = [
     'if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE)',
     'self.setYRot(90.0F)',
     'client.options.keyRight.setDown(strafeWindow)',
     '!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
+    'Math.abs(self.getY() - vs2$jumpStartY) < 0.08',
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("M1 strafe/forward fixture lost anchors: " + ", ".join(missing))
+    raise SystemExit("M1 fixture refinement lost anchors: " + ", ".join(missing))
 
 for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(',
 ]:
     if forbidden in source:
-        raise SystemExit("M1 strafe/forward fixture found forbidden gameplay mutation: " + forbidden)
+        raise SystemExit("M1 fixture refinement found forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
-print("M1 fixture alignment: stops both forward input paths after native walk proof and points right-strafe toward the side wall")
+print("M1 fixture refinement: stops forward input, aligns strafe, and recognizes natural landing by returned fixture height")

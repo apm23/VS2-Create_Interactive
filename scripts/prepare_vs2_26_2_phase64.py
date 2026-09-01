@@ -11,14 +11,24 @@ mixin_json = resources / "vs2-create-compat.mixins.json"
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
+import net.minecraft.world.entity.Entity;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** CI-only trace of the actual Create Fly client collision class. */
+/**
+ * Adapter around the actual Create Fly client collision path. Create remains authoritative for
+ * carriage contact and horizontal carry. When vanilla LocalPlayer has a real upward jump velocity,
+ * however, a same-tick moving-contraption contact must not rewrite that airborne state back to
+ * grounded; doing so suppresses vanilla gravity on the following ticks and pins the player at the
+ * jump apex. Preserve vanilla airborne semantics only for a rising LocalPlayer while the explicit
+ * VS2/Create carry compatibility mode is enabled. No position, velocity, gravity, collision vector,
+ * train state, or world state is synthesized here.
+ */
 @Mixin(targets = "com.zurrtum.create.client.content.contraptions.ContraptionColliderClient", remap = false)
 public abstract class MixinContraptionColliderClientTrace {
     private static final Logger LOGGER = LogManager.getLogger("VS2-GateE-ClientCollider");
@@ -29,6 +39,19 @@ public abstract class MixinContraptionColliderClientTrace {
         if (++calls <= 32) {
             LOGGER.info("GATE_E_CREATE_CLIENT_COLLIDE_ENTITIES_CALL index={} thread={}", calls, Thread.currentThread().getName());
         }
+    }
+
+    @Redirect(
+        method = "collideEntities",
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;setOnGround(Z)V"),
+        remap = false,
+        require = 0
+    )
+    private static void vs2$preserveVanillaAirborneDuringCreateCarry(Entity entity, boolean onGround) {
+        boolean risingLocalPlayer = Boolean.getBoolean("vs2.createCarryCompat")
+            && "net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName())
+            && entity.getDeltaMovement().y > 0.05;
+        entity.setOnGround(onGround && !risingLocalPlayer);
     }
 }
 ''', encoding="utf-8")
@@ -68,5 +91,13 @@ if old not in source:
 source = source.replace(old, new, 1)
 trace.write_text(source, encoding="utf-8")
 
-print("Phase 64: traced the actual client-only ContraptionColliderClient path and corrected the common shape hook to its runtime void signature; read-only diagnostics only")
+inserted = java.read_text(encoding="utf-8")
+for forbidden in [
+    "setPos(", "setDeltaMovement(", ".move(", ".teleport(", "setVelocity(",
+    "setBlock(", "syncCarriage(",
+]:
+    if forbidden in inserted:
+        raise SystemExit("Phase 64 airborne adapter introduced forbidden gameplay mutation: " + forbidden)
+
+print("Phase 64: keeps Create carry authoritative while preserving vanilla LocalPlayer airborne state on upward jump")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase65.py")), run_name="__main__")

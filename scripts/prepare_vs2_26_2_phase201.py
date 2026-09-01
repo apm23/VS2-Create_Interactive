@@ -68,6 +68,13 @@ runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase202.py")), ru
 # (!productionSmokeFixture || fixtureContactAcquireTicks >= 32), allowing exact native contact to
 # start locomotion around tick 18 and contaminate the standing-carry verifier. Protect that existing
 # walk gate while rewriting the acquisition/unassisted boundaries, then restore it unchanged.
+#
+# Production-world #614 isolates the remaining harness loop: after one genuine current-tick Phase170
+# native contact, an intermittent following tick can make Phase119's test-only nearest-collider retarget
+# eligible again before the hard 32-tick standing-acquisition gate. Latch only that current-pass exact
+# native contact in this fresh client probe instance, then freeze further fixture retarget mutation while
+# passive acquisition accounting continues to 32. This changes only disposable smoke-fixture ownership;
+# Create carry/collision and VS2 physics remain untouched.
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 probe_source = client_probe.read_text(encoding="utf-8")
 old_acquire = "fixtureContactAcquireTicks < 32"
@@ -95,22 +102,65 @@ probe_source = probe_source.replace(old_unassisted, new_unassisted)
 probe_source = probe_source.replace(protected_walk_gate, hard_walk_gate)
 if probe_source.count(hard_walk_gate) != hard_walk_gate_count:
     raise SystemExit("Phase 201 failed to preserve every hard 32-tick walk acquisition gate")
+
+field_anchor = "    private long ticks;\n"
+field_insert = field_anchor + "    private boolean vs2Phase201NativeAcquired;\n"
+if "private boolean vs2Phase201NativeAcquired;" not in probe_source:
+    if probe_source.count(field_anchor) != 1:
+        raise SystemExit("Phase 201 expected one GateE client ticks field for native-acquisition latch")
+    probe_source = probe_source.replace(field_anchor, field_insert, 1)
+
+player_anchor = "            var player = client.player;\n"
+latch_block = player_anchor + '''            if (Boolean.getBoolean("vs2.productionSmokeFixture")
+                    && Integer.toString(player.tickCount).equals(
+                        System.getProperty("vs2.phase170NativeContactApplicationTick"))) {
+                vs2Phase201NativeAcquired = true;
+            }
+'''
+if "vs2Phase201NativeAcquired = true;" not in probe_source:
+    if probe_source.count(player_anchor) != 1:
+        raise SystemExit("Phase 201 expected one GateE client player acquisition anchor")
+    probe_source = probe_source.replace(player_anchor, latch_block, 1)
+
+latched_acquire = '''(fixtureContactAcquireTicks < 32
+            && !vs2Phase201NativeAcquired)'''
+latched_unassisted = '''(fixtureContactAcquireTicks >= 32
+            || vs2Phase201NativeAcquired)'''
+new_acquire_count = probe_source.count(new_acquire)
+new_unassisted_count = probe_source.count(new_unassisted)
+if new_acquire_count < 2 or new_unassisted_count < 1:
+    raise SystemExit(
+        f"Phase 201 expected tick-fresh boundaries before latching, found acquire={new_acquire_count} unassisted={new_unassisted_count}"
+    )
+probe_source = probe_source.replace(new_acquire, latched_acquire)
+probe_source = probe_source.replace(new_unassisted, latched_unassisted)
+
+retarget_old = "best < 0 && productionSmokeFixture && colliderCount > 0"
+retarget_new = "best < 0 && productionSmokeFixture && !vs2Phase201NativeAcquired && colliderCount > 0"
+if retarget_new not in probe_source:
+    if probe_source.count(retarget_old) != 1:
+        raise SystemExit("Phase 201 expected one Phase119 fixture nearest-collider retarget boundary")
+    probe_source = probe_source.replace(retarget_old, retarget_new, 1)
+
 required_fixture = [
     "vs2.phase170NativeContactApplicationTick",
     "Integer.toString(player.tickCount).equals",
+    "private boolean vs2Phase201NativeAcquired;",
+    "vs2Phase201NativeAcquired = true;",
     "fixtureContactAcquireTicks < 32",
     "fixtureContactAcquireTicks >= 32",
+    "!vs2Phase201NativeAcquired && colliderCount > 0",
     hard_walk_gate,
 ]
 missing_fixture = [token for token in required_fixture if token not in probe_source]
 if missing_fixture:
-    raise SystemExit("Phase 201 lost tick-fresh native-contact fixture anchors: " + ", ".join(missing_fixture))
+    raise SystemExit("Phase 201 lost current-pass native-contact latch anchors: " + ", ".join(missing_fixture))
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
     "cir.setReturnValue(",
 ]:
-    if forbidden in new_acquire + new_unassisted:
-        raise SystemExit("Phase 201 fixture-boundary alignment introduced forbidden gameplay mutation")
+    if forbidden in latched_acquire + latched_unassisted + retarget_new + latch_block:
+        raise SystemExit("Phase 201 fixture-boundary latch introduced forbidden gameplay mutation")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("Phase 201: tick-fresh acquisition stays bounded while the proven 32-tick walk-start gate remains hard")
+print("Phase 201: current-pass native acquisition latches before fixture retarget while the 32-tick walk-start gate remains hard")

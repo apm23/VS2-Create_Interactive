@@ -18,10 +18,14 @@ source = client_probe.read_text(encoding="utf-8")
 # Production-world #228 then proved the previous tick-40 telemetry ceiling can end exactly
 # during a sibling-carriage handoff: three perfect same-frame samples were observed before
 # the handoff, while later zero-drift carry evidence occurred after continuity telemetry had
-# stopped. Extend this read-only observation window to tick 80 without changing carry,
-# collision, player motion, train state, or VS2 physics.
+# stopped. Extend this read-only observation window through the M1 jump/landing proof.
+# Production-world #527 lands naturally at tick 85, but the old tick-80 ceiling made the
+# post-landing stability verifier structurally unable to see even one sample after landing.
+# Observe through tick 100 so five same-carriage supported samples can be proven after the
+# already-observed native landing. Read-only only: no carry, collision, player motion,
+# train state, Create behavior, or VS2 physics is changed.
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
-probe = '''            if (productionSmokeFixture && player.tickCount >= 20 && player.tickCount <= 80) {
+probe = '''            if (productionSmokeFixture && player.tickCount >= 20 && player.tickCount <= 100) {
                 net.minecraft.world.entity.Entity localFrameCarriage = null;
                 if (carryBaselineCarriageId != Integer.MIN_VALUE) {
                     net.minecraft.world.entity.Entity baselineEntity = client.level.getEntity(carryBaselineCarriageId);
@@ -78,7 +82,7 @@ if "baseline_frame={}" not in source:
 
 required = [
     'GATE_E_CARRIAGE_LOCAL_CONTINUITY',
-    'player.tickCount >= 20 && player.tickCount <= 80',
+    'player.tickCount >= 20 && player.tickCount <= 100',
     'client.level.getEntity(carryBaselineCarriageId)',
     'localFrameCarriage.getId() == carryBaselineCarriageId',
     'toLocalVector',
@@ -95,6 +99,6 @@ for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport', 'setBlo
         raise SystemExit("Phase 127 found forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 127: samples carriage-local continuity through tick 80; read-only sibling-carriage telemetry fix")
+print("Phase 127: samples carriage-local continuity through tick 100 for native post-landing proof; read-only only")
 
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase128.py")), run_name="__main__")

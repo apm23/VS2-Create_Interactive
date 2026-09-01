@@ -55,11 +55,14 @@ source = client_probe.read_text(encoding="utf-8")
 # depending on the downstream immediate-ready alias. This is still only fixture KeyMapping acceptance;
 # it does not move the player or alter carry/collision/physics.
 #
-# Production-world #633 proves fixtureNativeCarrySettled is not equivalent to completion of the real
-# production standing-carry proof: it released forward input at tick 17 after only the two initial strict
-# support samples, contaminating the carry window before the workflow could establish its required stable
-# interval. In production smoke, keep direct walk behind the existing bounded acquisition threshold; the
-# #632 same-tick direct arm then prevents the old threshold from wasting the final healthy support tick.
+# Production-world #633 proves fixtureNativeCarrySettled is not equivalent to completed walk readiness:
+# starting immediately at that handoff after only the first two strict samples was followed by gross
+# carriage-local escape on the next tick. Production-world #634 proves the opposite boundary: forcing
+# all readiness to wait for attempt 32 lets the finite train leave strict support even though the
+# production carry verifier already passed on a stable three-sample native interval. Let the existing
+# Phase185 settled-frame counter begin only after Phase129's native handoff, but keep its established
+# consecutive-frame requirement before input. The direct Phase194 arm itself still requires attempt 32.
+# This changes fixture acceptance only; no gameplay movement or physics state is synthesized.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -108,7 +111,7 @@ new_readiness = '''                        boolean phase194NativeAuthoritativeSu
                         boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
                             && phase185FreshNativeEvidence
-                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32)
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32 || fixtureNativeCarrySettled)
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 2);'''
 if source.count(old_readiness) != 1:
@@ -187,7 +190,7 @@ required = [
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh",
-    "fixtureContactAcquireTicks >= 32",
+    "fixtureContactAcquireTicks >= 32 || fixtureNativeCarrySettled",
     "fixtureNativeCarrySettled",
     "phase194DirectNativeCandidate && phase194NativeAuthoritativeSupport",
     "native_health_age={}",
@@ -211,5 +214,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: preserves standing carry acquisition before consuming the direct native walk arm")
+print("Phase 194: accumulates settled-frame walk readiness after native handoff without bypassing the direct-arm threshold")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

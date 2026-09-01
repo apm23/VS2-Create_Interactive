@@ -43,6 +43,45 @@ if new_collider_fixture not in source:
         raise SystemExit("Phase 86 could not find Phase 67 collider fixture guard")
     source = source.replace(old_collider_fixture, new_collider_fixture, 1)
 
+# Production-world #568 proves the static historical carry baseline is the wrong
+# owner for the airborne moving reference frame. The player had genuine grounded
+# Create contact on carriage 7 immediately before jumping, but the old Phase 83
+# bridge stayed keyed to an earlier baseline carriage and never ran; while airborne
+# the nearest candidate then walked through sibling carriages as the train moved
+# underneath the player. Keep Create authoritative while grounded, and lease exactly
+# the latest carriage that simultaneously had physical support and a recent native
+# ContraptionCollider application. This only corrects reference-frame selection; it
+# does not add velocity, gravity, collision response, or legacy carry replay.
+old_phase83_reference = '''            boolean phase83ExactBaselineCarriage = carryBaselineCaptured
+                && carryBaselineCarriageId == carriage.getId();
+            if (phase83ExactBaselineCarriage && phase81PhysicalSupport && player.onGround()) {
+                System.setProperty(
+                    "vs2.phase83SupportedBaselineTick." + carriage.getId(),
+                    Integer.toString(player.tickCount));
+            }
+'''
+new_phase83_reference = '''            String phase83SupportedReferenceCarriage = System.getProperty(
+                "vs2.phase83SupportedBaselineCarriageId");
+            boolean phase83ExactBaselineCarriage = phase83SupportedReferenceCarriage != null
+                && phase83SupportedReferenceCarriage.equals(Integer.toString(carriage.getId()));
+            if (phase81PhysicalSupport
+                && player.onGround()
+                && phase83NativeApplicationAge >= 0
+                && phase83NativeApplicationAge <= 1) {
+                System.setProperty(
+                    "vs2.phase83SupportedBaselineTick." + carriage.getId(),
+                    Integer.toString(player.tickCount));
+                System.setProperty(
+                    "vs2.phase83SupportedBaselineCarriageId",
+                    Integer.toString(carriage.getId()));
+                phase83ExactBaselineCarriage = true;
+            }
+'''
+if new_phase83_reference not in source:
+    if old_phase83_reference not in source:
+        raise SystemExit("Phase 86 could not find Phase 83 static baseline reference guard")
+    source = source.replace(old_phase83_reference, new_phase83_reference, 1)
+
 # The only LocalPlayer movement available outside ciHarness is now the strict
 # Phase 85 path: Create-computed contact motion, filtered through Create's own
 # ContraptionCollider.collide(), horizontal-only, and physical-support guarded.
@@ -51,13 +90,15 @@ required = [
     "phase81PhysicalSupport",
     "ContraptionCollider",
     "carryReplayPlayerTick",
+    "vs2.phase83SupportedBaselineCarriageId",
+    "phase83NativeApplicationAge <= 1",
 ]
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 86 lost required carry safety anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 86: isolated CI fixture reposition/gravity probes from opt-in production Create-filtered carry compatibility")
+print("Phase 86: leases airborne reference frame from latest physically-supported native Create carriage; fixture isolation preserved")
 
 # Keep the world-smoke preparation chain moving into the production-mode isolation
 # check. Phase 87 is still non-destructive: it only changes how the harness flag is

@@ -44,10 +44,9 @@ source = client_probe.read_text(encoding="utf-8")
 # can already declare fixtureNativeCarrySettled from existing Phase134/137 native carry health, the
 # production carry verifier can pass on the same strict supported carriage, yet waiting for the passive
 # counter to reach 32 lets the finite train move beyond the native-support window before walking starts.
-# Treat Phase129's stronger native-handoff latch as equivalent to the 32-attempt fallback for the direct
-# native walk path. The legacy readiness path still keeps its historical >=32 rule. This is harness
-# acceptance only: no player position, velocity, collision response, carry vector, train/world state,
-# or VS2/Create physics is changed.
+# The direct arm remains available exactly at the bounded acquisition threshold, while the legacy
+# readiness path keeps its historical >=32 rule. This is harness acceptance only: no player position,
+# velocity, collision response, carry vector, train/world state, or VS2/Create physics is changed.
 #
 # Production-world #632 proves the cumulative runtime can publish the complete direct-native arm on tick
 # 32 (fresh Phase134 healthy carry, strict support, exact Create application, matching baseline and
@@ -55,6 +54,12 @@ source = client_probe.read_text(encoding="utf-8")
 # sibling frame. Consume that already-complete arm predicate directly in the start branch instead of
 # depending on the downstream immediate-ready alias. This is still only fixture KeyMapping acceptance;
 # it does not move the player or alter carry/collision/physics.
+#
+# Production-world #633 proves fixtureNativeCarrySettled is not equivalent to completion of the real
+# production standing-carry proof: it released forward input at tick 17 after only the two initial strict
+# support samples, contaminating the carry window before the workflow could establish its required stable
+# interval. In production smoke, keep direct walk behind the existing bounded acquisition threshold; the
+# #632 same-tick direct arm then prevents the old threshold from wasting the final healthy support tick.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -116,7 +121,7 @@ old_branch = '''                        if (!phase154WalkStarted && phase185Walk
                                     || (phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2))) {'''
 new_branch = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
                             && phase194ProvenNativeCarryHealth
-                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32 || fixtureNativeCarrySettled);
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);
                         boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
                             && phase194NativeAuthoritativeSupport
                             && phase185NativeApplicationFresh;
@@ -206,5 +211,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: consumes the proven direct-native arm without waiting for a sibling-frame tick")
+print("Phase 194: preserves standing carry acquisition before consuming the direct native walk arm")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

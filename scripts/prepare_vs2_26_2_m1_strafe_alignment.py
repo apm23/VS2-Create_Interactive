@@ -109,9 +109,13 @@ if probe_source.count(continuity_value_anchor) != 1:
     raise SystemExit("M1 live jump support expected one continuity transform anchor")
 probe_source = probe_source.replace(continuity_value_anchor, continuity_value_replacement, 1)
 
-continuity_publish_anchor = '''                    boolean baselineFrame = localFrameCarriage.getId() == carryBaselineCarriageId;
-                    LOGGER.info('''
-continuity_publish_replacement = '''                    boolean baselineFrame = localFrameCarriage.getId() == carryBaselineCarriageId;
+# Anchor immediately after the continuity broadphase calculation rather than on the later
+# baselineFrame declaration: later preparation phases legitimately insert bookkeeping between
+# those statements. Recompute same-baseline identity locally so this fixture acceptance stays
+# composition-stable without changing runtime movement or collision behavior.
+continuity_publish_anchor = '''                    boolean broadphase = localFrameCarriage.getBoundingBox().inflate(2.0)
+                        .expandTowards(0.0, 32.0, 0.0).intersects(player.getBoundingBox());'''
+continuity_publish_replacement = continuity_publish_anchor + '''
                     boolean m1ContinuitySettledSupport = false;
                     if (m1JumpContinuityLocal != null) {
                         String m1PrevTickRaw = System.getProperty("vs2.m1JumpContinuityTick");
@@ -132,7 +136,8 @@ continuity_publish_replacement = '''                    boolean baselineFrame = 
                             m1ContinuitySettledSupport = m1PrevTick + 1 == player.tickCount
                                 && m1PrevCarriage == localFrameCarriage.getId()
                                 && m1StepSq <= 0.0001
-                                && broadphase && player.onGround() && baselineFrame;
+                                && broadphase && player.onGround()
+                                && localFrameCarriage.getId() == carryBaselineCarriageId;
                         } catch (NumberFormatException ignored) {
                             m1ContinuitySettledSupport = false;
                         }
@@ -143,10 +148,9 @@ continuity_publish_replacement = '''                    boolean baselineFrame = 
                         System.setProperty("vs2.m1JumpContinuityZ", Double.toString(m1JumpContinuityLocal.z));
                     }
                     System.setProperty("vs2.productionFixtureJumpFloorSupportNow", Boolean.toString(m1ContinuitySettledSupport));
-                    System.setProperty("vs2.productionFixtureJumpFloorSupportTick", Integer.toString(player.tickCount));
-                    LOGGER.info('''
+                    System.setProperty("vs2.productionFixtureJumpFloorSupportTick", Integer.toString(player.tickCount));'''
 if probe_source.count(continuity_publish_anchor) != 1:
-    raise SystemExit("M1 live jump support expected one continuity baseline anchor")
+    raise SystemExit("M1 live jump support expected one continuity broadphase anchor")
 probe_source = probe_source.replace(continuity_publish_anchor, continuity_publish_replacement, 1)
 
 jump_floor_gate_anchor = '''            && self.onGround()

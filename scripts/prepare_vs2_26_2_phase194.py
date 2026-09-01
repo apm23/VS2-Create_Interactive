@@ -7,48 +7,41 @@ client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client
 source = client_probe.read_text(encoding="utf-8")
 
 # Production-world #487 exposed a startup-transient false-positive when two fresh native carry ticks
-# could start the fixture directly before the active carriage lost frame continuity. Phase194 now has
-# a separate strict-support confirmation. Production-world #523 proved a one-tick sibling-carriage
-# selection can occupy the immediate confirmation tick even though the armed carriage returns one tick
-# later with strict support and an exact current-tick native Create application.
+# could start the fixture directly before the active carriage lost frame continuity. Phase194 therefore
+# keeps a separate immediate same-carriage confirmation before starting locomotion.
 #
-# Production-world #536 then exposed the remaining fixture boundary: three consecutive ready samples
-# on carriage 5 (ticks 15-17) were followed immediately by a sibling handoff at tick 18. The walk was
-# started at tick 17, remained grounded/broadphase-valid, but necessarily crossed carriage identity and
-# could not satisfy the bounded single-frame proof.
-#
-# Production-world #537 proves that accepting a two-tick confirmation after an intervening sibling seam
-# still starts locomotion on a discontinuous route frame: carriage 8 armed at tick 17, sibling carriage
-# 10 occupied tick 18, then carriage 8 returned at tick 19 and the old age<=2 rule started the walk.
-# Reject that seam entirely. Direct-native confirmation must now be the immediately following tick on
-# the same carriage.
+# Production-world #537 proved an intervening sibling carriage must invalidate that confirmation, so
+# the confirmation remains exactly the next tick (arm_age == 1) and still requires an exact current-tick
+# Create native application on the same baseline carriage.
 #
 # Production-world #538 proved Create exact same-carriage contact can be authoritative even when the
 # simplified Phase81 support diagnostic is false-negative, so native support remains accepted here.
-# Production-world #541 then proved three native-ready ticks are still too early on the finite fixture:
-# the walk started immediately after only one zero-drift carry sample and entered a large frame
-# discontinuity before sustained carry continuity could be established. Require the same five-tick
-# settled window as the conservative path before arming direct-native walking. This changes fixture
-# acceptance only; no player position/velocity, collision response, carry vector, train/world state,
-# Create behavior, or VS2 physics is changed.
+#
+# Production-world #541 showed that merely seeing three exact-native ready ticks can start too early,
+# before native carry itself has been proven stable. Production-world #542 then showed the opposite
+# failure when this was changed to five exact-native ticks: the production carry verifier already proved
+# exact native carry, but Create's exact-application sampling became intermittent and the walk could never
+# arm. Reuse Phase137's existing replay-aware native-carry-health result as the settled-carry prerequisite
+# instead of inventing another exact-application streak. The health tick must be at most two ticks old,
+# matching Phase137's bounded health sample window; the final start still requires immediate next-tick
+# exact Create application, same carriage, grounded broadphase support. Fixture acceptance only: no player
+# position/velocity, collision response, carry vector, train/world state, Create behavior, or VS2 physics
+# is changed.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
     "    private static int phase194PendingWalkCarriageId = -1;\n"
     "    private static int phase194PendingWalkTick = Integer.MIN_VALUE;\n"
 )
-if "phase194PendingWalkTick" not in source:
-    if source.count(field_anchor) != 1:
-        raise SystemExit("Phase 194 could not locate unique Phase185 readiness field anchor")
-    source = source.replace(field_anchor, field_insert, 1)
+if source.count(field_anchor) != 1:
+    raise SystemExit("Phase 194 could not locate unique Phase185 readiness field anchor")
+source = source.replace(field_anchor, field_insert, 1)
 
 acquire_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted"
 confirm_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted && phase194PendingWalkTick < player.tickCount - 1"
-if confirm_guard not in source:
-    count = source.count(acquire_guard)
-    if count != 1:
-        raise SystemExit(f"Phase 194 expected one canonical Phase162 fixture-acquisition guard, found {count}")
-    source = source.replace(acquire_guard, confirm_guard, 1)
+if source.count(acquire_guard) != 1:
+    raise SystemExit("Phase 194 expected one canonical Phase162 fixture-acquisition guard")
+source = source.replace(acquire_guard, confirm_guard, 1)
 
 old_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
@@ -60,27 +53,37 @@ new_readiness = '''                        boolean phase194NativeAuthoritativeSu
                             && phase185NativeApplicationFresh
                             && phase154Carriage.getId() == carryBaselineCarriageId
                             && collisionEligible && broadphaseOverlap && player.onGround();
+                        int phase194NativeCarryHealthyTick = Integer.MIN_VALUE;
+                        try {
+                            phase194NativeCarryHealthyTick = Integer.parseInt(System.getProperty(
+                                "vs2.phase134NativeCarryHealthyTick." + phase154Carriage.getId(), "-2147483648"));
+                        } catch (NumberFormatException ignored) {
+                            phase194NativeCarryHealthyTick = Integer.MIN_VALUE;
+                        }
+                        int phase194NativeCarryHealthyAge = player.tickCount - phase194NativeCarryHealthyTick;
+                        boolean phase194ProvenNativeCarryHealth = Boolean.parseBoolean(System.getProperty(
+                                "vs2.phase134NativeCarryHealthy." + phase154Carriage.getId(), "false"))
+                            && phase194NativeCarryHealthyTick != Integer.MIN_VALUE
+                            && phase194NativeCarryHealthyAge >= 0 && phase194NativeCarryHealthyAge <= 2
+                            && phase154SupportNow
+                            && phase154Carriage.getId() == carryBaselineCarriageId
+                            && collisionEligible && broadphaseOverlap && player.onGround();
                         boolean phase185WalkReadyNow = phase154SupportNow
                             && (phase81PhysicalSupport || phase194NativeAuthoritativeSupport)
                             && phase185FreshNativeEvidence
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32)
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 2);'''
-if "phase194NativeAuthoritativeSupport" not in source:
-    count = source.count(old_readiness)
-    if count != 1:
-        raise SystemExit(f"Phase 194 expected one final Phase192 readiness clause, found {count}")
-    source = source.replace(old_readiness, new_readiness, 1)
+if source.count(old_readiness) != 1:
+    raise SystemExit("Phase 194 expected one final Phase192 readiness clause")
+source = source.replace(old_readiness, new_readiness, 1)
 
 old_branch = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
                                 && (phase185WalkReadyTicks >= 5
                                     || (phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2))) {'''
 new_branch = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
-                            && phase185WalkReadyNow
-                            && phase185WalkReadyCarriageId == phase154Carriage.getId()
-                            && phase185NativeApplicationFresh
-                            && phase185WalkReadyTicks >= 5;
+                            && phase194ProvenNativeCarryHealth;
                         int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
@@ -93,9 +96,10 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                             phase194PendingWalkCarriageId = phase154Carriage.getId();
                             phase194PendingWalkTick = player.tickCount;
                             LOGGER.info(
-                                "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM player_tick={} carriage_id={} ready_ticks={} strict_support={} native_authoritative_support={} support_now={} baseline_carriage_id={} fixture_only=true accounting_only=true",
-                                player.tickCount, phase154Carriage.getId(), phase185WalkReadyTicks,
-                                phase81PhysicalSupport, phase194NativeAuthoritativeSupport, phase154SupportNow, carryBaselineCarriageId);
+                                "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM player_tick={} carriage_id={} native_health_tick={} native_health_age={} strict_support={} native_authoritative_support={} support_now={} baseline_carriage_id={} fixture_only=true accounting_only=true",
+                                player.tickCount, phase154Carriage.getId(), phase194NativeCarryHealthyTick,
+                                phase194NativeCarryHealthyAge, phase81PhysicalSupport,
+                                phase194NativeAuthoritativeSupport, phase154SupportNow, carryBaselineCarriageId);
                         }
                         if (phase194ConfirmedDirectNativeReady) {
                             LOGGER.info(
@@ -108,57 +112,20 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                                     && phase185WalkReadyCarriageId == phase154Carriage.getId()
                                     && phase185WalkReadyTicks >= 5)
                                     || phase194ConfirmedDirectNativeReady)) {'''
-if "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM" not in source:
-    count = source.count(old_branch)
-    if count != 1:
-        raise SystemExit(f"Phase 194 expected one Phase192 direct-native start branch, found {count}")
-    source = source.replace(old_branch, new_branch, 1)
-else:
-    old_confirmation = '''                        int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
-                        boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
-                            && phase194PendingWalkCarriageId == phase154Carriage.getId()
-                            && phase194PendingWalkAge == 1
-                            && phase154SupportNow
-                            && phase81PhysicalSupport
-                            && phase185NativeApplicationFresh
-                            && phase154Carriage.getId() == carryBaselineCarriageId
-                            && collisionEligible && broadphaseOverlap && player.onGround();'''
-    new_confirmation = '''                        int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
-                        boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
-                            && phase194PendingWalkCarriageId == phase154Carriage.getId()
-                            && phase194PendingWalkAge == 1
-                            && phase194NativeAuthoritativeSupport
-                            && phase185NativeApplicationFresh
-                            && phase154Carriage.getId() == carryBaselineCarriageId
-                            && collisionEligible && broadphaseOverlap && player.onGround();'''
-    if old_confirmation in source:
-        source = source.replace(old_confirmation, new_confirmation, 1)
-    source = source.replace(
-        "&& phase185WalkReadyTicks >= 3;",
-        "&& phase185WalkReadyTicks >= 5;",
-        1,
-    )
-    source = source.replace(
-        "&& phase185WalkReadyTicks >= 2;",
-        "&& phase185WalkReadyTicks >= 5;",
-        1,
-    )
-    source = source.replace(
-        '"GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM player_tick={} carriage_id={} ready_ticks={} strict_support={} support_now={} baseline_carriage_id={} fixture_only=true accounting_only=true",\n                                player.tickCount, phase154Carriage.getId(), phase185WalkReadyTicks,\n                                phase81PhysicalSupport, phase154SupportNow, carryBaselineCarriageId);',
-        '"GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM player_tick={} carriage_id={} ready_ticks={} strict_support={} native_authoritative_support={} support_now={} baseline_carriage_id={} fixture_only=true accounting_only=true",\n                                player.tickCount, phase154Carriage.getId(), phase185WalkReadyTicks,\n                                phase81PhysicalSupport, phase194NativeAuthoritativeSupport, phase154SupportNow, carryBaselineCarriageId);',
-        1,
-    )
-    source = source.replace(
-        '"GATE_E_PHASE194_DIRECT_NATIVE_WALK_CONFIRMED player_tick={} carriage_id={} armed_tick={} arm_age={} strict_support={} support_now={} baseline_carriage_id={} exact_native_application=true fixture_only=true accounting_only=true",\n                                player.tickCount, phase154Carriage.getId(), phase194PendingWalkTick, phase194PendingWalkAge,\n                                phase81PhysicalSupport, phase154SupportNow, carryBaselineCarriageId);',
-        '"GATE_E_PHASE194_DIRECT_NATIVE_WALK_CONFIRMED player_tick={} carriage_id={} armed_tick={} arm_age={} strict_support={} native_authoritative_support={} support_now={} baseline_carriage_id={} exact_native_application=true fixture_only=true accounting_only=true",\n                                player.tickCount, phase154Carriage.getId(), phase194PendingWalkTick, phase194PendingWalkAge,\n                                phase81PhysicalSupport, phase194NativeAuthoritativeSupport, phase154SupportNow, carryBaselineCarriageId);',
-        1,
-    )
+if source.count(old_branch) != 1:
+    raise SystemExit("Phase 194 expected one Phase192 direct-native start branch")
+source = source.replace(old_branch, new_branch, 1)
 
 required = [
     "phase194PendingWalkCarriageId",
     "phase194PendingWalkTick",
     "phase194NativeAuthoritativeSupport",
-    "phase81PhysicalSupport || phase194NativeAuthoritativeSupport",
+    "phase194NativeCarryHealthyTick",
+    "phase194NativeCarryHealthyAge",
+    "phase194ProvenNativeCarryHealth",
+    "vs2.phase134NativeCarryHealthy.",
+    "vs2.phase134NativeCarryHealthyTick.",
+    "phase194NativeCarryHealthyAge <= 2",
     "phase194DirectNativeCandidate",
     "phase194PendingWalkAge",
     "phase194ConfirmedDirectNativeReady",
@@ -168,8 +135,7 @@ required = [
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh",
-    "native_authoritative_support={}",
-    "arm_age={}",
+    "native_health_age={}",
     "exact_native_application=true",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_CONFIRMED",
@@ -177,7 +143,7 @@ required = [
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 194 lost native-authoritative walk-start anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 194 lost native-health walk-start anchors: " + ", ".join(missing))
 
 inserted = new_readiness + field_insert + confirm_guard + new_branch
 for forbidden in [
@@ -189,5 +155,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: requires five settled exact-native ticks before walk while preserving immediate seam rejection")
+print("Phase 194: gates walk on proven native carry health while preserving immediate exact-carriage seam rejection")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

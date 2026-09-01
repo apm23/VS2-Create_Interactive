@@ -34,6 +34,8 @@ if "fixtureContactAcquireTicks" not in source:
 # Match the final guard structurally instead of pinning an exact text form: it must be
 # an if-condition containing fixtureColliderNormalized and immediately enter the same
 # try block. Preserve every existing predicate and only OR in bounded fixture retry.
+# Once Create has captured a native carriage baseline, fixture retargeting must stop:
+# continuing to chase the moving collider destroys the exact native frame we just proved.
 if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     pattern = re.compile(
         r'(?P<indent>\s*)if \((?P<cond>[^\n{}]*fixtureColliderNormalized[^\n{}]*)\) \{\n(?P=indent)    try \{'
@@ -54,8 +56,8 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
 
     replacement = (
         f'{indent}if (({cond})\n'
-        f'{indent}        || (productionSmokeFixture && fixtureContactAcquireTicks < 32)) {{\n'
-        f'{indent}    if (productionSmokeFixture && fixtureContactAcquireTicks < 32) {{\n'
+        f'{indent}        || (productionSmokeFixture && !carryBaselineCaptured && fixtureContactAcquireTicks < 32)) {{\n'
+        f'{indent}    if (productionSmokeFixture && !carryBaselineCaptured && fixtureContactAcquireTicks < 32) {{\n'
         f'{indent}        fixtureContactAcquireTicks++;\n'
         f'{indent}        LOGGER.info(\n'
         f'{indent}            "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={{}} attempt={{}} bounded=true fixture_only=true",\n'
@@ -65,12 +67,12 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     )
     source = source[:match.start()] + replacement + source[match.end():]
 
-# Keep carriage-local continuity telemetry out of the assisted setup interval. The
-# production gate therefore only sees samples produced after all fixture repositioning
-# has stopped. Extend the observation window so CI still has enough unassisted ticks.
+# Keep carriage-local continuity telemetry out of assisted setup. As soon as Create
+# captures a native baseline, assistance has ended and the production gate may observe
+# the resulting unassisted frame; otherwise retain the hard 32-attempt fallback bound.
 source = source.replace(
     '''if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 32) {''',
-    '''if (productionSmokeFixture && fixtureContactAcquireTicks >= 32 && player.tickCount >= 14 && player.tickCount <= 72) {''',
+    '''if (productionSmokeFixture && (carryBaselineCaptured || fixtureContactAcquireTicks >= 32) && player.tickCount >= 14 && player.tickCount <= 72) {''',
     1,
 )
 
@@ -103,7 +105,7 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
 
     replay_indent = replay_match.group("indent")
     replay_probe = (
-        f'{replay_indent}if (productionSmokeFixture && fixtureContactAcquireTicks >= 32 '
+        f'{replay_indent}if (productionSmokeFixture && (carryBaselineCaptured || fixtureContactAcquireTicks >= 32) '
         f'&& player.tickCount >= 14 && player.tickCount <= 72) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
         f'{replay_indent}        "GATE_E_PHASE130_REPLAY_GUARD player_tick={{}} carriage_id={{}} baseline_captured={{}} physical_support={{}} collision_eligible={{}} broadphase={{}} baseline_carriage_id={{}} rebase_tick={{}} rebase_age={{}} replay_tick={{}} read_only=true",\n'
@@ -117,7 +119,8 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
 
 required = [
     'fixtureContactAcquireTicks < 32',
-    'fixtureContactAcquireTicks >= 32',
+    '!carryBaselineCaptured && fixtureContactAcquireTicks < 32',
+    '(carryBaselineCaptured || fixtureContactAcquireTicks >= 32)',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',
     'bounded=true fixture_only=true',
     'GATE_E_FIXTURE_COLLIDER_NEAREST_FALLBACK',
@@ -133,6 +136,6 @@ if missing:
     raise SystemExit("Phase 129 lost bounded fixture/contact telemetry anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 129: bounds fixture acquisition at 32 ticks after Run 493 proved an earlier stable native-support window")
+print("Phase 129: stops fixture retargeting immediately after native baseline capture; 32 attempts remain the fallback bound")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase130.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase131.py")), run_name="__main__")

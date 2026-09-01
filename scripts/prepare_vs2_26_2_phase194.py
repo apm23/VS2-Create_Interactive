@@ -6,63 +6,11 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #487 exposed a startup-transient false-positive when two fresh native carry ticks
-# could start the fixture directly before the active carriage lost frame continuity. Phase194 therefore
-# keeps a separate immediate same-carriage confirmation before starting locomotion.
-#
-# Production-world #537 proved an intervening sibling carriage must invalidate that confirmation, so
-# the confirmation remains exactly the next tick (arm_age == 1) and still requires an exact current-tick
-# Create native application on the same baseline carriage.
-#
-# Production-world #538 showed exact same-carriage Create contact can exist while the simplified
-# Phase81 support diagnostic is false. Production-world #574 then supplied the missing acceptance
-# boundary: starting the locomotion fixture from that false-support state produced immediate local-frame
-# escape once exact native application stopped, while the last green production-world #572 started from
-# strict support and completed the same locomotion proof. Keep native contact as evidence, but do not use
-# it to waive strict physical support when arming movement. This is fixture acceptance only; it changes
-# no player position/velocity, carry vector, collision response, train/world state, Create behavior, or
-# VS2 physics.
-#
-# Production-world #541 showed that merely seeing three exact-native ready ticks can start too early,
-# before native carry itself has been proven stable. Production-world #542 then showed the opposite
-# failure when this was changed to five exact-native ticks: the production carry verifier already proved
-# exact native carry, but Create's exact-application sampling became intermittent and the walk could never
-# arm. Reuse Phase137's existing replay-aware native-carry-health result as the settled-carry prerequisite
-# instead of inventing another exact-application streak. The health tick must be at most two ticks old,
-# matching Phase137's bounded health sample window.
-#
-# Production-world #594 proves the remaining next-tick confirmation can itself starve the finite-world
-# fixture after the stronger Phase137/194 hardening: carriage 8 at tick 23 and carriage 5 at tick 33 both
-# had proven native carry health, strict physical support, exact current-tick native Create application,
-# grounded broadphase overlap, and matching active baseline, but the immediately following tick crossed a
-# real carriage geometry/frame boundary before the confirmation could fire. Those arm ticks already meet
-# every authoritative condition the later confirmation rechecks. Permit the disposable input fixture to
-# start on that exact healthy native-support tick; retain the next-tick path as a fallback.
-#
-# Production-world #595 proved that mere early exact contact must not bypass standing acquisition while
-# the fixture is still assisting. Production-world #631 now proves the complementary boundary: Phase129
-# can already declare fixtureNativeCarrySettled from existing Phase134/137 native carry health, the
-# production carry verifier can pass on the same strict supported carriage, yet waiting for the passive
-# counter to reach 32 lets the finite train move beyond the native-support window before walking starts.
-# The direct arm remains available exactly at the bounded acquisition threshold, while the legacy
-# readiness path keeps its historical >=32 rule. This is harness acceptance only: no player position,
-# velocity, collision response, carry vector, train/world state, or VS2/Create physics is changed.
-#
-# Production-world #632 proves the cumulative runtime can publish the complete direct-native arm on tick
-# 32 (fresh Phase134 healthy carry, strict support, exact Create application, matching baseline and
-# authoritative support) yet never enter the immediate walk branch before the next tick crosses to a
-# sibling frame. Consume that already-complete arm predicate directly in the start branch instead of
-# depending on the downstream immediate-ready alias. This is still only fixture KeyMapping acceptance;
-# it does not move the player or alter carry/collision/physics.
-#
-# Production-world #633 proves fixtureNativeCarrySettled is not equivalent to completed walk readiness:
-# starting immediately at that handoff after only the first two strict samples was followed by gross
-# carriage-local escape on the next tick. Production-world #634 proves the opposite boundary: forcing
-# all readiness to wait for attempt 32 lets the finite train leave strict support even though the
-# production carry verifier already passed on a stable three-sample native interval. Let the existing
-# Phase185 settled-frame counter begin only after Phase129's native handoff, but keep its established
-# consecutive-frame requirement before input. The direct Phase194 arm itself still requires attempt 32.
-# This changes fixture acceptance only; no gameplay movement or physics state is synthesized.
+# Phase194 hardens the disposable locomotion fixture after proven native Create carry.
+# Phase192 now releases its readiness gate when Phase129 has already ended fixture assistance via
+# fixtureNativeCarrySettled, so consume that cumulative predicate directly instead of requiring the
+# historical counter-only spelling. This is harness composition only: no player position/velocity,
+# carry vector, collision response, train/world state, Create behavior, or VS2 physics is changed.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -73,9 +21,6 @@ if source.count(field_anchor) != 1:
     raise SystemExit("Phase 194 could not locate unique Phase185 readiness field anchor")
 source = source.replace(field_anchor, field_insert, 1)
 
-# Phase162 now preserves the Phase129 acquisition predicate in both the retry gate and
-# the matching acquisition-counter gate. Keep Phase194's pending-confirmation freeze
-# attached to both canonical guards so the two harness branches cannot diverge.
 acquire_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted"
 confirm_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted && phase194PendingWalkTick < player.tickCount - 1"
 if source.count(acquire_guard) != 2:
@@ -83,6 +28,12 @@ if source.count(acquire_guard) != 2:
 source = source.replace(acquire_guard, confirm_guard, 2)
 
 old_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
+                            && phase81PhysicalSupport
+                            && phase185FreshNativeEvidence
+                            && (!productionSmokeFixture || fixtureNativeCarrySettled || fixtureContactAcquireTicks >= 32)
+                            && (carryBaselineRebaseTick == Integer.MIN_VALUE
+                                || player.tickCount - carryBaselineRebaseTick >= 2);'''
+legacy_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport
                             && phase185FreshNativeEvidence
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32)
@@ -114,9 +65,12 @@ new_readiness = '''                        boolean phase194NativeAuthoritativeSu
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32 || fixtureNativeCarrySettled)
                             && (carryBaselineRebaseTick == Integer.MIN_VALUE
                                 || player.tickCount - carryBaselineRebaseTick >= 2);'''
-if source.count(old_readiness) != 1:
+if source.count(old_readiness) == 1:
+    source = source.replace(old_readiness, new_readiness, 1)
+elif source.count(legacy_readiness) == 1:
+    source = source.replace(legacy_readiness, new_readiness, 1)
+else:
     raise SystemExit("Phase 194 expected one final Phase192 readiness clause")
-source = source.replace(old_readiness, new_readiness, 1)
 
 old_branch = '''                        if (!phase154WalkStarted && phase185WalkReadyNow
                                 && phase185WalkReadyCarriageId == phase154Carriage.getId()
@@ -214,5 +168,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: accumulates settled-frame walk readiness after native handoff without bypassing the direct-arm threshold")
+print("Phase 194: accepts Phase129-settled cumulative readiness while preserving native-health walk hardening")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

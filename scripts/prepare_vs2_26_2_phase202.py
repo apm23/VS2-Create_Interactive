@@ -110,6 +110,29 @@ if fixture_source.count(old_jump_observer) != 1:
     raise SystemExit("Phase 202 expected one obsolete onGround-gated jump observer")
 fixture_source = fixture_source.replace(old_jump_observer, new_jump_observer, 1)
 
+# Production-world #569 proves the native jump itself still executes: LocalPlayer.move applies
+# +0.4199999869 Y on the request tick, but by the fixture's post-aiStep observer the vertical delta
+# can already be rewritten by later native/Create processing. Observe the already-executed vanilla
+# jump from actual player Y displacement relative to the request position as an alternative to the
+# transient deltaY sample. This changes proof timing only; no movement, collision, carry, gravity,
+# train/world state, or VS2/Create physics is modified.
+field_anchor = '''    @Unique private static int vs2$jumpStartTick = Integer.MIN_VALUE;\n'''
+field_insert = field_anchor + '''    @Unique private static double vs2$jumpStartY = Double.NaN;\n'''
+if "vs2$jumpStartY" not in fixture_source:
+    if fixture_source.count(field_anchor) != 1:
+        raise SystemExit("Phase 202 expected one jump-start field anchor")
+    fixture_source = fixture_source.replace(field_anchor, field_insert, 1)
+request_anchor = '''            vs2$jumpStartTick = self.tickCount;\n            VS2_FIXTURE_INPUT_LOGGER.info('''
+request_insert = '''            vs2$jumpStartTick = self.tickCount;\n            vs2$jumpStartY = self.getY();\n            VS2_FIXTURE_INPUT_LOGGER.info('''
+if fixture_source.count(request_anchor) != 1:
+    raise SystemExit("Phase 202 expected one jump request assignment")
+fixture_source = fixture_source.replace(request_anchor, request_insert, 1)
+rise_anchor = '''        if (vs2$jumpStartTick != Integer.MIN_VALUE && deltaY > 0.05 && !vs2$jumpAirborneSeen) {\n'''
+rise_replacement = '''        boolean jumpRising = deltaY > 0.05\n            || (Double.isFinite(vs2$jumpStartY) && self.getY() > vs2$jumpStartY + 0.05);\n        if (vs2$jumpStartTick != Integer.MIN_VALUE && jumpRising && !vs2$jumpAirborneSeen) {\n'''
+if fixture_source.count(rise_anchor) != 1:
+    raise SystemExit("Phase 202 expected one delta-only jump rise gate")
+fixture_source = fixture_source.replace(rise_anchor, rise_replacement, 1)
+
 required_fixture = [
     "return elapsed >= 1 && elapsed <= 4;",
     "return strafeElapsed >= 0 && strafeElapsed <= 8;",
@@ -129,6 +152,9 @@ required_fixture = [
     "deltaY < -0.01",
     "Math.abs(deltaY) < 0.005",
     "vertical_arc=true",
+    "vs2$jumpStartY = self.getY()",
+    "Double.isFinite(vs2$jumpStartY)",
+    "self.getY() > vs2$jumpStartY + 0.05",
 ]
 missing_fixture = [token for token in required_fixture if token not in fixture_source]
 if missing_fixture:
@@ -145,4 +171,4 @@ for forbidden in [
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 202: keeps the nine-tick native wall window and arms jump from grounded Create continuity without requiring an exact previous-tick contact callback")
+print("Phase 202: observes the native jump from actual vertical displacement when transient deltaY is unavailable; no gameplay mutation")

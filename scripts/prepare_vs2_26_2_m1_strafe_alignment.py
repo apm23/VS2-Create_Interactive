@@ -82,6 +82,73 @@ if probe_source.count(floor_probe_anchor) != 1:
     raise SystemExit("M1 jump floor gate expected one Phase154 live carriage boundary")
 probe_source = probe_source.replace(floor_probe_anchor, floor_probe_replacement, 1)
 
+# Production-world #635 proved that the previous "live" jump-floor publisher was still scoped to
+# GATE_E_PHASE154_PRE_WALK_TRACE, which stops as soon as walk_started becomes true. The walk then
+# completed at tick 40 and reverse/strafe ran at ticks 41/42, but JumpFloorSupportTick remained a
+# pre-walk value forever, so the native jump could never be requested even after grounded native
+# contact recovered. Refresh the same acceptance property from the already-existing carriage-local
+# continuity sampler, which runs through the whole M1 window. This is fixture accounting only: it
+# observes the current authoritative baseline carriage and never changes player/train/physics state.
+continuity_local_anchor = '''                    String localFeet = "unresolved";
+                    try {'''
+continuity_local_replacement = '''                    String localFeet = "unresolved";
+                    net.minecraft.world.phys.Vec3 m1JumpContinuityLocal = null;
+                    try {'''
+if probe_source.count(continuity_local_anchor) != 1:
+    raise SystemExit("M1 live jump support expected one continuity local-value anchor")
+probe_source = probe_source.replace(continuity_local_anchor, continuity_local_replacement, 1)
+
+continuity_value_anchor = '''                        Object localValue = toLocal.invoke(localFrameCarriage, player.position(), 0.0f);
+                        localFeet = String.valueOf(localValue);'''
+continuity_value_replacement = '''                        Object localValue = toLocal.invoke(localFrameCarriage, player.position(), 0.0f);
+                        localFeet = String.valueOf(localValue);
+                        if (localValue instanceof net.minecraft.world.phys.Vec3) {
+                            m1JumpContinuityLocal = (net.minecraft.world.phys.Vec3) localValue;
+                        }'''
+if probe_source.count(continuity_value_anchor) != 1:
+    raise SystemExit("M1 live jump support expected one continuity transform anchor")
+probe_source = probe_source.replace(continuity_value_anchor, continuity_value_replacement, 1)
+
+continuity_publish_anchor = '''                    boolean baselineFrame = localFrameCarriage.getId() == carryBaselineCarriageId;
+                    LOGGER.info('''
+continuity_publish_replacement = '''                    boolean baselineFrame = localFrameCarriage.getId() == carryBaselineCarriageId;
+                    boolean m1ContinuitySettledSupport = false;
+                    if (m1JumpContinuityLocal != null) {
+                        String m1PrevTickRaw = System.getProperty("vs2.m1JumpContinuityTick");
+                        String m1PrevCarriageRaw = System.getProperty("vs2.m1JumpContinuityCarriage");
+                        String m1PrevXRaw = System.getProperty("vs2.m1JumpContinuityX");
+                        String m1PrevYRaw = System.getProperty("vs2.m1JumpContinuityY");
+                        String m1PrevZRaw = System.getProperty("vs2.m1JumpContinuityZ");
+                        try {
+                            int m1PrevTick = Integer.parseInt(m1PrevTickRaw == null ? "-2147483648" : m1PrevTickRaw);
+                            int m1PrevCarriage = Integer.parseInt(m1PrevCarriageRaw == null ? "-2147483648" : m1PrevCarriageRaw);
+                            double m1PrevX = Double.parseDouble(m1PrevXRaw == null ? "NaN" : m1PrevXRaw);
+                            double m1PrevY = Double.parseDouble(m1PrevYRaw == null ? "NaN" : m1PrevYRaw);
+                            double m1PrevZ = Double.parseDouble(m1PrevZRaw == null ? "NaN" : m1PrevZRaw);
+                            double m1Dx = m1JumpContinuityLocal.x - m1PrevX;
+                            double m1Dy = m1JumpContinuityLocal.y - m1PrevY;
+                            double m1Dz = m1JumpContinuityLocal.z - m1PrevZ;
+                            double m1StepSq = m1Dx * m1Dx + m1Dy * m1Dy + m1Dz * m1Dz;
+                            m1ContinuitySettledSupport = m1PrevTick + 1 == player.tickCount
+                                && m1PrevCarriage == localFrameCarriage.getId()
+                                && m1StepSq <= 0.0001
+                                && broadphase && player.onGround() && baselineFrame;
+                        } catch (NumberFormatException ignored) {
+                            m1ContinuitySettledSupport = false;
+                        }
+                        System.setProperty("vs2.m1JumpContinuityTick", Integer.toString(player.tickCount));
+                        System.setProperty("vs2.m1JumpContinuityCarriage", Integer.toString(localFrameCarriage.getId()));
+                        System.setProperty("vs2.m1JumpContinuityX", Double.toString(m1JumpContinuityLocal.x));
+                        System.setProperty("vs2.m1JumpContinuityY", Double.toString(m1JumpContinuityLocal.y));
+                        System.setProperty("vs2.m1JumpContinuityZ", Double.toString(m1JumpContinuityLocal.z));
+                    }
+                    System.setProperty("vs2.productionFixtureJumpFloorSupportNow", Boolean.toString(m1ContinuitySettledSupport));
+                    System.setProperty("vs2.productionFixtureJumpFloorSupportTick", Integer.toString(player.tickCount));
+                    LOGGER.info('''
+if probe_source.count(continuity_publish_anchor) != 1:
+    raise SystemExit("M1 live jump support expected one continuity baseline anchor")
+probe_source = probe_source.replace(continuity_publish_anchor, continuity_publish_replacement, 1)
+
 jump_floor_gate_anchor = '''            && self.onGround()
             && (Integer.toString(self.tickCount).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))'''
 jump_floor_gate_replacement = '''            && self.onGround()
@@ -166,6 +233,11 @@ required_probe = [
     'phase154PreWalkPreviousTick + 1 == player.tickCount',
     'phase154PreWalkStep <= 0.01',
     'phase154PreWalkCarriage.getId() == carryBaselineCarriageId',
+    'm1JumpContinuityLocal',
+    'm1ContinuitySettledSupport',
+    'vs2.m1JumpContinuityTick',
+    'vs2.m1JumpContinuityCarriage',
+    'm1StepSq <= 0.0001',
     'vs2.productionFixtureJumpFloorSupportNow',
     'vs2.productionFixtureJumpFloorSupportTick',
 ]
@@ -192,10 +264,10 @@ for forbidden in [
     'player.setPos(', 'player.setDeltaMovement(', 'player.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(',
 ]:
-    if forbidden in immediate_replacement + floor_probe_replacement:
+    if forbidden in immediate_replacement + floor_probe_replacement + continuity_publish_replacement:
         raise SystemExit("M1 fixture gate found forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 fixture refinement: aims native strafe across supported floor, verifies +Z wall, and gates jump on live active-carriage support")
+print("M1 fixture refinement: aims native strafe across supported floor, verifies +Z wall, and refreshes jump support from live carriage continuity")

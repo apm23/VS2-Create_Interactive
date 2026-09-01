@@ -60,3 +60,24 @@ jobs:
             exit 1
           fi
           echo 'PRODUCTION_WALK same_carriage_native_sprint_stability_confirmed'
+
+      - name: Freeze full native M1 locomotion contract
+        if: env.STALE_SOURCE != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=diagnostics/production-world-smoke.log
+          test -f "$LOG"
+
+          grep -Eq 'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED.*grounding_deferred_to_create_contact=true.*fixture_only=true.*vanilla_keymapping=true.*native_motion=true' "$LOG"
+          grep -Eq 'GATE_E_M1_NATIVE_STRAFE_CONFIRMED.*grounding_deferred_to_create_contact=true.*fixture_only=true.*vanilla_keymapping=true.*native_motion=true.*direction=right' "$LOG"
+          grep -Eq 'GATE_E_M1_NATIVE_JUMP_AIRBORNE.*fixture_only=true.*native_motion=true.*vertical_arc=true' "$LOG"
+          grep -Eq 'GATE_E_M1_NATIVE_JUMP_LANDED.*on_ground=true.*fixture_only=true.*natural_fall=true' "$LOG"
+
+          if grep -Eq 'GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE189_SIBLING_NATIVE_GAP_RECOVERY' "$LOG"; then
+            echo 'Production locomotion regressed onto compatibility carry recovery.'
+            grep -E 'GATE_E_PHASE85_CARRY_REPLAY|GATE_E_PHASE189_SIBLING_NATIVE_GAP_RECOVERY|GATE_E_M1_NATIVE_' "$LOG" | tail -160 || true
+            exit 1
+          fi
+
+          echo 'PRODUCTION_M1_NATIVE_LOCOMOTION sprint_reverse_strafe_jump_land_replay_free'

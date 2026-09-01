@@ -63,11 +63,12 @@ probe_source = probe_source.replace(immediate_anchor, immediate_replacement, 1)
 
 # Production-world #598 proves the jump itself executes natively at tick 34 (Entity.move applies
 # +0.4199999869 Y) and later performs a real negative-Y descent. A world-Y return test is invalid on
-# the moving train because the carriage frame itself changes world Y during the arc. The same run
-# gives the authoritative landing boundary without inventing coordinates: after falling begins,
-# LocalPlayer genuinely loses grounded contact for ticks 80-87 and then Create/vanilla collision
-# reacquires onGround at tick 88 on the same broadphase carriage. Recognize that fall -> ground-loss
-# -> ground-reacquire transition. Fixture observation only; no movement, gravity, collision, carry,
+# the moving train because the carriage frame itself changes world Y during the arc. Production-world
+# #600 then proves the genuine airborne ground-loss can precede the fixture's later falling observer:
+# the jump request at tick 52 immediately produced onGround=false on the supported carriage, while the
+# observer only marked the vertical arc later after a carriage handoff. Preserve that already-observed
+# post-request ground loss and require it together with a later falling sample before accepting a
+# Create/vanilla onGround reacquire. Fixture observation only; no movement, gravity, collision, carry,
 # player transform, train, or world state is written.
 field_anchor = '    @Unique private static double vs2$jumpStartY = Double.NaN;\n'
 field_replacement = field_anchor + '    @Unique private static boolean vs2$jumpGroundLostAfterFall;\n'
@@ -76,7 +77,7 @@ if source.count(field_anchor) != 1:
 source = source.replace(field_anchor, field_replacement, 1)
 
 landing_anchor = 'if (vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005 && self.tickCount > vs2$jumpStartTick) {'
-landing_replacement = '''if (vs2$jumpFallingSeen && !self.onGround()) {\n            vs2$jumpGroundLostAfterFall = true;\n        }\n        if (vs2$jumpFallingSeen && vs2$jumpGroundLostAfterFall && self.onGround() && self.tickCount > vs2$jumpStartTick) {'''
+landing_replacement = '''if (vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround()) {\n            vs2$jumpGroundLostAfterFall = true;\n        }\n        if (vs2$jumpFallingSeen && vs2$jumpGroundLostAfterFall && self.onGround() && self.tickCount > vs2$jumpStartTick) {'''
 landing_count = source.count(landing_anchor)
 if landing_count != 1:
     raise SystemExit(f"M1 landing proof expected one delta-settle boundary, found {landing_count}")
@@ -100,7 +101,7 @@ required = [
     'client.options.keyRight.setDown(strafeWindow)',
     '!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
     'vs2$jumpGroundLostAfterFall',
-    'vs2$jumpFallingSeen && !self.onGround()',
+    'vs2$jumpStartTick != Integer.MIN_VALUE && !self.onGround()',
     'vs2$jumpFallingSeen && vs2$jumpGroundLostAfterFall && self.onGround()',
     'self.tickCount <= vs2$jumpStartTick + 1',
 ]
@@ -125,4 +126,4 @@ for forbidden in [
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 fixture refinement: requires two settled native-ready frames, stops forward input, aligns strafe, holds native jump pulse two ticks, and recognizes fall-to-ground reacquire landing")
+print("M1 fixture refinement: requires settled native-ready frames and accepts post-request ground-loss plus natural fall before landing")

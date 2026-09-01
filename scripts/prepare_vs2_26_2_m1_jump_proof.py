@@ -156,11 +156,68 @@ for forbidden_marker in (
     if forbidden_marker in text:
         raise SystemExit(f"M1 native locomotion used compatibility carry recovery: {forbidden_marker}")
 
+# Run 521 proved the jump marker can pass while carriage-local continuity immediately becomes
+# unstable afterwards. Reuse the already-existing continuity trace and require a short supported,
+# ordinary-speed same-carriage window after landing. Verification only; no gameplay mutation.
+continuity_pattern = re.compile(
+    r"GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)"
+    r"[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)"
+    r"[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)"
+    r"[^\n]*baseline_frame=(true|false)"
+)
+post_land = []
+for match in continuity_pattern.finditer(text):
+    tick = int(match.group(1))
+    if tick <= landed_tick:
+        continue
+    post_land.append((
+        tick,
+        int(match.group(2)),
+        float(match.group(3)),
+        float(match.group(4)),
+        float(match.group(5)),
+        match.group(6) == "true",
+        match.group(7) == "true",
+        match.group(8) == "true",
+    ))
+
+best_streak = []
+streak = []
+for sample in post_land:
+    tick, carriage, x, y, z, broadphase, on_ground, baseline_frame = sample
+    if not (broadphase and on_ground and baseline_frame):
+        streak = []
+        continue
+    if not streak:
+        streak = [sample]
+    else:
+        prev = streak[-1]
+        step_sq = (x - prev[2]) ** 2 + (y - prev[3]) ** 2 + (z - prev[4]) ** 2
+        if tick == prev[0] + 1 and carriage == prev[1] and step_sq <= 0.75 ** 2:
+            streak.append(sample)
+        else:
+            streak = [sample]
+    if len(streak) > len(best_streak):
+        best_streak = list(streak)
+
+if len(best_streak) < 5:
+    detail = "none"
+    if best_streak:
+        detail = (
+            f"carriage={best_streak[0][1]} ticks={best_streak[0][0]}-{best_streak[-1][0]} "
+            f"samples={len(best_streak)}"
+        )
+    raise SystemExit(
+        "M1 post-landing carriage stability missing: need 5 consecutive supported same-carriage "
+        f"samples with local_step<=0.75 after landing; best={detail}"
+    )
+
 print(
     "M1_NATIVE_LOCOMOTION_PROOF "
     f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} "
     f"reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} "
     f"strafe_confirmed={strafe_tick} strafe_speed_sq={strafe_speed_sq} "
     f"jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} "
-    f"duration={duration} delta_y={delta_y} natural_fall=true replay_free=true recovery_free=true"
+    f"duration={duration} delta_y={delta_y} natural_fall=true replay_free=true recovery_free=true "
+    f"post_land_stable_samples={len(best_streak)}"
 )

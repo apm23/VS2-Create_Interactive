@@ -213,13 +213,7 @@ public abstract class MixinLocalPlayerFixtureInput {
         boolean walkWindow = self.tickCount >= startTick && self.tickCount <= startTick + 3;
         boolean backwardWindow = vs2$backwardWindow(self);
         boolean strafeWindow = vs2$strafeWindow(self);
-        // Once the fixture has actually issued its one vanilla jump, keep the existing
-        // headless native-aiStep bridge alive for the whole airborne/falling lifecycle.
-        // Phase 202 intentionally makes jumpArmReady() grounded-only to prevent a stale
-        // launch, but reusing that arming predicate after takeoff suppresses aiStep on
-        // every airborne tick and artificially freezes the jump in the headless smoke.
-        boolean jumpWindow = (vs2$jumpStartTick != Integer.MIN_VALUE || vs2$jumpArmReady(self))
-            && !vs2$jumpLandedLogged;
+        boolean jumpWindow = vs2$jumpArmReady(self) && !vs2$jumpLandedLogged;
         if ((!walkWindow && !backwardWindow && !strafeWindow && !jumpWindow) || vs2$nativeAiStepTick == self.tickCount) return;
         client.options.keyUp.setDown(walkWindow && !backwardWindow && !strafeWindow);
         client.options.keyDown.setDown(backwardWindow);
@@ -257,7 +251,6 @@ required = [
     'vs2.productionFixtureJumpLanded', 'vs2.productionFixtureWalkConfirmed',
     'vs2$walkConfirmedTick + 24', '!vs2$backwardConfirmed', '!vs2$strafeConfirmed',
     'jumpWindow', 'vs2$nativeAiStepTick == self.tickCount', 'self.aiStep()',
-    'vs2$jumpStartTick != Integer.MIN_VALUE || vs2$jumpArmReady(self)',
     'vs2.productionFixtureWalkStartTick', 'client.options.keyUp.setDown(walkWindow && !backwardWindow && !strafeWindow)',
     'client.options.keyJump.setDown(jumpPulse)', 'deltaY > 0.0', 'deltaY < 0.0', 'vs2$jumpFallingSeen',
     'fixture_only=true',
@@ -274,5 +267,5 @@ for forbidden in [
     if forbidden in text:
         raise SystemExit("Phase 198 introduced forbidden gameplay mutation token: " + forbidden)
 
-print("Phase 198: requires native grounded reverse and right-strafe before jump; headless native aiStep now remains active through the started jump lifecycle")
+print("Phase 198: requires native grounded reverse and right-strafe before jump; harness-only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase199.py")), run_name="__main__")

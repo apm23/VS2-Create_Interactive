@@ -9,26 +9,28 @@ source = fixture_input.read_text(encoding="utf-8")
 lease_source = contact_lease.read_text(encoding="utf-8")
 verifier_source = verifier.read_text(encoding="utf-8")
 
-# Production-world #668 proves the two-frame native readiness is sufficient to identify the
-# correct supported carriage, but the fixture immediately presses forward in the same callback
-# that records WALK_START. That consumes the next frame before the production-world verifier can
-# finish its standing-carry window: tick 36 is the first baseline-captured strict sample and tick
-# 37 already has a large carriage-local displacement. Keep the readiness threshold unchanged and
-# delay only the disposable forward KeyMapping until the following fixture tick. The existing
-# bounded branch then supplies forward input from start+1 through start+12. Fixture sequencing only:
-# no player position/velocity, collision response, carry, gravity, train, or world state is changed.
+# Production-world #669 proves the sequencing hypothesis was blocked before runtime by an exact
+# source-shape mismatch: Phase165 already adds path-distance initialization plus keyDown cleanup
+# around the Phase154 walk-start press. Match that cumulative source shape and change only the
+# immediate forward key from true to false; the bounded Phase165 branch still owns start+1..+3.
+# Harness sequencing only: no player position/velocity, collision response, carry, gravity, train,
+# or world state is changed.
 walk_start_press_old = '''                            phase154WalkPreviousLocal = phase154Local;
+                            phase165WalkPathDistance = 0.0;
                             phase154WalkSupportHealthy = true;
                             client.options.keyUp.setDown(true);
+                            client.options.keyDown.setDown(false);
                             LOGGER.info(
                                 "GATE_E_PHASE154_FIXTURE_WALK_START'''
 walk_start_press_new = '''                            phase154WalkPreviousLocal = phase154Local;
+                            phase165WalkPathDistance = 0.0;
                             phase154WalkSupportHealthy = true;
                             client.options.keyUp.setDown(false);
+                            client.options.keyDown.setDown(false);
                             LOGGER.info(
                                 "GATE_E_PHASE154_FIXTURE_WALK_START'''
 if source.count(walk_start_press_old) != 1:
-    raise SystemExit("M1 input timing expected one immediate forward walk-start press")
+    raise SystemExit("M1 input timing expected one cumulative Phase165 forward walk-start press")
 source = source.replace(walk_start_press_old, walk_start_press_new, 1)
 
 # Production-world #663 proves the negative-Z wall verifier and the actual disposable strafe
@@ -200,7 +202,7 @@ for old_wall, new_wall in wall_direction_replacements:
         raise SystemExit("M1 wall verifier expected one transformed direction boundary: " + old_wall[:72])
     verifier_source = verifier_source.replace(old_wall, new_wall, 1)
 
-late_handoff = '''pre_wall_carriage=before[-1][1]
+late_handoff = r'''pre_wall_carriage=before[-1][1]
 rebase_pattern=re.compile(
     rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\n]*previous_carriage_id={pre_wall_carriage}[^\n]*carriage_id=(\d+)[^\n]*player_tick=(\d+)[^\n]*native_contact_owner=true[^\n]*identity_only=true")
 rebase_match=next((m for m in rebase_pattern.finditer(text) if strafe_request_tick <= int(m.group(2)) <= strafe_request_tick+7), None)
@@ -212,7 +214,7 @@ for sample in after_window:
     if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
     after.append(sample); expected_tick+=1
 if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")'''
-bounded_handoff = '''pre_wall_carriage=before[-1][1]
+bounded_handoff = r'''pre_wall_carriage=before[-1][1]
 rebase_pattern=re.compile(
     rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\n]*previous_carriage_id={pre_wall_carriage}[^\n]*carriage_id=(\d+)[^\n]*player_tick=(\d+)[^\n]*native_contact_owner=true[^\n]*identity_only=true")
 rebase_match=next((m for m in rebase_pattern.finditer(text) if strafe_request_tick <= int(m.group(2)) <= strafe_request_tick+1), None)
@@ -235,6 +237,7 @@ required = [
     'System.getProperty("vs2.productionFixtureWalkStartTick")',
     'if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed) return false;',
     'self.setYRot(90.0F)',
+    'phase165WalkPathDistance = 0.0;',
     'phase154WalkSupportHealthy = true;\n                            client.options.keyUp.setDown(false);',
 ]
 missing = [token for token in required if token not in source]

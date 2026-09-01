@@ -6,17 +6,14 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #191 proved an exact 1:1 carry interval on carriage 7, followed by
-# sustained strict physical support on sibling carriage 2 while the carry baseline stayed
-# pinned to carriage 7. Phase85 already owns the Create-computed, Create-collision-filtered
-# carry vector; this phase only transfers baseline identity/coordinates to the currently
-# supported sibling so the existing replay path can resume after Phase108's one-tick settle.
-# Production-world #449 then proved the handoff itself can thrash across overlapping sibling
-# carriage candidates (8 -> 10 -> 8 on consecutive ticks) even while the previous active
-# baseline remained strictly supported. Keep a one-tick support lease on the active baseline:
-# a sibling may take ownership only after the current baseline was not strictly supported on
-# the immediately previous tick. This stabilizes frame identity only; no movement vector,
-# player position/velocity, world/train state, collision response, or VS2 physics is changed.
+# Keep the carry baseline attached to the carriage Create itself currently applies to the player.
+# Run #570 proves that after supported locomotion the old baseline can remain on carriage 5 while
+# Create's native contact application becomes uniquely owned by sibling carriage 4, followed by 2;
+# the stale frame then diverges by tens of blocks even though Create continues producing native
+# contact motion. Prefer strict physical-support handoff as before. Additionally permit a baseline
+# identity rebase when the candidate sibling has a native contact application this exact tick and
+# the old baseline does not. This changes only frame identity/bookkeeping: it never applies motion,
+# teleports, sets velocity, alters collision response, or mutates train/world state.
 if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
@@ -49,11 +46,19 @@ if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
         f'{replay_indent}boolean phase133PreviousBaselineSupportLease = carryBaselineCaptured\n'
         f'{replay_indent}    && Integer.toString(carryBaselineCarriageId).equals(System.getProperty("vs2.phase133BaselineSupportCarriageId"))\n'
         f'{replay_indent}    && Integer.toString(player.tickCount - 1).equals(System.getProperty("vs2.phase133BaselineSupportTick"));\n'
+        f'{replay_indent}boolean phase133CandidateNativeAppliedNow = Integer.toString(player.tickCount).equals(\n'
+        f'{replay_indent}    System.getProperty("vs2.phase170NativeContactApplicationTick." + carriage.getId()));\n'
+        f'{replay_indent}boolean phase133BaselineNativeAppliedNow = carryBaselineCaptured && Integer.toString(player.tickCount).equals(\n'
+        f'{replay_indent}    System.getProperty("vs2.phase170NativeContactApplicationTick." + carryBaselineCarriageId));\n'
+        f'{replay_indent}boolean phase133SoleNativeOwner = carryBaselineCaptured\n'
+        f'{replay_indent}    && carryBaselineCarriageId != carriage.getId()\n'
+        f'{replay_indent}    && phase133CandidateNativeAppliedNow && !phase133BaselineNativeAppliedNow;\n'
         f'{replay_indent}boolean phase136SupportedSiblingHandoff = productionSmoke && explicitCarryCompat\n'
         f'{replay_indent}    && carryBaselineCaptured && carryBaselineCarriageId != carriage.getId()\n'
-        f'{replay_indent}    && !phase133PreviousBaselineSupportLease\n'
-        f'{replay_indent}    && phase81PhysicalSupport && collisionEligible && broadphaseOverlap\n'
-        f'{replay_indent}    && player.onGround() && carryBaselineRebaseTick != player.tickCount;\n'
+        f'{replay_indent}    && (!phase133PreviousBaselineSupportLease || phase133SoleNativeOwner)\n'
+        f'{replay_indent}    && collisionEligible && broadphaseOverlap && player.onGround()\n'
+        f'{replay_indent}    && (phase81PhysicalSupport || phase133SoleNativeOwner)\n'
+        f'{replay_indent}    && carryBaselineRebaseTick != player.tickCount;\n'
         f'{replay_indent}if (phase136SupportedSiblingHandoff) {{\n'
         f'{replay_indent}    int phase136PreviousCarriageId = carryBaselineCarriageId;\n'
         f'{replay_indent}    carryBaselineCarriageId = carriage.getId();\n'
@@ -66,8 +71,9 @@ if "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE" not in source:
         f'{replay_indent}    carryCarriageZ = carriage.getZ();\n'
         f'{replay_indent}    carryDeltaReported = false;\n'
         f'{replay_indent}    LOGGER.info(\n'
-        f'{replay_indent}        "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE previous_carriage_id={{}} carriage_id={{}} player_tick={{}} physical_support=true collision_eligible=true broadphase=true on_ground=true previous_baseline_support_lease=false settle_one_tick=true",\n'
-        f'{replay_indent}        phase136PreviousCarriageId, carriage.getId(), player.tickCount);\n'
+        f'{replay_indent}        "GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE previous_carriage_id={{}} carriage_id={{}} player_tick={{}} physical_support={{}} native_contact_owner={{}} collision_eligible=true broadphase=true on_ground=true previous_baseline_support_lease={{}} settle_one_tick=true identity_only=true",\n'
+        f'{replay_indent}        phase136PreviousCarriageId, carriage.getId(), player.tickCount, phase81PhysicalSupport,\n'
+        f'{replay_indent}        phase133SoleNativeOwner, phase133PreviousBaselineSupportLease);\n'
         f'{replay_indent}}}\n\n'
     )
     source = source[:replay_if_pos] + handoff + source[replay_if_pos:]
@@ -78,28 +84,33 @@ required = [
     "vs2.phase133BaselineSupportTick",
     "vs2.phase133BaselineSupportCarriageId",
     "phase133PreviousBaselineSupportLease",
+    "phase133CandidateNativeAppliedNow",
+    "phase133BaselineNativeAppliedNow",
+    "phase133SoleNativeOwner",
+    "vs2.phase170NativeContactApplicationTick.",
     "carryBaselineCarriageId != carriage.getId()",
-    "!phase133PreviousBaselineSupportLease",
-    "phase81PhysicalSupport && collisionEligible && broadphaseOverlap",
+    "(!phase133PreviousBaselineSupportLease || phase133SoleNativeOwner)",
+    "(phase81PhysicalSupport || phase133SoleNativeOwner)",
     "carryBaselineRebaseTick != player.tickCount",
     "carryBaselineCarriageId = carriage.getId()",
     "carryBaselineRebaseTick = player.tickCount",
     "carryDeltaReported = false",
-    "previous_baseline_support_lease=false",
+    "native_contact_owner={}",
+    "identity_only=true",
     "settle_one_tick=true",
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 133 lost supported-sibling handoff anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 133 lost native-owner sibling handoff anchors: " + ", ".join(missing))
 
 marker_pos = source.index("GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE")
-handoff_slice = source[max(0, marker_pos - 3200):marker_pos + 1200]
+handoff_slice = source[max(0, marker_pos - 4200):marker_pos + 1600]
 for forbidden in [
-    "player.setPos(", "player.setDeltaMovement(", ".teleport", "setBlock(",
-    ".put(", ".remove(", "setSchedule", "setTrain", "setVelocity",
+    "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport", "setBlock(",
+    ".put(", ".remove(", "setSchedule", "setTrain", "setVelocity", "syncCarriage(",
 ]:
     if forbidden in handoff_slice:
         raise SystemExit("Phase 133 found forbidden movement/world/train mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 133: stabilizes active carriage baseline with a one-tick strict-support lease before sibling handoff")
+print("Phase 133: rebases frame identity to a sole native Create contact owner without synthesizing movement")

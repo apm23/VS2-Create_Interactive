@@ -162,11 +162,13 @@ if new_server_guard not in server:
         raise SystemExit("Phase 87 could not find Gate D fixture normalization guard")
     server = server.replace(old_server_guard, new_server_guard, 1)
 
+# Phase 70 deliberately retired the old synthetic -0.08 fixture gravity probe.
+# Phase 87 only owns production/fixture isolation, so validate those boundaries
+# instead of requiring a deleted motion injector from an earlier harness revision.
 server_required = [
     'java.lang.Boolean.getBoolean("vs2.productionSmoke")',
     'java.lang.Boolean.getBoolean("vs2.productionSmokeFixture")',
     'GATE_D_FIXTURE_PLAYER_REPOSITIONED',
-    'gravity_probe_y=-0.08',
 ]
 server_missing = [token for token in server_required if token not in server]
 if server_missing:

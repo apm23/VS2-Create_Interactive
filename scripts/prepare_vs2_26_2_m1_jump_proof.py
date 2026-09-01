@@ -3,12 +3,32 @@
 import math
 import re
 import sys
+import time
 from pathlib import Path
 
 if len(sys.argv) != 2:
     raise SystemExit("usage: prepare_vs2_26_2_m1_jump_proof.py <production-world-smoke.log>")
 
-text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+log_path = Path(sys.argv[1])
+# The workflow invokes this verifier as soon as the native landing marker appears. Run #535
+# proved that can race the five post-land continuity samples: landing was tick 57 while only tick
+# 58 had reached the log. Wait only for already-running read-only continuity telemetry; do not
+# extend fixture input, movement, collision, or any gameplay state.
+deadline = time.monotonic() + 3.0
+while True:
+    text = log_path.read_text(encoding="utf-8", errors="replace")
+    landed_wait = re.search(r"GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)", text)
+    if landed_wait is not None:
+        landed_wait_tick = int(landed_wait.group(1))
+        continuity_ticks = [
+            int(value)
+            for value in re.findall(r"GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)", text)
+        ]
+        if continuity_ticks and max(continuity_ticks) >= landed_wait_tick + 5:
+            break
+    if time.monotonic() >= deadline:
+        break
+    time.sleep(0.1)
 
 def need(pattern, label):
     match = re.search(pattern, text)

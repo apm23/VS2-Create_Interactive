@@ -15,8 +15,7 @@ source = client_probe.read_text(encoding="utf-8")
 # Production-world #536 then exposed the remaining fixture boundary: three consecutive ready samples
 # on carriage 5 (ticks 15-17) were followed immediately by a sibling handoff at tick 18. The walk was
 # started at tick 17, remained grounded/broadphase-valid, but necessarily crossed carriage identity and
-# could not satisfy the bounded single-frame proof. Require three fresh same-carriage native-ready ticks
-# before arming.
+# could not satisfy the bounded single-frame proof.
 #
 # Production-world #537 proves that accepting a two-tick confirmation after an intervening sibling seam
 # still starts locomotion on a discontinuous route frame: carriage 8 armed at tick 17, sibling carriage
@@ -24,14 +23,14 @@ source = client_probe.read_text(encoding="utf-8")
 # Reject that seam entirely. Direct-native confirmation must now be the immediately following tick on
 # the same carriage.
 #
-# Production-world #538 then proved the remaining readiness mismatch: Create applied exact native
-# same-carriage contact for a stable multi-tick interval while the simplified Phase81 collider classified
-# the player's XZ point outside its reduced support boxes. The player nevertheless remained grounded,
-# broadphase-overlapping, on the baseline carriage, and Create's exact native contact application was
-# current. For the direct-native path, treat that exact Create application as the authoritative support
-# signal instead of requiring the simplified diagnostic collider to agree. The sibling-seam age==1 rule
-# remains mandatory. This is fixture acceptance only; no player position/velocity, collision response,
-# carry vector, train/world state, Create behavior, or VS2 physics is changed.
+# Production-world #538 proved Create exact same-carriage contact can be authoritative even when the
+# simplified Phase81 support diagnostic is false-negative, so native support remains accepted here.
+# Production-world #541 then proved three native-ready ticks are still too early on the finite fixture:
+# the walk started immediately after only one zero-drift carry sample and entered a large frame
+# discontinuity before sustained carry continuity could be established. Require the same five-tick
+# settled window as the conservative path before arming direct-native walking. This changes fixture
+# acceptance only; no player position/velocity, collision response, carry vector, train/world state,
+# Create behavior, or VS2 physics is changed.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -81,7 +80,7 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                             && phase185WalkReadyNow
                             && phase185WalkReadyCarriageId == phase154Carriage.getId()
                             && phase185NativeApplicationFresh
-                            && phase185WalkReadyTicks >= 3;
+                            && phase185WalkReadyTicks >= 5;
                         int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
@@ -135,8 +134,13 @@ else:
     if old_confirmation in source:
         source = source.replace(old_confirmation, new_confirmation, 1)
     source = source.replace(
-        "&& phase185WalkReadyTicks >= 2;",
         "&& phase185WalkReadyTicks >= 3;",
+        "&& phase185WalkReadyTicks >= 5;",
+        1,
+    )
+    source = source.replace(
+        "&& phase185WalkReadyTicks >= 2;",
+        "&& phase185WalkReadyTicks >= 5;",
         1,
     )
     source = source.replace(
@@ -163,7 +167,6 @@ required = [
     "phase154Carriage.getId() == carryBaselineCarriageId",
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase185WalkReadyTicks >= 5",
-    "phase185WalkReadyTicks >= 3",
     "phase185NativeApplicationFresh",
     "native_authoritative_support={}",
     "arm_age={}",
@@ -186,5 +189,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: trusts exact same-carriage Create native support while preserving immediate seam rejection")
+print("Phase 194: requires five settled exact-native ticks before walk while preserving immediate seam rejection")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

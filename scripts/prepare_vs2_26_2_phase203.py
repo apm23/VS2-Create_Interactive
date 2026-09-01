@@ -150,6 +150,21 @@ if fixture_source.count(strafe_old) != 1:
 fixture_source = fixture_source.replace(backward_old, backward_new, 1)
 fixture_source = fixture_source.replace(strafe_old, strafe_new, 1)
 
+# Production-world #639 proves the jump request and first vanilla +Y SELF move are correct, but the
+# headless fixture executes no further LocalPlayer.aiStep while airborne. The existing Phase198
+# fallback is incorrectly gated by vs2$jumpArmReady(self), and Phase202 intentionally makes that
+# admission predicate require self.onGround(). Once the jump starts, that gate becomes false on the
+# next tick, freezing vanilla gravity at the apex while EntityDragger continues only frame translation.
+# Keep the already-existing headless native-aiStep fallback alive after the jump has started until its
+# natural landing observer completes. This invokes vanilla LocalPlayer.aiStep only; it does not write
+# position/velocity, synthesize gravity/carry, or alter Create/VS2 collision.
+jump_fallback_old = '''        boolean jumpWindow = vs2$jumpArmReady(self) && !vs2$jumpLandedLogged;'''
+jump_fallback_new = '''        boolean jumpWindow = !vs2$jumpLandedLogged
+            && (vs2$jumpArmReady(self) || vs2$jumpStartTick != Integer.MIN_VALUE);'''
+if fixture_source.count(jump_fallback_old) != 1:
+    raise SystemExit("Phase 203 expected one Phase198 headless jump-window boundary")
+fixture_source = fixture_source.replace(jump_fallback_old, jump_fallback_new, 1)
+
 required = [
     "phase203CarryHealthCandidate",
     "phase154SupportNow",
@@ -187,12 +202,13 @@ fixture_required = [
     "return elapsed >= 1 && elapsed <= 4;",
     "client.options.keyDown.setDown(backwardWindow)",
     "client.options.keyRight.setDown(strafeWindow)",
+    "vs2$jumpArmReady(self) || vs2$jumpStartTick != Integer.MIN_VALUE",
 ]
 fixture_missing = [token for token in fixture_required if token not in fixture_source]
 if fixture_missing:
     raise SystemExit("Phase 203 lost compact native M1 fixture timing anchors: " + ", ".join(fixture_missing))
 
-inserted = new_prefix + consumer_replacement + lease_new + lease_log_new + backward_new + strafe_new
+inserted = new_prefix + consumer_replacement + lease_new + lease_log_new + backward_new + strafe_new + jump_fallback_new
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -204,4 +220,4 @@ for forbidden in [
 client_probe.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 203: preserves bounded Create contact ownership and starts native reverse/strafe before fixture support decays")
+print("Phase 203: preserves bounded Create contact ownership, starts native reverse/strafe before fixture support decays, and keeps native aiStep alive through the headless jump arc")

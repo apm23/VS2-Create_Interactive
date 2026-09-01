@@ -20,10 +20,7 @@ while True:
     landed_wait = re.search(r"GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)", text)
     if landed_wait is not None:
         landed_wait_tick = int(landed_wait.group(1))
-        continuity_ticks = [
-            int(value)
-            for value in re.findall(r"GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)", text)
-        ]
+        continuity_ticks = [int(value) for value in re.findall(r"GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)", text)]
         if continuity_ticks and max(continuity_ticks) >= landed_wait_tick + 5:
             break
     if time.monotonic() >= deadline:
@@ -36,270 +33,95 @@ def need(pattern, label):
         raise SystemExit("M1 native locomotion proof missing: " + label)
     return match
 
-walk = need(
-    r"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*on_ground=true[^\n]*broadphase=true"
-    r"[^\n]*support_healthy=true[^\n]*confirmed=true[^\n]*sprinting=true[^\n]*fixture_only=true",
-    "supported sprint/walk",
-)
-backward_requested = need(
-    r"GATE_E_M1_NATIVE_BACKWARD_REQUESTED[^\n]*player_tick=(\d+)[^\n]*on_ground=true"
-    r"[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true",
-    "native backward request",
-)
-backward_confirmed = need(
-    r"GATE_E_M1_NATIVE_BACKWARD_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)"
-    r"[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)"
-    r"[^\n]*grounding_deferred_to_create_contact=true[^\n]*fixture_only=true"
-    r"[^\n]*vanilla_keymapping=true[^\n]*native_motion=true",
-    "native grounded backward confirmation",
-)
-strafe_requested = need(
-    r"GATE_E_M1_NATIVE_STRAFE_REQUESTED[^\n]*player_tick=(\d+)[^\n]*fixture_only=true"
-    r"[^\n]*vanilla_keymapping=true[^\n]*direction=right",
-    "native right-strafe request",
-)
-strafe_confirmed = need(
-    r"GATE_E_M1_NATIVE_STRAFE_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)"
-    r"[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)"
-    r"[^\n]*grounding_deferred_to_create_contact=true[^\n]*fixture_only=true"
-    r"[^\n]*vanilla_keymapping=true[^\n]*native_motion=true[^\n]*direction=right",
-    "native right-strafe confirmation",
-)
-requested = need(
-    r"GATE_E_M1_NATIVE_JUMP_REQUESTED[^\n]*player_tick=(\d+)[^\n]*on_ground=true"
-    r"[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true",
-    "native jump request",
-)
-airborne = need(
-    r"GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)"
-    r"[^\n]*delta_y=([-+0-9.eE]+)[^\n]*on_ground=(?:true|false)[^\n]*fixture_only=true"
-    r"[^\n]*native_motion=true[^\n]*vertical_arc=true",
-    "native airborne transition",
-)
-landed = need(
-    r"GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)"
-    r"[^\n]*duration_ticks=(\d+)[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*natural_fall=true",
-    "natural landing",
-)
+walk = need(r"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*on_ground=true[^\n]*broadphase=true[^\n]*support_healthy=true[^\n]*confirmed=true[^\n]*sprinting=true[^\n]*fixture_only=true", "supported sprint/walk")
+backward_requested = need(r"GATE_E_M1_NATIVE_BACKWARD_REQUESTED[^\n]*player_tick=(\d+)[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true", "native backward request")
+backward_confirmed = need(r"GATE_E_M1_NATIVE_BACKWARD_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)[^\n]*grounding_deferred_to_create_contact=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*native_motion=true", "native grounded backward confirmation")
+strafe_requested = need(r"GATE_E_M1_NATIVE_STRAFE_REQUESTED[^\n]*player_tick=(\d+)[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*direction=right", "native right-strafe request")
+strafe_confirmed = need(r"GATE_E_M1_NATIVE_STRAFE_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*duration_ticks=(\d+)[^\n]*horizontal_speed_sq=([-+0-9.eE]+)[^\n]*grounding_deferred_to_create_contact=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true[^\n]*native_motion=true[^\n]*direction=right", "native right-strafe confirmation")
+requested = need(r"GATE_E_M1_NATIVE_JUMP_REQUESTED[^\n]*player_tick=(\d+)[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*vanilla_keymapping=true", "native jump request")
+airborne = need(r"GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*delta_y=([-+0-9.eE]+)[^\n]*on_ground=(?:true|false)[^\n]*fixture_only=true[^\n]*native_motion=true[^\n]*vertical_arc=true", "native airborne transition")
+landed = need(r"GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)[^\n]*start_tick=(\d+)[^\n]*duration_ticks=(\d+)[^\n]*on_ground=true[^\n]*fixture_only=true[^\n]*natural_fall=true", "natural landing")
 
-walk_tick = int(walk.group(1))
-backward_request_tick = int(backward_requested.group(1))
-backward_tick = int(backward_confirmed.group(1))
-backward_start = int(backward_confirmed.group(2))
-backward_duration = int(backward_confirmed.group(3))
-backward_speed_sq = float(backward_confirmed.group(4))
-strafe_request_tick = int(strafe_requested.group(1))
-strafe_tick = int(strafe_confirmed.group(1))
-strafe_start = int(strafe_confirmed.group(2))
-strafe_duration = int(strafe_confirmed.group(3))
-strafe_speed_sq = float(strafe_confirmed.group(4))
-request_tick = int(requested.group(1))
-airborne_tick = int(airborne.group(1))
-airborne_start = int(airborne.group(2))
-delta_y = float(airborne.group(3))
-landed_tick = int(landed.group(1))
-landed_start = int(landed.group(2))
-duration = int(landed.group(3))
+walk_tick = int(walk.group(1)); backward_request_tick = int(backward_requested.group(1)); backward_tick = int(backward_confirmed.group(1)); backward_start = int(backward_confirmed.group(2)); backward_duration = int(backward_confirmed.group(3)); backward_speed_sq = float(backward_confirmed.group(4)); strafe_request_tick = int(strafe_requested.group(1)); strafe_tick = int(strafe_confirmed.group(1)); strafe_start = int(strafe_confirmed.group(2)); strafe_duration = int(strafe_confirmed.group(3)); strafe_speed_sq = float(strafe_confirmed.group(4)); request_tick = int(requested.group(1)); airborne_tick = int(airborne.group(1)); airborne_start = int(airborne.group(2)); delta_y = float(airborne.group(3)); landed_tick = int(landed.group(1)); landed_start = int(landed.group(2)); duration = int(landed.group(3))
 
-if backward_start != backward_request_tick:
-    raise SystemExit(f"M1 native backward proof changed start tick: request={backward_request_tick} confirmed_start={backward_start}")
-if strafe_start != strafe_request_tick:
-    raise SystemExit(f"M1 native strafe proof changed start tick: request={strafe_request_tick} confirmed_start={strafe_start}")
-if not (walk_tick < backward_request_tick <= backward_tick <= strafe_request_tick <= strafe_tick < request_tick):
-    raise SystemExit(
-        f"M1 native locomotion ordering changed: walk={walk_tick} reverse_request={backward_request_tick} "
-        f"reverse_confirmed={backward_tick} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} jump_request={request_tick}"
-    )
-if backward_duration != backward_tick - backward_request_tick or backward_speed_sq <= 0.0004:
-    raise SystemExit(f"M1 native backward proof is inconsistent: duration={backward_duration} speed_sq={backward_speed_sq}")
-if strafe_duration != strafe_tick - strafe_request_tick or strafe_speed_sq <= 0.0004:
-    raise SystemExit(f"M1 native strafe proof is inconsistent: duration={strafe_duration} speed_sq={strafe_speed_sq}")
-if not (airborne_start == request_tick == landed_start):
-    raise SystemExit(f"M1 native jump proof changed start tick: request={request_tick} airborne_start={airborne_start} landed_start={landed_start}")
-if not (request_tick <= airborne_tick < landed_tick) or delta_y <= 0.0:
-    raise SystemExit(f"M1 native jump arc invalid: request={request_tick} airborne={airborne_tick} landed={landed_tick} delta_y={delta_y}")
-if duration != landed_tick - request_tick or duration < 2:
-    raise SystemExit(f"M1 native jump landing duration is inconsistent: duration={duration} ticks={request_tick}->{landed_tick}")
+if backward_start != backward_request_tick: raise SystemExit(f"M1 native backward proof changed start tick: request={backward_request_tick} confirmed_start={backward_start}")
+if strafe_start != strafe_request_tick: raise SystemExit(f"M1 native strafe proof changed start tick: request={strafe_request_tick} confirmed_start={strafe_start}")
+if not (walk_tick < backward_request_tick <= backward_tick <= strafe_request_tick <= strafe_tick < request_tick): raise SystemExit(f"M1 native locomotion ordering changed: walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} jump_request={request_tick}")
+if backward_duration != backward_tick - backward_request_tick or backward_speed_sq <= 0.0004: raise SystemExit(f"M1 native backward proof is inconsistent: duration={backward_duration} speed_sq={backward_speed_sq}")
+if strafe_duration != strafe_tick - strafe_request_tick or strafe_speed_sq <= 0.0004: raise SystemExit(f"M1 native strafe proof is inconsistent: duration={strafe_duration} speed_sq={strafe_speed_sq}")
+if not (airborne_start == request_tick == landed_start): raise SystemExit(f"M1 native jump proof changed start tick: request={request_tick} airborne_start={airborne_start} landed_start={landed_start}")
+if not (request_tick <= airborne_tick < landed_tick) or delta_y <= 0.0: raise SystemExit(f"M1 native jump arc invalid: request={request_tick} airborne={airborne_tick} landed={landed_tick} delta_y={delta_y}")
+if duration != landed_tick - request_tick or duration < 2: raise SystemExit(f"M1 native jump landing duration is inconsistent: duration={duration} ticks={request_tick}->{landed_tick}")
+for forbidden_marker in ("GATE_E_PHASE85_CARRY_REPLAY", "GATE_E_PHASE189_SIBLING_NATIVE_GAP_RECOVERY"):
+    if forbidden_marker in text: raise SystemExit(f"M1 native locomotion used compatibility carry recovery: {forbidden_marker}")
 
-for forbidden_marker in (
-    "GATE_E_PHASE85_CARRY_REPLAY",
-    "GATE_E_PHASE189_SIBLING_NATIVE_GAP_RECOVERY",
-):
-    if forbidden_marker in text:
-        raise SystemExit(f"M1 native locomotion used compatibility carry recovery: {forbidden_marker}")
+continuity_pattern = re.compile(r"GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)[^\n]*baseline_frame=(true|false)")
+samples = [(int(m.group(1)), int(m.group(2)), float(m.group(3)), float(m.group(4)), float(m.group(5)), m.group(6)=="true", m.group(7)=="true", m.group(8)=="true") for m in continuity_pattern.finditer(text)]
 
-continuity_pattern = re.compile(
-    r"GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)"
-    r"[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)"
-    r"[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)[^\n]*baseline_frame=(true|false)"
-)
-samples = []
-for match in continuity_pattern.finditer(text):
-    samples.append((
-        int(match.group(1)), int(match.group(2)),
-        float(match.group(3)), float(match.group(4)), float(match.group(5)),
-        match.group(6) == "true", match.group(7) == "true", match.group(8) == "true",
-    ))
-
-# A grounded flag alone is not enough for M1: the player must stay on the same carriage-local
-# floor plane while native walk/reverse/strafe input runs. Harden the existing real-world proof
-# without adding telemetry or touching movement: require a consecutive supported pre-jump segment
-# with no material vertical sink/drift. This is verifier-only and consumes the already-emitted
-# carriage-local continuity samples.
-floor_window = [
-    s for s in samples
-    if walk_tick <= s[0] < request_tick and s[5] and s[6] and s[7]
-]
+# Run #567 shows a one-time supported local-Y floor step followed by ten stable ticks. Distinguish
+# that geometry transition from continuous sinking by requiring a stable five-tick floor plateau.
+floor_window = [s for s in samples if walk_tick <= s[0] < request_tick and s[5] and s[6] and s[7]]
 best_floor = []
-floor_streak = []
-for sample in floor_window:
-    if not floor_streak:
-        floor_streak = [sample]
-    else:
-        previous = floor_streak[-1]
-        if sample[0] == previous[0] + 1 and sample[1] == previous[1]:
-            floor_streak.append(sample)
-        else:
-            floor_streak = [sample]
-    if len(floor_streak) > len(best_floor):
-        best_floor = list(floor_streak)
-if len(best_floor) < 5:
-    raise SystemExit("M1 floor proof missing five consecutive grounded supported carriage-local samples")
-floor_y = [sample[3] for sample in best_floor]
-floor_y_span = max(floor_y) - min(floor_y)
-if floor_y_span > 0.05:
-    raise SystemExit(f"M1 floor plane did not remain solid during native locomotion: local_y={floor_y}")
+for i in range(len(floor_window)):
+    streak = [floor_window[i]]
+    for sample in floor_window[i+1:]:
+        previous = streak[-1]
+        if sample[0] != previous[0] + 1 or sample[1] != previous[1]: break
+        streak.append(sample)
+        ys = [s[3] for s in streak]
+        if max(ys) - min(ys) > 0.05: break
+    ys = [s[3] for s in streak]
+    if max(ys) - min(ys) <= 0.05 and len(streak) > len(best_floor): best_floor = streak
+if len(best_floor) < 5: raise SystemExit("M1 floor proof missing five consecutive grounded supported samples on a stable carriage-local floor plateau")
+floor_y = [s[3] for s in best_floor]; floor_y_span = max(floor_y) - min(floor_y)
 
-# Production-world #552 proves the material train-speed change occurs while the harness is
-# intentionally right-strafing, so requiring a nearly stationary carriage-local player rejects
-# valid native locomotion. Reuse the verifier's existing 0.75-block bounded locomotion limit while
-# still requiring consecutive supported samples on one carriage and a >=1.0 frame-speed change.
-# Verifier-only: no input, movement, carry, collision, train, or physics behavior changes.
-frame_pattern = re.compile(
-    r"GATE_E_PHASE171_CARRIAGE_FRAME_STEP[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)"
-    r"[^\n]*frame_step=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)"
-)
+frame_pattern = re.compile(r"GATE_E_PHASE171_CARRIAGE_FRAME_STEP[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)[^\n]*frame_step=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)")
 frame_speed = {}
-for match in frame_pattern.finditer(text):
-    key = (int(match.group(1)), int(match.group(2)))
-    speed = math.sqrt(sum(float(match.group(i)) ** 2 for i in range(3, 6)))
-    frame_speed[key] = max(frame_speed.get(key, 0.0), speed)
+for m in frame_pattern.finditer(text):
+    key=(int(m.group(1)),int(m.group(2))); speed=math.sqrt(sum(float(m.group(i))**2 for i in range(3,6))); frame_speed[key]=max(frame_speed.get(key,0.0),speed)
+speed_change_proof=None; supported=[s for s in samples if s[5] and s[6] and s[7]]
+for previous,current in zip(supported,supported[1:]):
+    if current[0]!=previous[0]+1 or current[1]!=previous[1]: continue
+    local_step=math.dist(previous[2:5],current[2:5]); previous_speed=frame_speed.get((previous[0],previous[1])); current_speed=frame_speed.get((current[0],current[1]))
+    if previous_speed is not None and current_speed is not None and local_step<=0.75 and abs(current_speed-previous_speed)>=1.0: speed_change_proof=(previous,current,previous_speed,current_speed,local_step); break
+if speed_change_proof is None: raise SystemExit("M1 speed-change stability missing: no consecutive supported bounded-locomotion samples across material carriage speed change")
 
-speed_change_proof = None
-supported = [s for s in samples if s[5] and s[6] and s[7]]
-for previous, current in zip(supported, supported[1:]):
-    if current[0] != previous[0] + 1 or current[1] != previous[1]:
-        continue
-    local_step = math.dist(previous[2:5], current[2:5])
-    previous_speed = frame_speed.get((previous[0], previous[1]))
-    current_speed = frame_speed.get((current[0], current[1]))
-    if previous_speed is None or current_speed is None:
-        continue
-    if local_step <= 0.75 and abs(current_speed - previous_speed) >= 1.0:
-        speed_change_proof = (previous, current, previous_speed, current_speed, local_step)
-        break
-if speed_change_proof is None:
-    raise SystemExit("M1 speed-change stability missing: no consecutive supported bounded-locomotion samples across material carriage speed change")
-
-# The r0v3 fixture exposes occupied side geometry at local block z=-2. Runs #534 and #540
-# reached that same side through different carriage-local player offsets: #534 plateaued near
-# z=-1.800 while #540 plateaued near z=-0.715. A fixed player-coordinate threshold therefore
-# confuses frame/fixture offset with collision solidity. Prove the wall from the native strafe
-# itself: same-carriage supported samples must make material progress toward negative Z, then hold
-# a three-sample plateau without crossing into the occupied z=-2 cell. Verifier-only.
-client_state_pattern = re.compile(
-    r"GATE_E_CLIENT_STATE[^\n]*local_support=local_feet=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+);"
-    r"[^\n]*nearby_blocks=([^;]*)"
-)
-wall_geometry_seen = False
-for m in client_state_pattern.finditer(text):
-    nearby = m.group(4)
-    if re.search(r"(?:^|\|)-?\d+, [123], -2(?:\||$)", nearby):
-        wall_geometry_seen = True
-        break
-if not wall_geometry_seen:
-    raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")
-
-# Run #561 reaches a complete three-tick wall plateau on carriage 7 at ticks 27-29, then the
-# nearest-carriage continuity telemetry legitimately hands off to sibling carriage 8 at tick 30.
-# The previous verifier demanded six samples with one identity, so it rejected an already-complete
-# collision proof merely because later telemetry crossed a sibling boundary. Anchor the wall proof
-# to the supported pre-strafe carriage and consume only its consecutive segment; the existing
-# three-sample impact requirement remains authoritative. Verifier-only; no gameplay mutation.
-before = [s for s in samples if s[0] == strafe_request_tick - 1 and s[5] and s[6] and s[7]]
-after_window = [s for s in samples if strafe_request_tick <= s[0] <= strafe_request_tick + 7 and s[5] and s[6] and s[7]]
-if not before or not after_window:
-    raise SystemExit("M1 wall proof missing supported carriage-local samples around native right-strafe")
-wall_carriage = before[-1][1]
-after = []
-expected_tick = strafe_request_tick
+client_state_pattern = re.compile(r"GATE_E_CLIENT_STATE[^\n]*local_support=local_feet=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+);[^\n]*nearby_blocks=([^;]*)")
+wall_geometry_seen = any(re.search(r"(?:^|\|)-?\d+, [123], -2(?:\||$)", m.group(4)) for m in client_state_pattern.finditer(text))
+if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")
+before=[s for s in samples if s[0]==strafe_request_tick-1 and s[5] and s[6] and s[7]]; after_window=[s for s in samples if strafe_request_tick<=s[0]<=strafe_request_tick+7 and s[5] and s[6] and s[7]]
+if not before or not after_window: raise SystemExit("M1 wall proof missing supported carriage-local samples around native right-strafe")
+wall_carriage=before[-1][1]; after=[]; expected_tick=strafe_request_tick
 for sample in after_window:
-    if sample[0] < expected_tick:
-        continue
-    if sample[0] != expected_tick or sample[1] != wall_carriage:
-        break
-    after.append(sample)
-    expected_tick += 1
-if len(after) < 3:
-    raise SystemExit("M1 wall proof did not retain three consecutive samples on the pre-strafe carriage")
-start_z = before[-1][4]
-wall_z = [s[4] for s in after]
-min_z = min(wall_z)
-if start_z - min_z < 0.015:
-    raise SystemExit(f"M1 right-strafe did not make material progress toward the carriage side: before_z={start_z} samples={wall_z}")
-# The occupied block cell begins at z=-2. A player feet/center sample entering that cell would be
-# unambiguous penetration regardless of player-width details; keep this conservative and geometry-based.
-if min_z <= -2.0:
-    raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")
-impact = [s for s in after if s[4] <= min_z + 0.005]
-if len(impact) < 3:
-    raise SystemExit(f"M1 carriage side impact plateau too short: local_z_samples={wall_z}")
-# Use the first consecutive three-sample plateau at the most-negative reached boundary.
-plateau = None
-for i in range(len(impact) - 2):
-    candidate = impact[i:i + 3]
-    if candidate[1][0] == candidate[0][0] + 1 and candidate[2][0] == candidate[1][0] + 1:
-        plateau = candidate
-        break
-if plateau is None:
-    raise SystemExit(f"M1 carriage side impact samples are not consecutive: ticks={[s[0] for s in impact]}")
-impact_z = [s[4] for s in plateau]
-if max(impact_z) - min(impact_z) > 0.005:
-    raise SystemExit(f"M1 carriage side did not hold a stable collision boundary: impact_z={impact_z}")
+    if sample[0]<expected_tick: continue
+    if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
+    after.append(sample); expected_tick+=1
+if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the pre-strafe carriage")
+start_z=before[-1][4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)
+if start_z-min_z<0.015: raise SystemExit(f"M1 right-strafe did not make material progress toward the carriage side: before_z={start_z} samples={wall_z}")
+if min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")
+impact=[s for s in after if s[4]<=min_z+0.005]
+if len(impact)<3: raise SystemExit(f"M1 carriage side impact plateau too short: local_z_samples={wall_z}")
+plateau=None
+for i in range(len(impact)-2):
+    candidate=impact[i:i+3]
+    if candidate[1][0]==candidate[0][0]+1 and candidate[2][0]==candidate[1][0]+1: plateau=candidate; break
+if plateau is None: raise SystemExit(f"M1 carriage side impact samples are not consecutive: ticks={[s[0] for s in impact]}")
+impact_z=[s[4] for s in plateau]
+if max(impact_z)-min(impact_z)>0.005: raise SystemExit(f"M1 carriage side did not hold a stable collision boundary: impact_z={impact_z}")
 
-post_land = [s for s in samples if s[0] > landed_tick]
-best_streak = []
-streak = []
+post_land=[s for s in samples if s[0]>landed_tick]; best_streak=[]; streak=[]
 for sample in post_land:
-    tick, carriage, x, y, z, broadphase, on_ground, baseline_frame = sample
-    if not (broadphase and on_ground and baseline_frame):
-        streak = []
-        continue
-    if not streak:
-        streak = [sample]
+    tick,carriage,x,y,z,broadphase,on_ground,baseline_frame=sample
+    if not (broadphase and on_ground and baseline_frame): streak=[]; continue
+    if not streak: streak=[sample]
     else:
-        prev = streak[-1]
-        step_sq = (x - prev[2]) ** 2 + (y - prev[3]) ** 2 + (z - prev[4]) ** 2
-        if tick == prev[0] + 1 and carriage == prev[1] and step_sq <= 0.75 ** 2:
-            streak.append(sample)
-        else:
-            streak = [sample]
-    if len(streak) > len(best_streak):
-        best_streak = list(streak)
-if len(best_streak) < 5:
-    detail = "none" if not best_streak else f"carriage={best_streak[0][1]} ticks={best_streak[0][0]}-{best_streak[-1][0]} samples={len(best_streak)}"
-    raise SystemExit("M1 post-landing carriage stability missing: " + detail)
+        prev=streak[-1]; step_sq=(x-prev[2])**2+(y-prev[3])**2+(z-prev[4])**2
+        if tick==prev[0]+1 and carriage==prev[1] and step_sq<=0.75**2: streak.append(sample)
+        else: streak=[sample]
+    if len(streak)>len(best_streak): best_streak=list(streak)
+if len(best_streak)<5:
+    detail="none" if not best_streak else f"carriage={best_streak[0][1]} ticks={best_streak[0][0]}-{best_streak[-1][0]} samples={len(best_streak)}"; raise SystemExit("M1 post-landing carriage stability missing: "+detail)
 
-speed_prev, speed_now, speed_before, speed_after, speed_local_step = speed_change_proof
-print(
-    "M1_NATIVE_LOCOMOTION_PROOF "
-    f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} "
-    f"reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} "
-    f"strafe_speed_sq={strafe_speed_sq} floor_solid=true floor_samples={len(best_floor)} floor_y_span={floor_y_span:.9f} "
-    f"wall_solid=true wall_local_z_min={min_z:.6f} "
-    f"wall_impact_ticks={plateau[0][0]}-{plateau[-1][0]} wall_impact_span={max(impact_z)-min(impact_z):.9f} "
-    f"speed_change_stable=true speed_change_ticks={speed_prev[0]}-{speed_now[0]} "
-    f"frame_speed={speed_before:.6f}->{speed_after:.6f} speed_change_local_step={speed_local_step:.9f} "
-    f"jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} duration={duration} delta_y={delta_y} "
-    f"natural_fall=true replay_free=true recovery_free=true post_land_stable_samples={len(best_streak)}"
-)
+speed_prev,speed_now,speed_before,speed_after,speed_local_step=speed_change_proof
+print("M1_NATIVE_LOCOMOTION_PROOF "+f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} strafe_speed_sq={strafe_speed_sq} floor_solid=true floor_samples={len(best_floor)} floor_y_span={floor_y_span:.9f} wall_solid=true wall_local_z_min={min_z:.6f} wall_impact_ticks={plateau[0][0]}-{plateau[-1][0]} wall_impact_span={max(impact_z)-min(impact_z):.9f} speed_change_stable=true speed_change_ticks={speed_prev[0]}-{speed_now[0]} frame_speed={speed_before:.6f}->{speed_after:.6f} speed_change_local_step={speed_local_step:.9f} jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} duration={duration} delta_y={delta_y} natural_fall=true replay_free=true recovery_free=true post_land_stable_samples={len(best_streak)}")

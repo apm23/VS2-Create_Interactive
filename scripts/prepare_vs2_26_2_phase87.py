@@ -50,18 +50,25 @@ source = source.replace(
     1,
 )
 
-# Phase 83 retires the legacy LocalPlayer replay before Phase 87 runs. Only the
-# remaining native-contact compatibility guard is widened for explicit production
-# opt-in. Phase 83 now names its supported-or-airborne native carriage membership
-# predicate phase83NativeFrameEligible; keep that native predicate intact here.
+# The current M1 path already has an explicit production opt-in and an external-frame
+# lease in Phase 83. Do not rewrite that guard back to the retired native-contact shape.
+# Older cumulative sources still use the historical guard, so retain the old widening
+# only as a compatibility fallback for those sources.
+external_frame_guard = '''            if (Boolean.getBoolean("vs2.createCarryCompat")
+                && carryBaselineCaptured
+                && phase83NativeFrameEligible
+                && phase83ExternalFrameLease'''
 old_carry_guard = '''            if (carryBaselineCaptured
                 && phase83NativeFrameEligible'''
 new_carry_guard = '''            if ((carryBaselineCaptured || explicitCarryCompat)
                 && phase83NativeFrameEligible'''
-carry_guard_count = source.count(old_carry_guard)
-if carry_guard_count < 1:
-    raise SystemExit(f"Phase 87 expected the remaining native-contact production guard, found {carry_guard_count}")
-source = source.replace(old_carry_guard, new_carry_guard, 1)
+if external_frame_guard in source:
+    pass
+else:
+    carry_guard_count = source.count(old_carry_guard)
+    if carry_guard_count < 1:
+        raise SystemExit(f"Phase 87 expected an external-frame or legacy production guard, found {carry_guard_count}")
+    source = source.replace(old_carry_guard, new_carry_guard, 1)
 
 # Production-world run 3 still emitted no Phase 85 replay marker. The old Phase 81
 # support-continuity telemetry itself was also hidden behind carryBaselineCaptured,
@@ -89,6 +96,11 @@ production_required = [
     'GATE_E_PHASE81_SUPPORT_CONTINUITY',
     'productionSmokeFixture',
 ]
+if external_frame_guard in source:
+    production_required.extend([
+        'phase83ExternalFrameLease',
+        'Boolean.getBoolean("vs2.createCarryCompat")',
+    ])
 production_missing = [token for token in production_required if token not in source]
 if production_missing:
     raise SystemExit("Phase 87 lost strict production carry anchors: " + ", ".join(production_missing))
@@ -153,4 +165,4 @@ if server_missing:
     raise SystemExit("Phase 87 lost server fixture isolation anchors: " + ", ".join(server_missing))
 server_probe.write_text(server, encoding="utf-8")
 
-print("Phase 87: production isolation plus explicit test-only support fixture, bounded carry telemetry, and concrete read-only interaction targeting")
+print("Phase 87: production isolation aligned with the current external-frame guard plus explicit test-only support fixture and bounded telemetry")

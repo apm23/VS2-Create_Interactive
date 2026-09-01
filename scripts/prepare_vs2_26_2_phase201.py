@@ -49,29 +49,43 @@ java.write_text(source, encoding="utf-8")
 print("Phase 201: traces bounded-walk Entity.move caller boundary read-only; no gameplay or physics mutation")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase202.py")), run_name="__main__")
 
-# Production-world #504 proves one destructive fixture retarget still survives the previous
-# 15-attempt cap: carriage 4 is perfectly local-stable through tick 19 with zero carry drift at
-# tick 17, then the fixture jumps out of that frame at tick 22 before M1 locomotion can start.
-# Stop one acquisition attempt earlier so the already-established native contact remains frozen.
-# Harness-only: no position, velocity, carry, collision, train/world, Create, or VS2 physics mutation.
+# Production-world #526 proves the fixed 14-attempt fixture cutoff is now too early after the
+# native-frame lease hardening: all fourteen attempts finish before Create publishes any genuine
+# ContraptionColliderClient contact application, leaving baseline_captured=false and broadphase=false.
+# Do not resume blind retargeting after native contact. Instead, keep the historical 32-attempt safety
+# ceiling only until the first genuine native Create contact application appears, then freeze fixture
+# acquisition immediately and treat the following samples as unassisted. This is harness-only and
+# changes no player movement, collision response, carry vector, train/world state, or VS2 physics.
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 probe_source = client_probe.read_text(encoding="utf-8")
 old_acquire = "fixtureContactAcquireTicks < 32"
 old_unassisted = "fixtureContactAcquireTicks >= 32"
+new_acquire = '''(fixtureContactAcquireTicks < 32
+            && System.getProperty("vs2.phase170NativeContactApplicationTick") == null)'''
+new_unassisted = '''(fixtureContactAcquireTicks >= 32
+            || System.getProperty("vs2.phase170NativeContactApplicationTick") != null)'''
 acquire_count = probe_source.count(old_acquire)
 unassisted_count = probe_source.count(old_unassisted)
 if acquire_count < 2 or unassisted_count < 2:
     raise SystemExit(
         f"Phase 201 expected cumulative 32-attempt fixture boundaries, found acquire={acquire_count} unassisted={unassisted_count}"
     )
-probe_source = probe_source.replace(old_acquire, "fixtureContactAcquireTicks < 14")
-probe_source = probe_source.replace(old_unassisted, "fixtureContactAcquireTicks >= 14")
+probe_source = probe_source.replace(old_acquire, new_acquire)
+probe_source = probe_source.replace(old_unassisted, new_unassisted)
+required_fixture = [
+    "vs2.phase170NativeContactApplicationTick",
+    "fixtureContactAcquireTicks < 32",
+    "fixtureContactAcquireTicks >= 32",
+]
+missing_fixture = [token for token in required_fixture if token not in probe_source]
+if missing_fixture:
+    raise SystemExit("Phase 201 lost native-contact fixture freeze anchors: " + ", ".join(missing_fixture))
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
     "cir.setReturnValue(",
 ]:
-    if forbidden in "fixtureContactAcquireTicks < 14 fixtureContactAcquireTicks >= 14":
+    if forbidden in new_acquire + new_unassisted:
         raise SystemExit("Phase 201 fixture-boundary alignment introduced forbidden gameplay mutation")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("Phase 201: stops fixture acquisition after attempt 14, before Run 504's remaining retarget boundary")
+print("Phase 201: continues fixture acquisition only until genuine native Create contact or the 32-attempt safety ceiling")

@@ -17,22 +17,27 @@ lease_source = contact_lease.read_text(encoding="utf-8")
 # position/velocity, collision response, carry vector, train/world state, Create behavior or VS2
 # physics mutation.
 #
-# Production-world #596 stopped in cumulative prepare after Phase194 added the existing Phase192
-# acquisition-completed guard to the direct-native candidate. Preserve that guard while Phase203
-# rewrites the candidate into its stricter same-carriage/support form. Harness composition only.
-old = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
-                            && phase194ProvenNativeCarryHealth
-                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);'''
-new = '''                        boolean phase203CarryHealthCandidate = !phase154WalkStarted
+# Production-world #596/#597 stopped in cumulative prepare because Phase201 deliberately rewrites
+# every 32-tick acquisition expression into its tick-fresh-native equivalent after Phase194, so an
+# exact whole-statement Phase194 anchor is not composition-stable. Rewrite only the unique candidate
+# prefix and preserve whichever existing acquisition expression follows it, then alias the stricter
+# Phase203 candidate before the immediate-ready consumer. Harness composition only.
+old_prefix = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
+                            && phase194ProvenNativeCarryHealth'''
+new_prefix = '''                        boolean phase203CarryHealthCandidate = !phase154WalkStarted
                             && phase154SupportNow
                             && phase154Carriage.getId() == carryBaselineCarriageId
                             && collisionEligible && broadphaseOverlap && player.onGround()
-                            && phase194ProvenNativeCarryHealth
-                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);
-                        boolean phase194DirectNativeCandidate = phase203CarryHealthCandidate;'''
-if source.count(old) != 1:
-    raise SystemExit("Phase 203 expected one Phase194 direct-native candidate")
-source = source.replace(old, new, 1)
+                            && phase194ProvenNativeCarryHealth'''
+if source.count(old_prefix) != 1:
+    raise SystemExit("Phase 203 expected one Phase194 direct-native candidate prefix")
+source = source.replace(old_prefix, new_prefix, 1)
+consumer_anchor = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate'''
+consumer_replacement = '''                        boolean phase194DirectNativeCandidate = phase203CarryHealthCandidate;
+                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate'''
+if source.count(consumer_anchor) != 1:
+    raise SystemExit("Phase 203 expected one Phase194 immediate-ready consumer")
+source = source.replace(consumer_anchor, consumer_replacement, 1)
 
 # Production-world #585 proves the next M1 boundary directly. The native jump executes through
 # vanilla LocalPlayer (Entity.move applies +0.4199999869 Y), Create applies the exact carriage
@@ -141,7 +146,7 @@ lease_missing = [token for token in lease_required if token not in lease_source]
 if lease_missing:
     raise SystemExit("Phase 203 lost bounded airborne native Create lease anchors: " + ", ".join(lease_missing))
 
-inserted = new + lease_new + lease_log_new
+inserted = new_prefix + consumer_replacement + lease_new + lease_log_new
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -152,4 +157,4 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
-print("Phase 203: preserves acquisition-gated direct-native walk and bounded Create jump lease")
+print("Phase 203: composes after tick-fresh acquisition rewrite and keeps bounded Create jump lease")

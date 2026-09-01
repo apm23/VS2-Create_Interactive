@@ -37,9 +37,14 @@ source = client_probe.read_text(encoding="utf-8")
 # grounded broadphase overlap, and matching active baseline, but the immediately following tick crossed a
 # real carriage geometry/frame boundary before the confirmation could fire. Those arm ticks already meet
 # every authoritative condition the later confirmation rechecks. Permit the disposable input fixture to
-# start on that exact healthy native-support tick; retain the next-tick path as a fallback. This changes
-# fixture acceptance only and does not write player motion, collision response, carry vectors, train/world
-# state, or VS2/Create physics.
+# start on that exact healthy native-support tick; retain the next-tick path as a fallback.
+#
+# Production-world #595 then proved that same-tick acceptance must still obey Phase192's completed
+# fixture-acquisition boundary. Starting at tick 16 while acquisition was still actively normalizing
+# support contaminated the standing-carry proof and immediately entered locomotion before the real
+# production carry window was established. Keep same-tick acceptance, but only after the existing
+# 32-tick fixture acquisition has completed. This is harness acceptance only: no player position,
+# velocity, collision response, carry vector, train/world state, or VS2/Create physics is changed.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -97,7 +102,8 @@ old_branch = '''                        if (!phase154WalkStarted && phase185Walk
                                 && (phase185WalkReadyTicks >= 5
                                     || (phase185NativeApplicationFresh && phase185WalkReadyTicks >= 2))) {'''
 new_branch = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
-                            && phase194ProvenNativeCarryHealth;
+                            && phase194ProvenNativeCarryHealth
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);
                         boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
                             && phase194NativeAuthoritativeSupport
                             && phase185NativeApplicationFresh;
@@ -162,6 +168,7 @@ required = [
     "phase185WalkReadyTicks >= 5",
     "phase185NativeApplicationFresh",
     "phase81PhysicalSupport",
+    "fixtureContactAcquireTicks >= 32",
     "native_health_age={}",
     "exact_native_application=true",
     "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM",
@@ -183,5 +190,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: starts the disposable M1 input fixture on proven strict same-carriage native support; next-tick confirmation remains fallback")
+print("Phase 194: starts M1 only after completed acquisition on proven strict native support")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

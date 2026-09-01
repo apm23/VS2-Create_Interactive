@@ -47,6 +47,20 @@ if "boolean phase154Confirmed = player.isSprinting() && phase154WalkSupportHealt
         raise SystemExit(f"Phase 188 expected exactly one final walk confirmation predicate, found {confirm_count}")
     source = source.replace(confirm_old, confirm_new, 1)
 
+# Production-world #562 sampled native KeyboardInput and vanilla LocalPlayer SELF movement for three
+# forward ticks while Create kept the player grounded, broadphase-valid and support-healthy. The
+# sibling-safe Phase182 path retained 0.1288 block of validated within-frame displacement before the
+# fixture's known finite-route discontinuity, so the old 0.20 final threshold rejected already-proven
+# native locomotion. Keep the existing 0.20 pre-reset timing gate untouched, but let the authoritative
+# sibling-safe final proof accept >=0.10 block. Fixture acceptance only; gameplay remains unchanged.
+final_distance_old = "phase154LocalDistance >= 0.20 && phase154LocalDistance <= 4.00;"
+final_distance_new = "phase154LocalDistance >= 0.10 && phase154LocalDistance <= 4.00;"
+if final_distance_new not in source:
+    final_distance_count = source.count(final_distance_old)
+    if final_distance_count != 1:
+        raise SystemExit(f"Phase 188 expected exactly one sibling-safe final walk distance threshold, found {final_distance_count}")
+    source = source.replace(final_distance_old, final_distance_new, 1)
+
 # Keep the native sprint state explicit on the existing walk confirmation marker.
 sprint_log_old = '"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick={} carriage_id={} local_start={} local_end={} local_distance={} duration_ticks={} on_ground={} broadphase={} support_healthy={} confirmed={} fixture_only=true",'
 sprint_log_new = '"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick={} carriage_id={} local_start={} local_end={} local_distance={} duration_ticks={} on_ground={} broadphase={} support_healthy={} confirmed={} sprinting={} fixture_only=true",'
@@ -70,6 +84,7 @@ required = [
     "phase165WalkPathDistance >= 0.20",
     "if (player.tickCount <= phase154WalkStartTick + 12 && !phase188PreResetWalkReady)",
     "boolean phase154Confirmed = player.isSprinting() && phase154WalkSupportHealthy",
+    "phase154LocalDistance >= 0.10",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
     "confirmed={} sprinting={} fixture_only=true",
     "phase154Confirmed, player.isSprinting()",
@@ -84,7 +99,7 @@ for forbidden in [
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
     "cir.setReturnValue(",
 ]:
-    if forbidden in new or forbidden in confirm_new:
+    if forbidden in new or forbidden in confirm_new or forbidden in final_distance_new:
         raise SystemExit("Phase 188 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")

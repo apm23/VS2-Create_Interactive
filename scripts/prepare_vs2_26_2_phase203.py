@@ -16,13 +16,19 @@ lease_source = contact_lease.read_text(encoding="utf-8")
 # handoff or missing Create application still rejects walk start. Fixture acceptance only: no player
 # position/velocity, collision response, carry vector, train/world state, Create behavior or VS2
 # physics mutation.
+#
+# Production-world #596 stopped in cumulative prepare after Phase194 added the existing Phase192
+# acquisition-completed guard to the direct-native candidate. Preserve that guard while Phase203
+# rewrites the candidate into its stricter same-carriage/support form. Harness composition only.
 old = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
-                            && phase194ProvenNativeCarryHealth;'''
+                            && phase194ProvenNativeCarryHealth
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);'''
 new = '''                        boolean phase203CarryHealthCandidate = !phase154WalkStarted
                             && phase154SupportNow
                             && phase154Carriage.getId() == carryBaselineCarriageId
                             && collisionEligible && broadphaseOverlap && player.onGround()
-                            && phase194ProvenNativeCarryHealth;
+                            && phase194ProvenNativeCarryHealth
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);
                         boolean phase194DirectNativeCandidate = phase203CarryHealthCandidate;'''
 if source.count(old) != 1:
     raise SystemExit("Phase 203 expected one Phase194 direct-native candidate")
@@ -84,7 +90,7 @@ else:
                     && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())) {'''
     if lease_source.count(lease_previous) != 1:
         raise SystemExit("Phase 203 expected one existing airborne lease overlap boundary")
-    lease_source = lease_source.replace(lease_previous, lease_new.split('            boolean graced = false;\n', 1)[1].join(['            boolean graced = false;\n', '']) if False else '''            boolean graced = false;
+    lease_source = lease_source.replace(lease_previous, '''            boolean graced = false;
             if (allowGrace
                     && Boolean.getBoolean("vs2.createCarryCompat")
                     && lease != null
@@ -110,6 +116,7 @@ required = [
     "phase154Carriage.getId() == carryBaselineCarriageId",
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase194ProvenNativeCarryHealth",
+    "fixtureContactAcquireTicks >= 32",
     "phase194ConfirmedDirectNativeReady",
     "phase194PendingWalkAge == 1",
     "phase185NativeApplicationFresh",
@@ -145,4 +152,4 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
-print("Phase 203: retains direct-native walk gating and keeps Create native contact lease bounded across the M1 jump")
+print("Phase 203: preserves acquisition-gated direct-native walk and bounded Create jump lease")

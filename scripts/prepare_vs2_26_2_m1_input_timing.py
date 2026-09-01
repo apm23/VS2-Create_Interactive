@@ -68,6 +68,12 @@ source = source.replace(strafe_guard_old, strafe_guard_new, 1)
 # catch an expiry transition occurring inside AbstractContraptionEntity.tick. This only preserves
 # Create's own age-2 lease edge; it does not invent contact age 0, movement, velocity, collision,
 # gravity, position, or train state.
+#
+# Production-world #654 then proves that per-carriage recency alone is too broad: while carriage 7
+# is the active native owner, a still-recent stale lease on sibling carriage 5 is also prolonged and
+# Create consequently applies both native motions in tick 39. That double native carry is the exact
+# ~5.93-block local discontinuity. Preserve the extended lease only for Phase170's current native
+# carriage identity; sibling leases may age out normally. This remains an ownership filter only.
 lease_tail_old = '        vs2$traceContactLease("tail", false);'
 lease_tail_new = '        vs2$traceContactLease("tail", true);'
 if lease_source.count(lease_tail_old) != 1:
@@ -77,8 +83,11 @@ lease_source = lease_source.replace(lease_tail_old, lease_tail_new, 1)
 lease_outer_guard_old = '        if (!self.getBoundingBox().inflate(4.0).intersects(player.getBoundingBox())) return;'
 lease_outer_guard_new = '''        String vs2$recentNativeTick = System.getProperty(
             "vs2.phase170NativeContactApplicationTick." + self.getId());
+        String vs2$activeNativeCarriage = System.getProperty(
+            "vs2.phase170NativeContactApplicationCarriageId");
         boolean vs2$recentNativeOwner = false;
-        if (vs2$recentNativeTick != null) {
+        if (vs2$recentNativeTick != null
+                && Integer.toString(self.getId()).equals(vs2$activeNativeCarriage)) {
             try {
                 int vs2$recentNativeAge = player.tickCount - Integer.parseInt(vs2$recentNativeTick);
                 vs2$recentNativeOwner = vs2$recentNativeAge >= 0 && vs2$recentNativeAge <= 20;
@@ -92,10 +101,20 @@ if lease_source.count(lease_outer_guard_old) != 1:
     raise SystemExit("M1 native lease expected one stale world-overlap outer guard")
 lease_source = lease_source.replace(lease_outer_guard_old, lease_outer_guard_new, 1)
 
+lease_airborne_old = '''            boolean vs2$airborneNativeLease = !player.onGround()
+                && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;'''
+lease_airborne_new = '''            boolean vs2$airborneNativeLease = !player.onGround()
+                && vs2$recentNativeOwner
+                && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;'''
+if lease_source.count(lease_airborne_old) != 1:
+    raise SystemExit("M1 native lease expected one airborne active-owner boundary")
+lease_source = lease_source.replace(lease_airborne_old, lease_airborne_new, 1)
+
 lease_grounded_old = '''            boolean vs2$groundedNativeLease = player.onGround()
                 && self.getBoundingBox().inflate(0.5).intersects(player.getBoundingBox())
                 && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;'''
 lease_grounded_new = '''            boolean vs2$groundedNativeLease = player.onGround()
+                && vs2$recentNativeOwner
                 && vs2$nativeApplicationAge >= 0 && vs2$nativeApplicationAge <= 20;'''
 if lease_source.count(lease_grounded_old) != 1:
     raise SystemExit("M1 native lease expected one grounded stale world-overlap guard")
@@ -183,14 +202,17 @@ if missing:
 lease_required = [
     'vs2$traceContactLease("tail", true);',
     'vs2.phase170NativeContactApplicationTick.',
+    'vs2.phase170NativeContactApplicationCarriageId',
+    'Integer.toString(self.getId()).equals(vs2$activeNativeCarriage)',
     'vs2$recentNativeOwner',
+    'vs2$airborneNativeLease = !player.onGround()',
     'vs2$groundedNativeLease = player.onGround()',
     'vs2$airborneNativeLease || vs2$groundedNativeLease',
     'method.invoke(lease, Integer.valueOf(2))',
 ]
 lease_missing = [token for token in lease_required if token not in lease_source]
 if lease_missing:
-    raise SystemExit("M1 native lease lost frame-identity anchors: " + ", ".join(lease_missing))
+    raise SystemExit("M1 native lease lost active-frame identity anchors: " + ", ".join(lease_missing))
 verifier_required = [
     'local block z=-2',
     'min_z=min(wall_z)',
@@ -205,10 +227,10 @@ for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(', 'method.invoke(lease, Integer.valueOf(0))',
 ]:
-    if forbidden in new + strafe_guard_new + lease_tail_new + lease_outer_guard_new + lease_grounded_new + lease_grace_overlap_new:
+    if forbidden in new + strafe_guard_new + lease_tail_new + lease_outer_guard_new + lease_airborne_new + lease_grounded_new + lease_grace_overlap_new:
         raise SystemExit("M1 input/lease patch introduced forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 input timing: preserves sprint callback and bounded strafe, and keeps Create native contact lease in its exact recent carriage frame")
+print("M1 input timing: preserves sprint/strafe sequencing and extends Create native lease only for the currently authoritative native carriage")

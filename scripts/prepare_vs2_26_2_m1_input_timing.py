@@ -5,15 +5,13 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 fixture_input = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
 source = fixture_input.read_text(encoding="utf-8")
 
-# Production-world #648 proves the three-tick native forward/sprint proof completes on a still-
-# grounded, supported frame, but the boolean walk-confirm publication arrives after LocalPlayer's
-# aiStep HEAD for that same tick. Phase203 therefore cannot actually put reverse into vanilla input
-# until the following tick, exactly the stale one-tick boundary it was intended to remove. Sequence
-# the disposable follow-up inputs from the already-known end of the bounded forward pulse instead.
-# The production verifier still independently requires GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED, so
-# this does not weaken acceptance or bypass native Create/Minecraft locomotion. It only makes the
-# ordinary KeyMapping available at the correct sampling tick; no position, velocity, collision,
-# carry, gravity, train, or world state is written.
+# Production-world #650 proves the post-walk native backward/strafe/jump sequence itself works,
+# including airborne -> natural landing, but starting it at walkStart+3 consumes the exact aiStep
+# tick whose later GateEClientProbe callback owns Phase188's three-tick sprint acceptance. That
+# leaves the final walk marker false even though every later native input succeeds. Preserve one
+# full callback boundary for the existing forward/sprint proof, then begin the disposable follow-up
+# inputs on the next LocalPlayer tick. The production verifier still independently requires
+# GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED; no acceptance is weakened and no gameplay state is written.
 old = '''    private boolean vs2$fixtureWalkSeen(LocalPlayer self) {
         if (!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")) return false;
         if (vs2$walkConfirmedTick == Integer.MIN_VALUE) vs2$walkConfirmedTick = self.tickCount;
@@ -29,8 +27,8 @@ new = '''    private boolean vs2$fixtureWalkSeen(LocalPlayer self) {
         if (rawStart == null) return false;
         try {
             int startTick = Integer.parseInt(rawStart);
-            if (self.tickCount >= startTick + 3) {
-                vs2$walkConfirmedTick = startTick + 3;
+            if (self.tickCount >= startTick + 4) {
+                vs2$walkConfirmedTick = startTick + 4;
                 return true;
             }
         } catch (NumberFormatException ignored) {
@@ -43,8 +41,8 @@ if source.count(old) != 1:
 source = source.replace(old, new, 1)
 
 required = [
-    'self.tickCount >= startTick + 3',
-    'vs2$walkConfirmedTick = startTick + 3',
+    'self.tickCount >= startTick + 4',
+    'vs2$walkConfirmedTick = startTick + 4',
     'Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
     'System.getProperty("vs2.productionFixtureWalkStartTick")',
 ]
@@ -59,4 +57,4 @@ for forbidden in [
         raise SystemExit("M1 input timing introduced forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
-print("M1 input timing: starts post-walk vanilla KeyMapping sequence on the proven three-tick pulse boundary")
+print("M1 input timing: preserves the completed three-tick sprint callback, then starts post-walk vanilla KeyMapping sequence")

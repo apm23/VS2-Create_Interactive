@@ -79,6 +79,41 @@ if source.count(jump_delay_anchor) != 1:
     raise SystemExit("M1 wall-bound expected one post-strafe jump delay")
 source = source.replace(jump_delay_anchor, jump_delay_replacement, 1)
 
+# Production-world #604 proves the post-strafe jump admission was accepting a non-floor Create
+# contact. Immediately before the jump, the disposable player was still broadphase/onGround on the
+# baseline carriage, but carriage-local feet were Y=1.812 while the already-proven walk floor was
+# Y=2.0; the jump then rose normally and later fell through the carriage to the static world floor.
+# Publish only a fixture-local, tick-bounded floor-support predicate from the existing carriage-local
+# coordinates and require it before issuing the vanilla jump KeyMapping. This does not alter collision,
+# motion, gravity, carry, player position, train/world state, or VS2/Create behavior.
+floor_probe_anchor = '''                        boolean phase154PreWalkBroadphase = phase154PreWalkCarriage.getBoundingBox().inflate(2.0)
+                            .expandTowards(0.0, 32.0, 0.0).intersects(player.getBoundingBox());
+                        LOGGER.info('''
+floor_probe_replacement = '''                        boolean phase154PreWalkBroadphase = phase154PreWalkCarriage.getBoundingBox().inflate(2.0)
+                            .expandTowards(0.0, 32.0, 0.0).intersects(player.getBoundingBox());
+                        boolean m1JumpFloorSupportNow = phase154WalkStartLocal != null
+                            && phase154PreWalkBroadphase
+                            && player.onGround()
+                            && phase154PreWalkCarriage.getId() == carryBaselineCarriageId
+                            && Math.abs(phase154PreWalkLocal.y - phase154WalkStartLocal.y) <= 0.05;
+                        System.setProperty("vs2.productionFixtureJumpFloorSupportNow", Boolean.toString(m1JumpFloorSupportNow));
+                        System.setProperty("vs2.productionFixtureJumpFloorSupportTick", Integer.toString(player.tickCount));
+                        LOGGER.info('''
+if probe_source.count(floor_probe_anchor) != 1:
+    raise SystemExit("M1 jump floor gate expected one Phase154 live carriage-local support boundary")
+probe_source = probe_source.replace(floor_probe_anchor, floor_probe_replacement, 1)
+
+jump_floor_gate_anchor = '''            && self.onGround()
+            && (Integer.toString(self.tickCount).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))'''
+jump_floor_gate_replacement = '''            && self.onGround()
+            && Boolean.getBoolean("vs2.productionFixtureJumpFloorSupportNow")
+            && (Integer.toString(self.tickCount).equals(System.getProperty("vs2.productionFixtureJumpFloorSupportTick"))
+                || Integer.toString(self.tickCount - 1).equals(System.getProperty("vs2.productionFixtureJumpFloorSupportTick")))
+            && (Integer.toString(self.tickCount).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))'''
+if source.count(jump_floor_gate_anchor) != 1:
+    raise SystemExit("M1 jump floor gate expected one post-strafe jump admission boundary")
+source = source.replace(jump_floor_gate_anchor, jump_floor_gate_replacement, 1)
+
 # Production-world #598 proved the jump executes natively and later performs a real descent.
 # Phase202 also established that Create's moving-contraption contact can legitimately keep
 # LocalPlayer.onGround true through that vertical arc. Production-world #602 reproduces exactly
@@ -124,12 +159,22 @@ required = [
     'vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005',
     '(vs2$jumpStartTick == Integer.MIN_VALUE && !jumpArmReady) || vs2$jumpLandedLogged',
     'self.tickCount <= vs2$jumpStartTick + 1',
+    'vs2.productionFixtureJumpFloorSupportNow',
+    'vs2.productionFixtureJumpFloorSupportTick',
 ]
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("M1 fixture refinement lost anchors: " + ", ".join(missing))
 if 'phase185WalkReadyTicks >= 2' not in probe_source:
     raise SystemExit("M1 settled-start lost Phase185 two-frame readiness guard")
+for token in [
+    'm1JumpFloorSupportNow',
+    'Math.abs(phase154PreWalkLocal.y - phase154WalkStartLocal.y) <= 0.05',
+    'vs2.productionFixtureJumpFloorSupportNow',
+    'vs2.productionFixtureJumpFloorSupportTick',
+]:
+    if token not in probe_source:
+        raise SystemExit("M1 jump floor gate lost live-support anchor: " + token)
 
 for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
@@ -141,9 +186,9 @@ for forbidden in [
     'player.setPos(', 'player.setDeltaMovement(', 'player.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(',
 ]:
-    if forbidden in immediate_replacement:
-        raise SystemExit("M1 settled-start found forbidden gameplay mutation: " + forbidden)
+    if forbidden in immediate_replacement + floor_probe_replacement:
+        raise SystemExit("M1 fixture gate found forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 fixture refinement: keeps native jump observation alive after admission while preserving frozen carry/walk/collision behavior")
+print("M1 fixture refinement: gates native jump on live carriage-floor support without changing movement/collision")

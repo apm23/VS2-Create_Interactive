@@ -91,12 +91,22 @@ wall_geometry_seen = any(re.search(r"(?:^|\|)-?\d+, [123], -2(?:\||$)", m.group(
 if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")
 before=[s for s in samples if s[0]==strafe_request_tick-1 and s[5] and s[6] and s[7]]; after_window=[s for s in samples if strafe_request_tick<=s[0]<=strafe_request_tick+7 and s[5] and s[6] and s[7]]
 if not before or not after_window: raise SystemExit("M1 wall proof missing supported carriage-local samples around native right-strafe")
-wall_carriage=before[-1][1]; after=[]; expected_tick=strafe_request_tick
+# Run #571 proved the right-strafe can coincide with a legitimate Create-authoritative sibling
+# handoff: tick 24 rebased 5 -> 7 with native_contact_owner=true, then carriage 7 held the same
+# local-z collision boundary for five consecutive supported ticks. Do not require the pre-strafe
+# carriage id to survive. Accept a new wall frame only when the exact strafe tick has the existing
+# Phase136 identity-only native-contact-owner rebase marker. This changes verifier bookkeeping only.
+pre_wall_carriage=before[-1][1]
+rebase_match=re.search(
+    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\n]*previous_carriage_id={pre_wall_carriage}[^\n]*carriage_id=(\d+)[^\n]*player_tick={strafe_request_tick}[^\n]*native_contact_owner=true[^\n]*identity_only=true",
+    text)
+wall_carriage=int(rebase_match.group(1)) if rebase_match is not None else pre_wall_carriage
+after=[]; expected_tick=strafe_request_tick
 for sample in after_window:
     if sample[0]<expected_tick: continue
     if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
     after.append(sample); expected_tick+=1
-if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the pre-strafe carriage")
+if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")
 start_z=before[-1][4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)
 if start_z-min_z<0.015: raise SystemExit(f"M1 right-strafe did not make material progress toward the carriage side: before_z={start_z} samples={wall_z}")
 if min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")

@@ -29,8 +29,11 @@ source = client_probe.read_text(encoding="utf-8")
 # callback, before grounded support is reacquired on tick 25 and sustained carry is proven on
 # the sibling carriage. Treat only that first post-start, same-carriage, broadphase-valid,
 # >0.75 local jump as an accounting seam instead of permanently poisoning support health.
-# Fixture/gate accounting only; no player movement, carry vector, collision, train/world state,
-# or VS2 physics changes.
+# Production-world #581 then showed a later one-frame broadphase gap at tick 43 immediately
+# followed by a strict supported baseline handoff at tick 44. A validated sibling handoff is
+# stronger evidence than the stale latch, so recover verifier health exactly at that supported
+# rebase boundary. Fixture/gate accounting only; no player movement, carry vector, collision,
+# train/world state, or VS2 physics changes.
 old = '''                            if (phase154Carriage.getId() != phase154WalkCarriageId || !phase154SupportNow) {
                                 phase154WalkSupportHealthy = false;
                             }
@@ -45,8 +48,9 @@ new = '''                            boolean phase156SiblingHandoff = phase154Ca
                             double phase154Step = phase154WalkPreviousLocal == null || phase156SiblingHandoff
                                 ? 0.0 : phase154Local.distanceTo(phase154WalkPreviousLocal);
                             if (phase156SiblingHandoff) {
+                                phase154WalkSupportHealthy = true;
                                 LOGGER.info(
-                                    "GATE_E_PHASE156_WALK_SIBLING_HANDOFF player_tick={} previous_carriage_id={} carriage_id={} grounded={} broadphase={} baseline_rebase=true local_step_reset=true fixture_only=true",
+                                    "GATE_E_PHASE156_WALK_SIBLING_HANDOFF player_tick={} previous_carriage_id={} carriage_id={} grounded={} broadphase={} baseline_rebase=true local_step_reset=true support_health_recovered=true fixture_only=true",
                                     player.tickCount, phase154WalkCarriageId, phase154Carriage.getId(), player.onGround(), phase154Broadphase);
                                 phase154WalkCarriageId = phase154Carriage.getId();
                             }
@@ -122,6 +126,8 @@ required = [
     "player.tickCount == phase154WalkStartTick + 1",
     "if (!phase154SupportNow && !phase156InitialStartFrameSeam)",
     "phase160GuardStep",
+    "phase154WalkSupportHealthy = true",
+    "support_health_recovered=true",
     "phase154WalkCarriageId = phase154Carriage.getId()",
     "local_step_reset=true",
     "max_local_step=0.75",
@@ -146,5 +152,5 @@ for forbidden in [
         raise SystemExit("Phase 156 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 156/160: keeps support health tied to real support loss while ignoring the proven first-frame verifier seam")
+print("Phase 156/160: recovers verifier health on validated sibling handoff while preserving native support semantics")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase157.py")), run_name="__main__")

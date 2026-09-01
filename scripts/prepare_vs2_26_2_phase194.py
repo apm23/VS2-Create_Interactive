@@ -16,9 +16,15 @@ source = client_probe.read_text(encoding="utf-8")
 # on carriage 5 (ticks 15-17) were followed immediately by a sibling handoff at tick 18. The walk was
 # started at tick 17, remained grounded/broadphase-valid, but necessarily crossed carriage identity and
 # could not satisfy the bounded single-frame proof. Require three fresh same-carriage native-ready ticks
-# before arming, then retain the existing strict next-tick/two-tick confirmation. This makes four stable
-# observations necessary before fixture locomotion starts, without changing player position/velocity,
-# collision response, carry vectors, train/world state, Create behavior, or VS2 physics.
+# before arming.
+#
+# Production-world #537 proves that accepting a two-tick confirmation after an intervening sibling seam
+# still starts locomotion on a discontinuous route frame: carriage 8 armed at tick 17, sibling carriage
+# 10 occupied tick 18, then carriage 8 returned at tick 19 and the old age<=2 rule started the walk.
+# Reject that seam entirely. Direct-native confirmation must now be the immediately following tick on
+# the same carriage with strict support and exact native application. This is fixture acceptance only;
+# no player position/velocity, collision response, carry vector, train/world state, Create behavior,
+# or VS2 physics is changed.
 
 field_anchor = "    private static int phase185WalkReadyTicks = 0;\n"
 field_insert = field_anchor + (
@@ -50,8 +56,7 @@ new_branch = '''                        boolean phase194DirectNativeCandidate = 
                         int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
-                            && phase194PendingWalkAge >= 1
-                            && phase194PendingWalkAge <= 2
+                            && phase194PendingWalkAge == 1
                             && phase154SupportNow
                             && phase81PhysicalSupport
                             && phase185NativeApplicationFresh
@@ -82,15 +87,7 @@ if "GATE_E_PHASE194_DIRECT_NATIVE_WALK_ARM" not in source:
         raise SystemExit(f"Phase 194 expected one Phase192 direct-native start branch, found {count}")
     source = source.replace(old_branch, new_branch, 1)
 else:
-    old_confirmation = '''                        boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
-                            && phase194PendingWalkCarriageId == phase154Carriage.getId()
-                            && phase194PendingWalkTick == player.tickCount - 1
-                            && phase154SupportNow
-                            && phase81PhysicalSupport
-                            && phase185FreshNativeEvidence
-                            && phase154Carriage.getId() == carryBaselineCarriageId
-                            && collisionEligible && broadphaseOverlap && player.onGround();'''
-    new_confirmation = '''                        int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
+    old_confirmation = '''                        int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
                         boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
                             && phase194PendingWalkCarriageId == phase154Carriage.getId()
                             && phase194PendingWalkAge >= 1
@@ -100,16 +97,17 @@ else:
                             && phase185NativeApplicationFresh
                             && phase154Carriage.getId() == carryBaselineCarriageId
                             && collisionEligible && broadphaseOverlap && player.onGround();'''
-    if "phase194PendingWalkAge" not in source:
-        count = source.count(old_confirmation)
-        if count != 1:
-            raise SystemExit(f"Phase 194 expected one strict confirmation branch, found {count}")
+    new_confirmation = '''                        int phase194PendingWalkAge = player.tickCount - phase194PendingWalkTick;
+                        boolean phase194ConfirmedDirectNativeReady = !phase154WalkStarted
+                            && phase194PendingWalkCarriageId == phase154Carriage.getId()
+                            && phase194PendingWalkAge == 1
+                            && phase154SupportNow
+                            && phase81PhysicalSupport
+                            && phase185NativeApplicationFresh
+                            && phase154Carriage.getId() == carryBaselineCarriageId
+                            && collisionEligible && broadphaseOverlap && player.onGround();'''
+    if old_confirmation in source:
         source = source.replace(old_confirmation, new_confirmation, 1)
-        source = source.replace(
-            '"GATE_E_PHASE194_DIRECT_NATIVE_WALK_CONFIRMED player_tick={} carriage_id={} armed_tick={} strict_support={} support_now={} baseline_carriage_id={} fixture_only=true accounting_only=true",\n                                player.tickCount, phase154Carriage.getId(), phase194PendingWalkTick,\n                                phase81PhysicalSupport, phase154SupportNow, carryBaselineCarriageId);',
-            '"GATE_E_PHASE194_DIRECT_NATIVE_WALK_CONFIRMED player_tick={} carriage_id={} armed_tick={} arm_age={} strict_support={} support_now={} baseline_carriage_id={} exact_native_application=true fixture_only=true accounting_only=true",\n                                player.tickCount, phase154Carriage.getId(), phase194PendingWalkTick, phase194PendingWalkAge,\n                                phase81PhysicalSupport, phase154SupportNow, carryBaselineCarriageId);',
-            1,
-        )
     source = source.replace(
         "&& phase185WalkReadyTicks >= 2;",
         "&& phase185WalkReadyTicks >= 3;",
@@ -122,8 +120,7 @@ required = [
     "phase194DirectNativeCandidate",
     "phase194PendingWalkAge",
     "phase194ConfirmedDirectNativeReady",
-    "phase194PendingWalkAge >= 1",
-    "phase194PendingWalkAge <= 2",
+    "phase194PendingWalkAge == 1",
     "phase194PendingWalkTick < player.tickCount - 1",
     "phase154Carriage.getId() == carryBaselineCarriageId",
     "phase81PhysicalSupport",
@@ -151,5 +148,5 @@ for forbidden in [
         raise SystemExit("Phase 194 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 194: requires three native-ready ticks plus strict confirmation before fixture walk")
+print("Phase 194: rejects sibling-seam direct-native walk confirmation")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase195.py")), run_name="__main__")

@@ -23,8 +23,11 @@ dragger_source = entity_dragger.read_text(encoding="utf-8")
 # prevAnchor=true to BOTH transform calls. Create-Fly's AbstractContraptionEntity defines that flag as
 # selecting getPrevAnchorVec(), so the supposed current-world target still used the previous anchor and
 # the player lost exactly one carriage frame-step per tick while the adapter logged as active. Use the
-# previous anchor only for world->local, and the current anchor for local->world. No synthetic velocity,
-# gravity, collision response, train state, or world state is added.
+# previous anchor only for world->local, and the current anchor for local->world. Production-world #556
+# then proved grounded Create carry is already healthy and that applying this external-frame bridge
+# while grounded duplicates the authoritative carry during ordinary locomotion. Therefore keep this
+# bridge strictly airborne-only. No synthetic velocity, gravity, collision response, train state, or
+# world state is added.
 dragger_anchor = "object EntityDragger {\n"
 dragger_helper = r'''object EntityDragger {
     /**
@@ -101,14 +104,12 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
                 && phase83ExactBaselineCarriage
                 && phase83SupportedBaselineAge >= 1
                 && phase83SupportedBaselineAge <= 20;
-            boolean phase83NativeFrameEligible = phase81PhysicalSupport
-                || phase83RecentNativeApplication
-                || phase83AirborneNativeLease
-                || phase83AirborneSupportedBaselineLease;
-            boolean phase83ExternalFrameLease = (phase83NativeApplicationAge >= 1
-                && phase83NativeApplicationAge <= 20
-                && (phase81PhysicalSupport || phase83AirborneNativeLease || phase83NativeApplicationAge <= 2))
-                || phase83AirborneSupportedBaselineLease;
+            // Grounded Create contact/collision stays authoritative. The external VS2 frame bridge
+            // exists only while the player is genuinely airborne after proven carriage support.
+            boolean phase83NativeFrameEligible = !player.onGround()
+                && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
+            boolean phase83ExternalFrameLease = !player.onGround()
+                && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             boolean phase83CurrentEnvelopeEligible = collisionEligible && broadphaseOverlap;
             if (Boolean.getBoolean("vs2.createCarryCompat")
                 && carryBaselineCaptured
@@ -128,7 +129,7 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
                     org.valkyrienskies.mod.common.util.EntityDragger.reanchorEntityWithExternalFrame(
                         player, phase83CurrentTarget);
                     LOGGER.info(
-                        "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_age={} airborne_native_lease={} supported_baseline_age={} airborne_supported_baseline_lease={} current_envelope={} previous_anchor_to_current_anchor=true native_frame_eligible=true external_reference_frame=true create_authoritative_transform=true vs2_entity_dragger=true",
+                        "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_age={} airborne_native_lease={} supported_baseline_age={} airborne_supported_baseline_lease={} current_envelope={} previous_anchor_to_current_anchor=true airborne_only=true native_frame_eligible=true external_reference_frame=true create_authoritative_transform=true vs2_entity_dragger=true",
                         carriage.getId(), player.tickCount, phase81PhysicalSupport, !player.onGround(), phase81VerticalGap, player.onGround(),
                         phase83NativeApplicationAge, phase83AirborneNativeLease, phase83SupportedBaselineAge,
                         phase83AirborneSupportedBaselineLease, phase83CurrentEnvelopeEligible);
@@ -184,8 +185,8 @@ required = [
     "phase83RecentNativeApplication",
     "phase83AirborneNativeLease",
     "phase83AirborneSupportedBaselineLease",
-    "phase83NativeFrameEligible",
-    "phase83ExternalFrameLease",
+    "phase83NativeFrameEligible = !player.onGround()",
+    "phase83ExternalFrameLease = !player.onGround()",
     "phase83CurrentEnvelopeEligible",
     "vs2.phase83SupportedBaselineTick.",
     "phase83SupportedBaselineAge <= 20",
@@ -202,6 +203,7 @@ required = [
     "phase83CurrentTarget",
     "EntityDragger.reanchorEntityWithExternalFrame",
     "previous_anchor_to_current_anchor=true",
+    "airborne_only=true",
     "external_reference_frame=true",
     "create_authoritative_transform=true",
     "vs2_entity_dragger=true",
@@ -238,7 +240,7 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 entity_dragger.write_text(dragger_source, encoding="utf-8")
-print("Phase 85: maps the previous Create anchor into the current Create anchor before VS2 EntityDragger reanchor; no synthetic velocity is added")
+print("Phase 85: leaves grounded Create carry authoritative and uses previous->current VS2 frame reanchor only across bounded airborne gaps")
 
 # Phase 86 separates verified compatibility movement from archived-save fixture normalization.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase86.py")), run_name="__main__")

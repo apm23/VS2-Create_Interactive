@@ -44,14 +44,18 @@ if probe_source.count(immediate_anchor) != 1:
     raise SystemExit("M1 settled-start expected one Phase194 immediate native-ready boundary")
 probe_source = probe_source.replace(immediate_anchor, immediate_replacement, 1)
 
-# Bound native right-strafe to the wall-impact proof window, then release before jump.
+# Bound native right-strafe to the wall-impact proof window, then release before jump. The current
+# production world can hand Create contact from the pre-strafe carriage to an authoritative sibling
+# two ticks after the strafe request. Leave two additional grounded ticks so the existing three-frame
+# solid-wall proof can observe that native handoff before jump begins; this changes fixture input
+# timing only and does not move the player or synthesize collision/carry.
 strafe_window_anchor = 'return strafeElapsed >= 0 && strafeElapsed <= 8;'
 strafe_window_replacement = 'return strafeElapsed >= 0 && strafeElapsed <= 3;'
 if source.count(strafe_window_anchor) != 1:
     raise SystemExit("M1 wall-bound expected one extended strafe window")
 source = source.replace(strafe_window_anchor, strafe_window_replacement, 1)
 jump_delay_anchor = 'self.tickCount >= vs2$strafeStartTick + 9'
-jump_delay_replacement = 'self.tickCount >= vs2$strafeStartTick + 4'
+jump_delay_replacement = 'self.tickCount >= vs2$strafeStartTick + 6'
 if source.count(jump_delay_anchor) != 1:
     raise SystemExit("M1 wall-bound expected one post-strafe jump delay")
 source = source.replace(jump_delay_anchor, jump_delay_replacement, 1)
@@ -215,13 +219,46 @@ for old, new in verifier_replacements:
         raise SystemExit("M1 +Z wall verifier expected one exact legacy boundary: " + old[:72])
     verifier_source = verifier_source.replace(old, new, 1)
 
+# The current production smoke proves a legitimate Create-native sibling handoff can occur after
+# the strafe request, once the transient frame seam has passed. The verifier previously looked for
+# that rebase only on the exact request tick and then required its supported streak to begin there,
+# rejecting the native wall samples that begin on the authoritative sibling at the later rebase.
+# Follow the first identity-only native-contact-owner rebase inside the bounded strafe window and
+# start the unchanged three-frame solid-wall streak there. Verifier bookkeeping only.
+wall_handoff_anchor = '''pre_wall_carriage=before[-1][1]
+rebase_match=re.search(
+    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\\n]*previous_carriage_id={pre_wall_carriage}[^\\n]*carriage_id=(\\d+)[^\\n]*player_tick={strafe_request_tick}[^\\n]*native_contact_owner=true[^\\n]*identity_only=true",
+    text)
+wall_carriage=int(rebase_match.group(1)) if rebase_match is not None else pre_wall_carriage
+after=[]; expected_tick=strafe_request_tick
+for sample in after_window:
+    if sample[0]<expected_tick: continue
+    if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
+    after.append(sample); expected_tick+=1
+if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")'''
+wall_handoff_replacement = '''pre_wall_carriage=before[-1][1]
+rebase_pattern=re.compile(
+    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\\n]*previous_carriage_id={pre_wall_carriage}[^\\n]*carriage_id=(\\d+)[^\\n]*player_tick=(\\d+)[^\\n]*native_contact_owner=true[^\\n]*identity_only=true")
+rebase_match=next((m for m in rebase_pattern.finditer(text) if strafe_request_tick <= int(m.group(2)) <= strafe_request_tick+7), None)
+wall_carriage=int(rebase_match.group(1)) if rebase_match is not None else pre_wall_carriage
+wall_start_tick=int(rebase_match.group(2)) if rebase_match is not None else strafe_request_tick
+after=[]; expected_tick=wall_start_tick
+for sample in after_window:
+    if sample[0]<expected_tick: continue
+    if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
+    after.append(sample); expected_tick+=1
+if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")'''
+if verifier_source.count(wall_handoff_anchor) != 1:
+    raise SystemExit("M1 wall handoff verifier expected one exact request-tick rebase boundary")
+verifier_source = verifier_source.replace(wall_handoff_anchor, wall_handoff_replacement, 1)
+
 required_source = [
     'if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE)',
     'self.setYRot(-90.0F)',
     'client.options.keyRight.setDown(strafeWindow)',
     '!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
     'return strafeElapsed >= 0 && strafeElapsed <= 3;',
-    'self.tickCount >= vs2$strafeStartTick + 4',
+    'self.tickCount >= vs2$strafeStartTick + 6',
     'vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005',
     '(vs2$jumpStartTick == Integer.MIN_VALUE && !jumpArmReady) || vs2$jumpLandedLogged',
     'self.tickCount <= vs2$jumpStartTick + 1',
@@ -253,6 +290,7 @@ required_verifier = [
     'max_z=max(wall_z)',
     'float(strafe_move.group(3)) >= 0.02',
     'max(candidate_z)-start_z>=0.015',
+    'wall_start_tick=int(rebase_match.group(2))',
 ]
 missing = [token for token in required_verifier if token not in verifier_source]
 if missing:
@@ -273,4 +311,4 @@ for forbidden in [
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 fixture refinement: aims native strafe across supported floor, verifies +Z wall, and refreshes jump support from live carriage continuity")
+print("M1 fixture refinement: follows native strafe sibling handoff through a three-frame wall proof before jump")

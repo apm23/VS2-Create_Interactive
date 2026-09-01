@@ -75,6 +75,12 @@ runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase202.py")), ru
 # native contact in this fresh client probe instance, then freeze further fixture retarget mutation while
 # passive acquisition accounting continues to 32. This changes only disposable smoke-fixture ownership;
 # Create carry/collision and VS2 physics remain untouched.
+#
+# Production-world #619 proved the latch accidentally stopped the acquisition counter itself: the first
+# native application arrived at tick 14 after attempt 11, after which no more acquire attempts were
+# published, so the mandatory >=32 walk gate became unreachable even though real native carry later
+# stabilized on carriage 2 at ticks 56-58. Keep the latch only on the retarget mutation. Acquisition
+# accounting must continue to the existing 32-attempt ceiling so the hard walk gate can actually open.
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 probe_source = client_probe.read_text(encoding="utf-8")
 old_acquire = "fixtureContactAcquireTicks < 32"
@@ -122,8 +128,7 @@ if "vs2Phase201NativeAcquired = true;" not in probe_source:
         raise SystemExit("Phase 201 expected one GateE client player acquisition anchor")
     probe_source = probe_source.replace(player_anchor, latch_block, 1)
 
-latched_acquire = '''(fixtureContactAcquireTicks < 32
-            && !vs2Phase201NativeAcquired)'''
+latched_acquire = '''(fixtureContactAcquireTicks < 32)'''
 latched_unassisted = '''(fixtureContactAcquireTicks >= 32
             || vs2Phase201NativeAcquired)'''
 new_acquire_count = probe_source.count(new_acquire)
@@ -155,6 +160,8 @@ required_fixture = [
 missing_fixture = [token for token in required_fixture if token not in probe_source]
 if missing_fixture:
     raise SystemExit("Phase 201 lost current-pass native-contact latch anchors: " + ", ".join(missing_fixture))
+if "fixtureContactAcquireTicks < 32\n            && !vs2Phase201NativeAcquired" in probe_source:
+    raise SystemExit("Phase 201 native latch still blocks passive acquisition accounting")
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -163,4 +170,4 @@ for forbidden in [
     if forbidden in latched_acquire + latched_unassisted + retarget_new + latch_block:
         raise SystemExit("Phase 201 fixture-boundary latch introduced forbidden gameplay mutation")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("Phase 201: current-pass native acquisition latches before fixture retarget while the 32-tick walk-start gate remains hard")
+print("Phase 201: native latch freezes retarget only while passive acquisition accounting reaches the hard 32-tick walk gate")

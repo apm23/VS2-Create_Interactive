@@ -13,9 +13,14 @@ dragger_source = entity_dragger.read_text(encoding="utf-8")
 # surfaceCollision while the authoritative carriage frame keeps moving. The LocalPlayer then stays
 # in world space and its carriage-local position walks away by multiple blocks.
 #
-# Route that reference-frame gap through VS2's existing EntityDragger mechanism. Create remains
-# authoritative for previous/current carriage transforms; VS2 owns applying the reference-space
-# re-anchor. No synthetic velocity, gravity, collision response, train state, or world state is added.
+# Production-world #554 further proves this boundary must survive a normal airborne interval. The
+# player completed supported native walking, requested a vanilla jump, and entered a normal upward
+# arc, but once the grounded Create contact vanished the carriage moved underneath the airborne
+# player and the current-frame broadphase test necessarily became false. Preserve the exact supported
+# baseline carriage as a bounded airborne reference frame for up to 20 ticks. This is a reference-
+# space lease only: Create still owns the carriage transforms and VS2 EntityDragger applies the
+# previous->current frame transform. No synthetic velocity, gravity, collision response, train state,
+# or world state is added.
 dragger_anchor = "object EntityDragger {\n"
 dragger_helper = r'''object EntityDragger {
     /**
@@ -66,21 +71,46 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
                     phase83NativeApplicationAge = Integer.MAX_VALUE;
                 }
             }
+            boolean phase83ExactBaselineCarriage = carryBaselineCaptured
+                && carryBaselineCarriageId == carriage.getId();
+            if (phase83ExactBaselineCarriage && phase81PhysicalSupport && player.onGround()) {
+                System.setProperty(
+                    "vs2.phase83SupportedBaselineTick." + carriage.getId(),
+                    Integer.toString(player.tickCount));
+            }
+            String phase83SupportedBaselineTickValue = System.getProperty(
+                "vs2.phase83SupportedBaselineTick." + carriage.getId());
+            int phase83SupportedBaselineAge = Integer.MAX_VALUE;
+            if (phase83SupportedBaselineTickValue != null) {
+                try {
+                    phase83SupportedBaselineAge = player.tickCount - Integer.parseInt(phase83SupportedBaselineTickValue);
+                } catch (NumberFormatException ignored) {
+                    phase83SupportedBaselineAge = Integer.MAX_VALUE;
+                }
+            }
             boolean phase83RecentNativeApplication = phase83NativeApplicationAge >= 0
                 && phase83NativeApplicationAge <= 1;
             boolean phase83AirborneNativeLease = !player.onGround()
                 && phase83NativeApplicationAge >= 0
                 && phase83NativeApplicationAge <= 20;
-            boolean phase83NativeFrameEligible = phase81PhysicalSupport || phase83RecentNativeApplication || phase83AirborneNativeLease;
-            boolean phase83ExternalFrameLease = phase83NativeApplicationAge >= 1
+            boolean phase83AirborneSupportedBaselineLease = !player.onGround()
+                && phase83ExactBaselineCarriage
+                && phase83SupportedBaselineAge >= 1
+                && phase83SupportedBaselineAge <= 20;
+            boolean phase83NativeFrameEligible = phase81PhysicalSupport
+                || phase83RecentNativeApplication
+                || phase83AirborneNativeLease
+                || phase83AirborneSupportedBaselineLease;
+            boolean phase83ExternalFrameLease = (phase83NativeApplicationAge >= 1
                 && phase83NativeApplicationAge <= 20
-                && (phase81PhysicalSupport || phase83AirborneNativeLease || phase83NativeApplicationAge <= 2);
+                && (phase81PhysicalSupport || phase83AirborneNativeLease || phase83NativeApplicationAge <= 2))
+                || phase83AirborneSupportedBaselineLease;
+            boolean phase83CurrentEnvelopeEligible = collisionEligible && broadphaseOverlap;
             if (Boolean.getBoolean("vs2.createCarryCompat")
                 && carryBaselineCaptured
                 && phase83NativeFrameEligible
                 && phase83ExternalFrameLease
-                && collisionEligible
-                && broadphaseOverlap) {
+                && (phase83CurrentEnvelopeEligible || phase83AirborneSupportedBaselineLease)) {
                 try {
                     java.lang.reflect.Method phase83ToPreviousLocal = carriage.getClass().getMethod(
                         "toLocalVector", Vec3.class, float.class, boolean.class);
@@ -94,9 +124,10 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
                     org.valkyrienskies.mod.common.util.EntityDragger.reanchorEntityWithExternalFrame(
                         player, phase83CurrentTarget);
                     LOGGER.info(
-                        "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_age={} airborne_native_lease={} native_frame_eligible=true external_reference_frame=true create_authoritative_transform=true vs2_entity_dragger=true",
+                        "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_age={} airborne_native_lease={} supported_baseline_age={} airborne_supported_baseline_lease={} current_envelope={} native_frame_eligible=true external_reference_frame=true create_authoritative_transform=true vs2_entity_dragger=true",
                         carriage.getId(), player.tickCount, phase81PhysicalSupport, !player.onGround(), phase81VerticalGap, player.onGround(),
-                        phase83NativeApplicationAge, phase83AirborneNativeLease);
+                        phase83NativeApplicationAge, phase83AirborneNativeLease, phase83SupportedBaselineAge,
+                        phase83AirborneSupportedBaselineLease, phase83CurrentEnvelopeEligible);
                 } catch (ReflectiveOperationException | RuntimeException exception) {
                     LOGGER.info("GATE_E_PHASE83_CONTACT_REFRESH_ERROR type={}", exception.getClass().getSimpleName());
                 }
@@ -143,11 +174,18 @@ source = source.replace(
 required = [
     "phase83NativeApplicationTickValue",
     "phase83NativeApplicationAge",
+    "phase83ExactBaselineCarriage",
+    "phase83SupportedBaselineTickValue",
+    "phase83SupportedBaselineAge",
     "phase83RecentNativeApplication",
     "phase83AirborneNativeLease",
+    "phase83AirborneSupportedBaselineLease",
     "phase83NativeFrameEligible",
     "phase83ExternalFrameLease",
-    "phase81PhysicalSupport || phase83RecentNativeApplication || phase83AirborneNativeLease",
+    "phase83CurrentEnvelopeEligible",
+    "vs2.phase83SupportedBaselineTick.",
+    "phase83SupportedBaselineAge <= 20",
+    "phase83CurrentEnvelopeEligible || phase83AirborneSupportedBaselineLease",
     "vs2.phase170NativeContactApplicationTick.",
     "phase83NativeApplicationAge <= 20",
     'Boolean.getBoolean("vs2.createCarryCompat")',
@@ -160,8 +198,6 @@ required = [
     "external_reference_frame=true",
     "create_authoritative_transform=true",
     "vs2_entity_dragger=true",
-    "collisionEligible",
-    "broadphaseOverlap",
     "GATE_E_PHASE83_CONTACT_REFRESH",
 ]
 missing = [token for token in required if token not in source]
@@ -195,7 +231,7 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 entity_dragger.write_text(dragger_source, encoding="utf-8")
-print("Phase 85: routes Create surface-contact gaps through VS2 EntityDragger's previous/current reference-frame reanchor; Create transform remains authoritative and no synthetic velocity is added")
+print("Phase 85: keeps the exact supported Create carriage as a bounded VS2 reference frame through airborne gaps; Create transform remains authoritative and no synthetic velocity is added")
 
 # Phase 86 separates verified compatibility movement from archived-save fixture normalization.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase86.py")), run_name="__main__")

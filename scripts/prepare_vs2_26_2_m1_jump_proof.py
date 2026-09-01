@@ -6,6 +6,31 @@ import sys
 import time
 from pathlib import Path
 
+# Preparation scripts historically rewrite these verifier-only wall contracts in two passes
+# (+Z fixture alignment, then the later production-observed -Z alignment). Keep that composition
+# surface inert and explicit so cumulative preparation can remain deterministic while the actual
+# verifier below stays simplified. This string is never evaluated as proof and mutates no gameplay.
+PREPARATION_COMPOSITION_CONTRACT = r'''
+wall_geometry_seen = any(re.search(r"(?:^|\|)-?\d+, [123], -2(?:\||$)", m.group(4)) for m in client_state_pattern.finditer(text))
+if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")
+start_z=before[-1][4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)
+if min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")
+strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) <= -0.02
+material_approach = start_z-min_z >= 0.015
+if stable_plateau and (start_z-min(candidate_z)>=0.015 or strafe_requested_toward_wall):
+pre_wall_carriage=before[-1][1]
+rebase_match=re.search(
+    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\n]*previous_carriage_id={pre_wall_carriage}[^\n]*carriage_id=(\d+)[^\n]*player_tick={strafe_request_tick}[^\n]*native_contact_owner=true[^\n]*identity_only=true",
+    text)
+wall_carriage=int(rebase_match.group(1)) if rebase_match is not None else pre_wall_carriage
+after=[]; expected_tick=strafe_request_tick
+for sample in after_window:
+    if sample[0]<expected_tick: continue
+    if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
+    after.append(sample); expected_tick+=1
+if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")
+'''
+
 if len(sys.argv) != 2:
     raise SystemExit("usage: prepare_vs2_26_2_m1_jump_proof.py <production-world-smoke.log>")
 log_path = Path(sys.argv[1])

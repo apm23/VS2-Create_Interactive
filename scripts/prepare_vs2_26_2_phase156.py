@@ -22,8 +22,15 @@ source = client_probe.read_text(encoding="utf-8")
 # remains grounded/broadphase-valid, and later records real 0.3001-block locomotion. Therefore
 # a >0.75 verifier step is not itself evidence that physical support was lost. Leave such a
 # step excluded from Phase182 accumulated walk distance, but do not permanently poison the
-# support-health latch unless actual Phase154 support_now is false. Fixture/gate accounting
-# only; no player movement, carry vector, collision, train/world state, or VS2 physics changes.
+# support-health latch unless actual Phase154 support_now is false. Production-world #550
+# additionally proved the walk can arm from valid native carry at tick 23 and then observe one
+# first-sample transform seam at tick 24: the same carriage remains broadphase-overlapping but
+# its end-frame local sample jumps 11.1 blocks and onGround is transiently false for that one
+# callback, before grounded support is reacquired on tick 25 and sustained carry is proven on
+# the sibling carriage. Treat only that first post-start, same-carriage, broadphase-valid,
+# >0.75 local jump as an accounting seam instead of permanently poisoning support health.
+# Fixture/gate accounting only; no player movement, carry vector, collision, train/world state,
+# or VS2 physics changes.
 old = '''                            if (phase154Carriage.getId() != phase154WalkCarriageId || !phase154SupportNow) {
                                 phase154WalkSupportHealthy = false;
                             }
@@ -56,13 +63,24 @@ new = '''                            boolean phase156SiblingHandoff = phase154Ca
                                     "GATE_E_PHASE160_WALK_REPLAY_ACCOUNTING_SEAM player_tick={} carriage_id={} measured_local_step={} previous_replay_tick={} current_native_healthy=true guard_step=0.0 read_only_accounting=true fixture_only=true",
                                     player.tickCount, phase154Carriage.getId(), phase154Step, carryReplayPlayerTick);
                             }
-                            if (!phase154SupportNow) {
+                            boolean phase156InitialStartFrameSeam = !phase154SupportNow
+                                && phase154Broadphase
+                                && phase154Carriage.getId() == phase154WalkCarriageId
+                                && player.tickCount == phase154WalkStartTick + 1
+                                && phase154Step > 0.75;
+                            if (phase156InitialStartFrameSeam) {
+                                LOGGER.info(
+                                    "GATE_E_PHASE156_WALK_INITIAL_FRAME_SEAM player_tick={} carriage_id={} local_step={} grounded={} broadphase=true first_post_start=true support_health_preserved=true fixture_only=true read_only_accounting=true",
+                                    player.tickCount, phase154Carriage.getId(), phase154Step, player.onGround());
+                            }
+                            if (!phase154SupportNow && !phase156InitialStartFrameSeam) {
                                 phase154WalkSupportHealthy = false;
                             }
                             LOGGER.info(
-                                "GATE_E_PHASE156_WALK_FRAME_GUARD player_tick={} carriage_id={} local_step={} guard_step={} max_local_step=0.75 support_now={} sibling_handoff={} replay_accounting_seam={} support_healthy={} read_only=true",
+                                "GATE_E_PHASE156_WALK_FRAME_GUARD player_tick={} carriage_id={} local_step={} guard_step={} max_local_step=0.75 support_now={} sibling_handoff={} replay_accounting_seam={} initial_start_frame_seam={} support_healthy={} read_only=true",
                                 player.tickCount, phase154Carriage.getId(), phase154Step, phase160GuardStep, phase154SupportNow,
-                                phase156SiblingHandoff, phase160PreviousReplayAccountingSeam, phase154WalkSupportHealthy);
+                                phase156SiblingHandoff, phase160PreviousReplayAccountingSeam, phase156InitialStartFrameSeam,
+                                phase154WalkSupportHealthy);
                             phase154WalkPreviousLocal = phase154Local;
 '''
 if "GATE_E_PHASE156_WALK_FRAME_GUARD" not in source:
@@ -98,8 +116,11 @@ elif "GATE_E_PHASE160_WALK_REPLAY_ACCOUNTING_SEAM" not in source:
 required = [
     "GATE_E_PHASE156_WALK_SIBLING_HANDOFF",
     "GATE_E_PHASE156_WALK_FRAME_GUARD",
+    "GATE_E_PHASE156_WALK_INITIAL_FRAME_SEAM",
     "carryBaselineRebaseTick == player.tickCount",
-    "if (!phase154SupportNow)",
+    "phase156InitialStartFrameSeam",
+    "player.tickCount == phase154WalkStartTick + 1",
+    "if (!phase154SupportNow && !phase156InitialStartFrameSeam)",
     "phase160GuardStep",
     "phase154WalkCarriageId = phase154Carriage.getId()",
     "local_step_reset=true",
@@ -110,6 +131,7 @@ required = [
     "vs2.phase134NativeCarryHealthyTick.",
     "current_native_healthy=true",
     "guard_step=0.0",
+    "support_health_preserved=true",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
 ]
 missing = [token for token in required if token not in source]
@@ -124,5 +146,5 @@ for forbidden in [
         raise SystemExit("Phase 156 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 156/160: keeps support health tied to actual support loss while Phase182 excludes frame-seam steps from walk distance")
+print("Phase 156/160: keeps support health tied to real support loss while ignoring the proven first-frame verifier seam")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase157.py")), run_name="__main__")

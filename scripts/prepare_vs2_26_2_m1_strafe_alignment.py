@@ -40,14 +40,22 @@ if walk_window_count != 1:
     raise SystemExit(f"M1 forward-stop expected one headless forward pulse boundary, found {walk_window_count}")
 source = source.replace(walk_window_anchor, walk_window_replacement, 1)
 
-# Production-world #591 proves the vanilla jump request executes and produces a native vertical
-# arc, but Create can keep LocalPlayer.onGround() true while owning the moving-contact frame and
-# the post-aiStep vertical delta does not necessarily settle to almost exactly zero. The observer
-# already records the request Y and requires a real falling sample. Treat return to the request
-# height while grounded after that falling sample as the natural landing proof. This changes only
-# fixture acceptance; it never writes position, velocity, gravity, collision, carry, or train state.
+# Production-world #598 proves the jump itself executes natively at tick 34 (Entity.move applies
+# +0.4199999869 Y) and later performs a real negative-Y descent. A world-Y return test is invalid on
+# the moving train because the carriage frame itself changes world Y during the arc. The same run
+# gives the authoritative landing boundary without inventing coordinates: after falling begins,
+# LocalPlayer genuinely loses grounded contact for ticks 80-87 and then Create/vanilla collision
+# reacquires onGround at tick 88 on the same broadphase carriage. Recognize that fall -> ground-loss
+# -> ground-reacquire transition. Fixture observation only; no movement, gravity, collision, carry,
+# player transform, train, or world state is written.
+field_anchor = '    @Unique private static double vs2$jumpStartY = Double.NaN;\n'
+field_replacement = field_anchor + '    @Unique private static boolean vs2$jumpGroundLostAfterFall;\n'
+if source.count(field_anchor) != 1:
+    raise SystemExit("M1 landing proof expected one jump-start-Y field anchor")
+source = source.replace(field_anchor, field_replacement, 1)
+
 landing_anchor = 'if (vs2$jumpFallingSeen && self.onGround() && Math.abs(deltaY) < 0.005 && self.tickCount > vs2$jumpStartTick) {'
-landing_replacement = 'if (vs2$jumpFallingSeen && self.onGround() && Double.isFinite(vs2$jumpStartY) && Math.abs(self.getY() - vs2$jumpStartY) < 0.08 && self.tickCount > vs2$jumpStartTick) {'
+landing_replacement = '''if (vs2$jumpFallingSeen && !self.onGround()) {\n            vs2$jumpGroundLostAfterFall = true;\n        }\n        if (vs2$jumpFallingSeen && vs2$jumpGroundLostAfterFall && self.onGround() && self.tickCount > vs2$jumpStartTick) {'''
 landing_count = source.count(landing_anchor)
 if landing_count != 1:
     raise SystemExit(f"M1 landing proof expected one delta-settle boundary, found {landing_count}")
@@ -70,7 +78,9 @@ required = [
     'self.setYRot(90.0F)',
     'client.options.keyRight.setDown(strafeWindow)',
     '!Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
-    'Math.abs(self.getY() - vs2$jumpStartY) < 0.08',
+    'vs2$jumpGroundLostAfterFall',
+    'vs2$jumpFallingSeen && !self.onGround()',
+    'vs2$jumpFallingSeen && vs2$jumpGroundLostAfterFall && self.onGround()',
     'self.tickCount <= vs2$jumpStartTick + 1',
 ]
 missing = [token for token in required if token not in source]
@@ -85,4 +95,4 @@ for forbidden in [
         raise SystemExit("M1 fixture refinement found forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
-print("M1 fixture refinement: stops forward input, aligns strafe, holds native jump pulse two ticks, and recognizes natural landing")
+print("M1 fixture refinement: stops forward input, aligns strafe, holds native jump pulse two ticks, and recognizes fall-to-ground reacquire landing")

@@ -55,11 +55,14 @@ if source.count(field_anchor) != 1:
     raise SystemExit("Phase 194 could not locate unique Phase185 readiness field anchor")
 source = source.replace(field_anchor, field_insert, 1)
 
+# Phase162 now preserves the Phase129 acquisition predicate in both the retry gate and
+# the matching acquisition-counter gate. Keep Phase194's pending-confirmation freeze
+# attached to both canonical guards so the two harness branches cannot diverge.
 acquire_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted"
 confirm_guard = "fixtureContactAcquireTicks < 32 && !phase154WalkStarted && phase194PendingWalkTick < player.tickCount - 1"
-if source.count(acquire_guard) != 1:
-    raise SystemExit("Phase 194 expected one canonical Phase162 fixture-acquisition guard")
-source = source.replace(acquire_guard, confirm_guard, 1)
+if source.count(acquire_guard) != 2:
+    raise SystemExit("Phase 194 expected both canonical Phase162 fixture-acquisition guards")
+source = source.replace(acquire_guard, confirm_guard, 2)
 
 old_readiness = '''                        boolean phase185WalkReadyNow = phase154SupportNow
                             && phase81PhysicalSupport

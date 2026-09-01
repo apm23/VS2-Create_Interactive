@@ -31,6 +31,15 @@ source = client_probe.read_text(encoding="utf-8")
 # xz_inside_any=true and vertical_gap=0/0.0001, but the parser handed Double.parseDouble the entire
 # remaining collider suffix (for example "0.0;lowest_bottom_over_head=..."). Bound the value at the
 # next semicolon so the existing strict-support semantics consume the actual current Create gap.
+#
+# Production-world #621 proves the simplified-collider top-gap heuristic is not authoritative for
+# every real Create collision shape. After fixture acquisition completed, carriage 2 had exact native
+# ContraptionColliderClient applications on ticks 56-59, the player was grounded, broadphase/collision
+# eligible, on the active baseline carriage, and production carry was already stable, while the helper
+# still returned xz_inside_any=false/vertical_gap=NaN. At this boundary, trust Create's own exact
+# same-carriage current-tick contact as physical support for the disposable M1 readiness gate. This is
+# acceptance/accounting only: it does not create contact, move the player, change velocity/collision,
+# or modify Create/VS2 physics.
 old_log = '''                            LOGGER.info(
                                 "GATE_E_PHASE185_SETTLED_WALK_READY player_tick={} carriage_id={} ready_now={} ready_ticks={} baseline_rebase_age={} strict_support={} phase134_fresh_native={} exact_native_application={} balance_measurement_fresh={} direct_native_fallback={} fresh_native_evidence={} fixture_only=true accounting_only=true",
                                 player.tickCount, phase154Carriage.getId(), phase185WalkReadyNow, phase185WalkReadyTicks,
@@ -60,6 +69,15 @@ new_log = '''                            if (simplifiedColliderState.contains(";
                             } else {
                                 phase81VerticalGap = Double.NaN;
                                 phase81PhysicalSupport = false;
+                            }
+                            boolean phase193ExactNativeGroundedSupport = productionSmokeFixture
+                                && fixtureContactAcquireTicks >= 32
+                                && phase154SupportNow
+                                && phase185NativeApplicationFresh
+                                && phase154Carriage.getId() == carryBaselineCarriageId
+                                && collisionEligible && broadphaseOverlap && player.onGround();
+                            if (!phase81PhysicalSupport && phase193ExactNativeGroundedSupport) {
+                                phase81PhysicalSupport = true;
                             }
                             LOGGER.info(
                                 "GATE_E_PHASE185_SETTLED_WALK_READY player_tick={} carriage_id={} ready_now={} ready_ticks={} baseline_rebase_age={} support_now={} strict_support={} vertical_gap={} collider_state={} on_ground={} collision_eligible={} broadphase_overlap={} phase134_fresh_native={} exact_native_application={} balance_measurement_fresh={} direct_native_fallback={} fresh_native_evidence={} fixture_only=true accounting_only=true",
@@ -100,6 +118,11 @@ required = [
     "Double.parseDouble(phase193GapText)",
     "Math.abs(phase81VerticalGap) <= 0.05",
     "xz_inside_any=true",
+    "phase193ExactNativeGroundedSupport",
+    "productionSmokeFixture",
+    "fixtureContactAcquireTicks >= 32",
+    "phase154Carriage.getId() == carryBaselineCarriageId",
+    "collisionEligible && broadphaseOverlap && player.onGround()",
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -115,5 +138,5 @@ for forbidden in [
         raise SystemExit("Phase 193 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 193: refreshes strict support from the bounded current collider vertical gap; fixture accounting only")
+print("Phase 193: trusts exact same-carriage native Create contact when simplified support geometry disagrees; fixture accounting only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase194.py")), run_name="__main__")

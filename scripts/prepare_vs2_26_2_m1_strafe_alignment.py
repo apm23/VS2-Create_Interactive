@@ -32,14 +32,14 @@ if source.count(walk_window_anchor) != 1:
     raise SystemExit("M1 forward-stop expected one headless pulse boundary")
 source = source.replace(walk_window_anchor, walk_window_replacement, 1)
 
-# Require three settled native frames before fixture locomotion starts.
+# Require the already-proven two settled native frames before fixture locomotion starts.
 immediate_anchor = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
                             && phase194NativeAuthoritativeSupport
                             && phase185NativeApplicationFresh;'''
 immediate_replacement = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate
                             && phase194NativeAuthoritativeSupport
                             && phase185NativeApplicationFresh
-                            && phase185WalkReadyTicks >= 3;'''
+                            && phase185WalkReadyTicks >= 2;'''
 if probe_source.count(immediate_anchor) != 1:
     raise SystemExit("M1 settled-start expected one Phase194 immediate native-ready boundary")
 probe_source = probe_source.replace(immediate_anchor, immediate_replacement, 1)
@@ -232,7 +232,7 @@ missing = [token for token in required_source if token not in source]
 if missing:
     raise SystemExit("M1 fixture refinement lost anchors: " + ", ".join(missing))
 required_probe = [
-    'phase185WalkReadyTicks >= 3',
+    'phase185WalkReadyTicks >= 2',
     'm1JumpFloorSupportNow',
     'phase154PreWalkPreviousTick + 1 == player.tickCount',
     'phase154PreWalkStep <= 0.01',
@@ -257,7 +257,6 @@ required_verifier = [
 missing = [token for token in required_verifier if token not in verifier_source]
 if missing:
     raise SystemExit("M1 +Z wall verifier lost anchors: " + ", ".join(missing))
-
 for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(',

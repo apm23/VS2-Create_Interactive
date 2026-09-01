@@ -144,14 +144,13 @@ if lease_source.count(lease_grace_overlap_old) != 1:
     raise SystemExit("M1 native lease expected one final stale world-overlap guard")
 lease_source = lease_source.replace(lease_grace_overlap_old, lease_grace_overlap_new, 1)
 
-# Production-world #651 proves the native right-strafe itself is valid and material: the request at
-# tick 32 has negative-Z motion, carriage 8 then supplies four consecutive grounded/broadphase
-# samples through tick 35, and only afterwards does Create authoritatively hand contact to sibling
-# carriage 7 at tick 36 immediately before the jump. The existing read-only verifier incorrectly
-# chases any sibling rebase within seven ticks and therefore discards the already-complete wall
-# streak, then asks for three grounded samples on a frame whose third sample is the real airborne
-# jump. Restore the exact-request-tick handoff rule and the observed negative-Z wall convention.
-# This changes verifier bookkeeping only; it never changes player/train/collision/carry state.
+# Production-world #651 proved the native negative-Z strafe and wall convention. Production-world
+# #664 now proves the same strafe can hand Create-native ownership from the request carriage to an
+# authoritative sibling exactly one client tick later: request tick 23 is on carriage 5, identity-only
+# native-owner rebase occurs at tick 24 to carriage 7, and carriage 7 then supplies consecutive
+# grounded/broadphase samples through the wall window before the independently-proven native jump
+# begins at tick 29 and naturally lands at tick 42. Accept only request-tick or one-tick-later native
+# ownership rebases; do not chase later handoffs near the jump. Verifier bookkeeping only.
 wall_direction_replacements = [
     (
         'wall_geometry_seen = any(re.search(r"(?:^|\\|)-?\\d+, [123], 2(?:\\||$)", m.group(4)) for m in client_state_pattern.finditer(text))',
@@ -191,12 +190,13 @@ for sample in after_window:
     if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
     after.append(sample); expected_tick+=1
 if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")'''
-exact_handoff = '''pre_wall_carriage=before[-1][1]
-rebase_match=re.search(
-    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\\n]*previous_carriage_id={pre_wall_carriage}[^\\n]*carriage_id=(\\d+)[^\\n]*player_tick={strafe_request_tick}[^\\n]*native_contact_owner=true[^\\n]*identity_only=true",
-    text)
+bounded_handoff = '''pre_wall_carriage=before[-1][1]
+rebase_pattern=re.compile(
+    rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\\n]*previous_carriage_id={pre_wall_carriage}[^\\n]*carriage_id=(\\d+)[^\\n]*player_tick=(\\d+)[^\\n]*native_contact_owner=true[^\\n]*identity_only=true")
+rebase_match=next((m for m in rebase_pattern.finditer(text) if strafe_request_tick <= int(m.group(2)) <= strafe_request_tick+1), None)
 wall_carriage=int(rebase_match.group(1)) if rebase_match is not None else pre_wall_carriage
-after=[]; expected_tick=strafe_request_tick
+wall_start_tick=int(rebase_match.group(2)) if rebase_match is not None else strafe_request_tick
+after=[]; expected_tick=wall_start_tick
 for sample in after_window:
     if sample[0]<expected_tick: continue
     if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
@@ -204,7 +204,7 @@ for sample in after_window:
 if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")'''
 if verifier_source.count(late_handoff) != 1:
     raise SystemExit("M1 wall verifier expected one late-window sibling-handoff boundary")
-verifier_source = verifier_source.replace(late_handoff, exact_handoff, 1)
+verifier_source = verifier_source.replace(late_handoff, bounded_handoff, 1)
 
 required = [
     'self.tickCount >= startTick + 4',
@@ -236,11 +236,12 @@ verifier_required = [
     'min_z=min(wall_z)',
     'float(strafe_move.group(3)) <= -0.02',
     'start_z-min(candidate_z)>=0.015',
-    'player_tick={strafe_request_tick}',
+    'strafe_request_tick+1',
+    'wall_start_tick=int(rebase_match.group(2))',
 ]
 verifier_missing = [token for token in verifier_required if token not in verifier_source]
 if verifier_missing:
-    raise SystemExit("M1 wall verifier lost run-651 native proof anchors: " + ", ".join(verifier_missing))
+    raise SystemExit("M1 wall verifier lost bounded native-handoff proof anchors: " + ", ".join(verifier_missing))
 for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(', 'method.invoke(lease, Integer.valueOf(0))',
@@ -251,4 +252,4 @@ for forbidden in [
 fixture_input.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 input timing: aligns native strafe with the negative-Z wall proof while preserving authoritative Create movement")
+print("M1 input timing: accepts only request/+1 native strafe handoff while preserving authoritative Create movement")

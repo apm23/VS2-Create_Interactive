@@ -7,35 +7,33 @@ ROOT = Path(__file__).resolve().parents[1] / "upstream"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 source = client_probe.read_text(encoding="utf-8")
 
-# Production-world #133 showed a harness race rather than a production carry failure:
-# the one-shot simplified-collider normalization ran while the train was moving several
-# blocks per client tick, so the carriage outran the fixture before Create could promote
-# LocalPlayer to genuine contact/onGround. Production-world #178 then reached a newly
-# aligned collider on the twelfth and final attempt, but fixture assistance stopped before
-# Create had another client tick to promote that alignment into contact/baseline capture.
-# Production-world #187 showed the same harness race at the old 16-tick bound: baseline
-# remained false through tick 38 and only captured at tick 39 after assistance had already
-# stopped, producing a stale 36-block frame replay instead of a valid carry sample.
-# Production-world #334 reproduced the late-promotion race after the old 32-attempt window.
-# Later cumulative support/carry fixes changed that boundary: production-world #493 now
-# proves genuine strict support plus exact same-carriage native Create application well
-# before attempt 32, while keeping fixture retargeting active through attempt 48 leaves only
-# ticks 49-50 for unassisted readiness before the finite-route frame is lost at tick 51.
-# Bound acquisition at 32 again so the already-proven stable interval can be observed
-# unassisted. This changes only the disposable production-smoke fixture, not gameplay carry.
+# Production-world #627 proved that baseline capture alone is not a safe fixture handoff.
+# At tick 20 the baseline was captured on strict supported carriage 10, but ticks 21-25 still
+# under-carried badly while the carriage moved several blocks per tick; because acquisition had
+# already stopped, the player was left behind before Create's native carry could settle. Reuse the
+# existing Phase134/137 native-carry-health publication as the handoff criterion. The disposable
+# fixture may keep aligning until one real supported native carry sample is healthy, then latches
+# off permanently; 32 attempts remain the hard fallback. No new carry vector or gameplay physics.
 field_old = '''    private static boolean fixtureColliderNormalized;\n'''
-field_new = '''    private static boolean fixtureColliderNormalized;\n    private static int fixtureContactAcquireTicks;\n'''
+field_new = '''    private static boolean fixtureColliderNormalized;\n    private static int fixtureContactAcquireTicks;\n    private static boolean fixtureNativeCarrySettled;\n'''
 if "fixtureContactAcquireTicks" not in source:
     if field_old not in source:
         raise SystemExit("Phase 129 could not find fixture collider normalization field")
     source = source.replace(field_old, field_new, 1)
+elif "fixtureNativeCarrySettled" not in source:
+    field_existing = '''    private static int fixtureContactAcquireTicks;\n'''
+    if field_existing not in source:
+        raise SystemExit("Phase 129 could not find existing fixture acquisition counter field")
+    source = source.replace(
+        field_existing,
+        field_existing + '''    private static boolean fixtureNativeCarrySettled;\n''',
+        1,
+    )
 
-# Later preparation phases may add timing predicates to the Phase 67/86/87 guard.
-# Match the final guard structurally instead of pinning an exact text form: it must be
-# an if-condition containing fixtureColliderNormalized and immediately enter the same
-# try block. Preserve every existing predicate and only OR in bounded fixture retry.
-# Once Create has captured a native carriage baseline, fixture retargeting must stop:
-# continuing to chase the moving collider destroys the exact native frame we just proved.
+# Match the final fixture normalization guard structurally. Preserve the existing setup predicates,
+# but continue bounded retargeting until already-existing native carry health says the captured frame
+# is actually following the carriage. The health property is published by the later cumulative
+# Phase137 preparation into the final source; this phase only consumes that established signal.
 if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     pattern = re.compile(
         r'(?P<indent>\s*)if \((?P<cond>[^\n{}]*fixtureColliderNormalized[^\n{}]*)\) \{\n(?P=indent)    try \{'
@@ -55,9 +53,19 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
         raise SystemExit("Phase 129 refused collider guard without fixture isolation boundary")
 
     replacement = (
+        f'{indent}if (productionSmokeFixture && !fixtureNativeCarrySettled && carryBaselineCaptured '
+        f'&& carryBaselineCarriageId != Integer.MIN_VALUE) {{\n'
+        f'{indent}    boolean phase129NativeCarryHealthy = Boolean.parseBoolean(System.getProperty(\n'
+        f'{indent}        "vs2.phase134NativeCarryHealthy." + carryBaselineCarriageId, "false"))\n'
+        f'{indent}        || Integer.toString(player.tickCount - 1).equals(System.getProperty(\n'
+        f'{indent}            "vs2.phase134NativeCarryHealthyTick." + carryBaselineCarriageId));\n'
+        f'{indent}    if (phase129NativeCarryHealthy) {{\n'
+        f'{indent}        fixtureNativeCarrySettled = true;\n'
+        f'{indent}    }}\n'
+        f'{indent}}}\n'
         f'{indent}if (({cond})\n'
-        f'{indent}        || (productionSmokeFixture && !carryBaselineCaptured && fixtureContactAcquireTicks < 32)) {{\n'
-        f'{indent}    if (productionSmokeFixture && !carryBaselineCaptured && fixtureContactAcquireTicks < 32) {{\n'
+        f'{indent}        || (productionSmokeFixture && !fixtureNativeCarrySettled && fixtureContactAcquireTicks < 32)) {{\n'
+        f'{indent}    if (productionSmokeFixture && !fixtureNativeCarrySettled && fixtureContactAcquireTicks < 32) {{\n'
         f'{indent}        fixtureContactAcquireTicks++;\n'
         f'{indent}        LOGGER.info(\n'
         f'{indent}            "GATE_E_FIXTURE_CONTACT_ACQUIRE player_tick={{}} attempt={{}} bounded=true fixture_only=true",\n'
@@ -67,22 +75,15 @@ if "GATE_E_FIXTURE_CONTACT_ACQUIRE" not in source:
     )
     source = source[:match.start()] + replacement + source[match.end():]
 
-# Keep carriage-local continuity telemetry out of assisted setup. As soon as Create
-# captures a native baseline, assistance has ended and the production gate may observe
-# the resulting unassisted frame; otherwise retain the hard 32-attempt fallback bound.
+# Continuity is production evidence only after assistance has actually ended. Native carry health
+# is the preferred handoff; the hard 32-attempt limit remains the fallback if it never appears.
 source = source.replace(
     '''if (productionSmokeFixture && player.tickCount >= 14 && player.tickCount <= 32) {''',
-    '''if (productionSmokeFixture && (carryBaselineCaptured || fixtureContactAcquireTicks >= 32) && player.tickCount >= 14 && player.tickCount <= 72) {''',
+    '''if (productionSmokeFixture && (fixtureNativeCarrySettled || fixtureContactAcquireTicks >= 32) && player.tickCount >= 14 && player.tickCount <= 72) {''',
     1,
 )
 
-# Production-world #138 still lost carry immediately after the bounded fixture window.
-# Do not alter movement yet: trace every predicate that can suppress the already-validated
-# Create-computed/filtered Phase85 replay, including sibling-carriage rebase settling.
-# The final replay guard has been rewritten by several cumulative phases, so anchor on
-# the unique replay-tick predicate and select the nearest preceding if-block that still
-# contains the physical-support predicate. This keeps telemetry resilient without making
-# the preparation chain depend on the exact textual order of replay predicates.
+# Trace the existing replay guard only in the same unassisted observation interval.
 if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
     replay_tick_token = "carryReplayPlayerTick != player.tickCount"
     replay_tick_pos = source.find(replay_tick_token)
@@ -105,7 +106,7 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
 
     replay_indent = replay_match.group("indent")
     replay_probe = (
-        f'{replay_indent}if (productionSmokeFixture && (carryBaselineCaptured || fixtureContactAcquireTicks >= 32) '
+        f'{replay_indent}if (productionSmokeFixture && (fixtureNativeCarrySettled || fixtureContactAcquireTicks >= 32) '
         f'&& player.tickCount >= 14 && player.tickCount <= 72) {{\n'
         f'{replay_indent}    LOGGER.info(\n'
         f'{replay_indent}        "GATE_E_PHASE130_REPLAY_GUARD player_tick={{}} carriage_id={{}} baseline_captured={{}} physical_support={{}} collision_eligible={{}} broadphase={{}} baseline_carriage_id={{}} rebase_tick={{}} rebase_age={{}} replay_tick={{}} read_only=true",\n'
@@ -119,8 +120,11 @@ if "GATE_E_PHASE130_REPLAY_GUARD" not in source:
 
 required = [
     'fixtureContactAcquireTicks < 32',
-    '!carryBaselineCaptured && fixtureContactAcquireTicks < 32',
-    '(carryBaselineCaptured || fixtureContactAcquireTicks >= 32)',
+    'fixtureNativeCarrySettled',
+    '!fixtureNativeCarrySettled && fixtureContactAcquireTicks < 32',
+    '(fixtureNativeCarrySettled || fixtureContactAcquireTicks >= 32)',
+    'vs2.phase134NativeCarryHealthy.',
+    'vs2.phase134NativeCarryHealthyTick.',
     'GATE_E_FIXTURE_CONTACT_ACQUIRE',
     'bounded=true fixture_only=true',
     'GATE_E_FIXTURE_COLLIDER_NEAREST_FALLBACK',
@@ -133,9 +137,9 @@ required = [
 ]
 missing = [token for token in required if token not in source]
 if missing:
-    raise SystemExit("Phase 129 lost bounded fixture/contact telemetry anchors: " + ", ".join(missing))
+    raise SystemExit("Phase 129 lost bounded fixture/native-carry handoff anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 129: stops fixture retargeting immediately after native baseline capture; 32 attempts remain the fallback bound")
+print("Phase 129: releases fixture only after existing native carry health settles, with 32 attempts as fallback")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase130.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase131.py")), run_name="__main__")

@@ -31,9 +31,10 @@ probe_source = probe_source.replace(previous_native_scope, previous_native_same_
 
 # Production-world #532 proved that jumping only four ticks after strafe could land on a carriage
 # seam. Run #546 then proved the opposite harness mismatch: jump was armed at strafe+2 while the
-# wall verifier requires six grounded same-carriage samples, so the fixture became airborne after
-# only two samples and could not actually prove wall solidity. Keep reverse timing unchanged, hold
-# the native right-strafe for eight grounded ticks, and arm jump only after that wall window. This
+# wall verifier requires six grounded same-carriage samples. Run #547 supplied those samples but
+# reached the most-negative side boundary only for the final two ticks, one sample short of the
+# verifier's three-consecutive-sample impact plateau. Keep reverse timing unchanged, hold native
+# right-strafe for one additional grounded tick, and arm jump after that ninth sample window. This
 # changes harness sequencing only; no player motion, collision response, carry vector, train/world
 # state, or VS2 physics behavior is changed.
 timing_replacements = [
@@ -43,11 +44,11 @@ timing_replacements = [
     ),
     (
         '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;\n        return elapsed >= 13 && elapsed <= 16;''',
-        '''        if (vs2$backwardStartTick == Integer.MIN_VALUE) return false;\n        if (vs2$strafeStartTick != Integer.MIN_VALUE) {\n            int strafeElapsed = self.tickCount - vs2$strafeStartTick;\n            return strafeElapsed >= 0 && strafeElapsed <= 7;\n        }\n        int elapsed = self.tickCount - vs2$backwardStartTick;\n        return elapsed >= 2 && elapsed <= 5;''',
+        '''        if (vs2$backwardStartTick == Integer.MIN_VALUE) return false;\n        if (vs2$strafeStartTick != Integer.MIN_VALUE) {\n            int strafeElapsed = self.tickCount - vs2$strafeStartTick;\n            return strafeElapsed >= 0 && strafeElapsed <= 8;\n        }\n        int elapsed = self.tickCount - vs2$backwardStartTick;\n        return elapsed >= 2 && elapsed <= 5;''',
     ),
     (
         '''        return self.tickCount >= vs2$walkConfirmedTick + 24;''',
-        '''        return vs2$strafeStartTick != Integer.MIN_VALUE\n            && self.tickCount >= vs2$strafeStartTick + 8\n            && Integer.toString(self.tickCount - 1).equals(\n                System.getProperty("vs2.phase170NativeContactApplicationTick"));''',
+        '''        return vs2$strafeStartTick != Integer.MIN_VALUE\n            && self.tickCount >= vs2$strafeStartTick + 9\n            && Integer.toString(self.tickCount - 1).equals(\n                System.getProperty("vs2.phase170NativeContactApplicationTick"));''',
     ),
 ]
 for old, new in timing_replacements:
@@ -109,8 +110,8 @@ fixture_source = fixture_source.replace(old_jump_observer, new_jump_observer, 1)
 
 required_fixture = [
     "return elapsed >= 1 && elapsed <= 4;",
-    "return strafeElapsed >= 0 && strafeElapsed <= 7;",
-    "self.tickCount >= vs2$strafeStartTick + 8",
+    "return strafeElapsed >= 0 && strafeElapsed <= 8;",
+    "self.tickCount >= vs2$strafeStartTick + 9",
     "vs2.phase170NativeContactApplicationTick",
     "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED",
     "GATE_E_M1_NATIVE_STRAFE_CONFIRMED",
@@ -142,4 +143,4 @@ for forbidden in [
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 202: gives native right-strafe eight grounded ticks to prove real carriage wall collision before the unchanged vanilla jump arc")
+print("Phase 202: gives native right-strafe nine grounded ticks so the real side impact can hold for three consecutive samples before the unchanged vanilla jump arc")

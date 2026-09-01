@@ -42,6 +42,20 @@ if source.count(old) != 1:
     raise SystemExit("M1 input timing expected one fixture walk-sequencing boundary")
 source = source.replace(old, new, 1)
 
+# Production-world #652 proves the remaining wall blocker is the fixture input boundary, not
+# Create/VS2 collision. Native right-strafe is requested at tick 22 and confirmed at tick 23, but
+# no further SELF aiStep movement occurs before jump even though the bounded strafe window extends
+# through tick 25. The cause is the strafe-window predicate itself: confirmation immediately turns
+# the window off, so the verifier can never observe sustained input into a real side wall. Keep the
+# ordinary right KeyMapping active for the already-bounded window after confirmation; confirmation
+# still only controls proof logging. This changes disposable input timing only and does not write
+# position, velocity, collision response, carry, train, or world state.
+strafe_guard_old = 'if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed || vs2$strafeConfirmed) return false;'
+strafe_guard_new = 'if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed) return false;'
+if source.count(strafe_guard_old) != 1:
+    raise SystemExit("M1 sustained strafe expected one confirmation-short-circuit boundary")
+source = source.replace(strafe_guard_old, strafe_guard_new, 1)
+
 # Production-world #651 proves the native right-strafe itself is valid and material: the request at
 # tick 32 has negative-Z motion, carriage 8 then supplies four consecutive grounded/broadphase
 # samples through tick 35, and only afterwards does Create authoritatively hand contact to sibling
@@ -109,6 +123,7 @@ required = [
     'vs2$walkConfirmedTick = startTick + 4',
     'Boolean.getBoolean("vs2.productionFixtureWalkConfirmed")',
     'System.getProperty("vs2.productionFixtureWalkStartTick")',
+    'if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed) return false;',
 ]
 missing = [token for token in required if token not in source]
 if missing:
@@ -127,9 +142,9 @@ for forbidden in [
     'self.setPos(', 'self.setDeltaMovement(', 'self.move(', '.teleport(',
     'setBlock(', 'syncCarriage(', 'setVelocity(',
 ]:
-    if forbidden in new:
+    if forbidden in new + strafe_guard_new:
         raise SystemExit("M1 input timing introduced forbidden gameplay mutation: " + forbidden)
 
 fixture_input.write_text(source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 input timing: preserves sprint callback and aligns the read-only wall verifier with the proven native strafe frame")
+print("M1 input timing: preserves sprint callback, keeps bounded native strafe active after confirmation, and aligns the read-only wall verifier")

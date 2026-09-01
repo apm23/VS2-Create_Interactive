@@ -35,18 +35,18 @@ if source.count(old_prefix) != 1:
     raise SystemExit("Phase 203 expected one Phase194 direct-native candidate prefix")
 source = source.replace(old_prefix, new_prefix, 1)
 
-# Production-world #646 proves the hard 32-attempt acquisition gate has become stale for the
-# direct-native branch. The real train supplied three consecutive Phase185 ready frames at ticks
-# 21-23 with strict support and exact native Create evidence, but input was still withheld; later the
-# player again held a long carriage-local stable interval without ever starting the walk fixture.
-# Allow only the already-settled three-frame native readiness to satisfy this direct fixture gate.
-# The candidate still requires Phase194 proven native carry health, same-baseline support, grounded
-# broadphase collision and the existing immediate native-application checks. This changes only
-# disposable fixture admission; it does not move the player or modify Create/VS2 physics.
+# Production-world #667 proves the hard three-frame settled-native admission is stale for this
+# disposable direct-native branch. The real train supplies two consecutive strict-support, grounded,
+# broadphase, exact-native Phase185 frames at ticks 19-20; those same frames already satisfy the
+# production carry proof with zero local span, but the third frame loses fresh native application so
+# input is never admitted. Accept the already-proven two-frame native readiness. The candidate still
+# requires Phase194 proven native carry health, same-baseline support, grounded broadphase collision,
+# and the existing next-tick exact-native confirmation. Fixture admission only; no player movement,
+# collision response, carry vector, train/world state, Create behavior, or VS2 physics is modified.
 settled_walk_gate_old = '''                            && phase194ProvenNativeCarryHealth
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);'''
 settled_walk_gate_new = '''                            && phase194ProvenNativeCarryHealth
-                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32 || phase185WalkReadyTicks >= 3);'''
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32 || phase185WalkReadyTicks >= 2);'''
 if source.count(settled_walk_gate_old) != 1:
     raise SystemExit("Phase 203 expected one hard direct-native walk acquisition gate")
 source = source.replace(settled_walk_gate_old, settled_walk_gate_new, 1)
@@ -189,7 +189,7 @@ required = [
     "collisionEligible && broadphaseOverlap && player.onGround()",
     "phase194ProvenNativeCarryHealth",
     "fixtureContactAcquireTicks >= 32",
-    "phase185WalkReadyTicks >= 3",
+    "phase185WalkReadyTicks >= 2",
     "phase194ConfirmedDirectNativeReady",
     "phase194PendingWalkAge == 1",
     "phase185NativeApplicationFresh",

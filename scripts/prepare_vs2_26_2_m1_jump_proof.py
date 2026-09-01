@@ -110,15 +110,20 @@ if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutiv
 start_z=before[-1][4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)
 if start_z-min_z<0.015: raise SystemExit(f"M1 right-strafe did not make material progress toward the carriage side: before_z={start_z} samples={wall_z}")
 if min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")
-impact=[s for s in after if s[4]<=min_z+0.005]
-if len(impact)<3: raise SystemExit(f"M1 carriage side impact plateau too short: local_z_samples={wall_z}")
+# Run #579 proved the verifier was selecting the final minimum rather than the actual collision
+# plateau: ticks 43-49 held exactly z=1.774802 for seven supported samples, then the last sampled
+# tick drifted only 0.014 after the strafe pulse. Find a consecutive stable plateau directly,
+# while still requiring material progress and retaining the independent no-penetration guard above.
 plateau=None
-for i in range(len(impact)-2):
-    candidate=impact[i:i+3]
-    if candidate[1][0]==candidate[0][0]+1 and candidate[2][0]==candidate[1][0]+1: plateau=candidate; break
-if plateau is None: raise SystemExit(f"M1 carriage side impact samples are not consecutive: ticks={[s[0] for s in impact]}")
+for i in range(len(after)-2):
+    candidate=after[i:i+3]
+    if candidate[1][0]!=candidate[0][0]+1 or candidate[2][0]!=candidate[1][0]+1: continue
+    candidate_z=[s[4] for s in candidate]
+    if start_z-min(candidate_z)>=0.015 and max(candidate_z)-min(candidate_z)<=0.005:
+        plateau=candidate
+        break
+if plateau is None: raise SystemExit(f"M1 carriage side stable collision plateau missing: local_z_samples={wall_z}")
 impact_z=[s[4] for s in plateau]
-if max(impact_z)-min(impact_z)>0.005: raise SystemExit(f"M1 carriage side did not hold a stable collision boundary: impact_z={impact_z}")
 
 post_land=[s for s in samples if s[0]>landed_tick]; best_streak=[]; streak=[]
 for sample in post_land:

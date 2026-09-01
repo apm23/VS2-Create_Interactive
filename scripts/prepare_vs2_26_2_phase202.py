@@ -29,17 +29,14 @@ if previous_native_scope not in probe_source:
     raise SystemExit("Phase 202 expected the Phase189 sibling-only native-gap boundary")
 probe_source = probe_source.replace(previous_native_scope, previous_native_same_or_sibling, 1)
 
-# Production-world #532 proved that jumping only four ticks after strafe could land on a carriage
-# seam. Run #546 then proved the opposite harness mismatch: jump was armed at strafe+2 while the
-# wall verifier requires six grounded same-carriage samples. Run #547 supplied those samples but
-# reached the most-negative side boundary only for the final two ticks, one sample short of the
-# verifier's three-consecutive-sample impact plateau. Keep reverse timing unchanged and hold native
-# right-strafe for one additional grounded tick. Run #565 proved an exact previous-tick contact gate
-# can miss a healthy window. Run #573 then proved onGround alone is too weak: the fixture requested
-# jump after the active baseline had already left broadphase and the last native Create contact was
-# stale, producing the same lag-behind arc M1 is supposed to reject. Require a native Create contact
-# application from the current or preceding three ticks before issuing the fixture jump. This only
-# delays test input until Create still owns the moving reference; it does not synthesize movement.
+# Production-world #665 reaches the jump only after the supported strafe/wall window has long
+# expired: at tick 64 Create still has a leased native contact, but the active carriage reports
+# physical_support=false and local X is already outside the occupied block bounds. The old +9 gate
+# therefore permits a valid vanilla jump from world-ground beside the train, which cannot prove M1
+# ceiling/floor collision. Arm six ticks after strafe start instead: this still leaves the verifier's
+# required three consecutive wall samples intact while keeping the disposable jump inside the fresh
+# Create-owned support interval. The existing recent-native-contact predicate remains mandatory.
+# Harness timing only; no position, velocity, collision response, carry, gravity, train or world state.
 timing_replacements = [
     (
         '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;\n        return elapsed >= 8 && elapsed <= 11;''',
@@ -51,7 +48,7 @@ timing_replacements = [
     ),
     (
         '''        return self.tickCount >= vs2$walkConfirmedTick + 24;''',
-        '''        return vs2$strafeStartTick != Integer.MIN_VALUE\n            && self.tickCount >= vs2$strafeStartTick + 9\n            && self.onGround()\n            && (Integer.toString(self.tickCount).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 1).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 2).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 3).equals(System.getProperty("vs2.phase170NativeContactApplicationTick")));''',
+        '''        return vs2$strafeStartTick != Integer.MIN_VALUE\n            && self.tickCount >= vs2$strafeStartTick + 6\n            && self.onGround()\n            && (Integer.toString(self.tickCount).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 1).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 2).equals(System.getProperty("vs2.phase170NativeContactApplicationTick"))\n                || Integer.toString(self.tickCount - 3).equals(System.getProperty("vs2.phase170NativeContactApplicationTick")));''',
     ),
 ]
 for old, new in timing_replacements:
@@ -137,7 +134,7 @@ fixture_source = fixture_source.replace(rise_anchor, rise_replacement, 1)
 required_fixture = [
     "return elapsed >= 1 && elapsed <= 4;",
     "return strafeElapsed >= 0 && strafeElapsed <= 8;",
-    "self.tickCount >= vs2$strafeStartTick + 9",
+    "self.tickCount >= vs2$strafeStartTick + 6",
     "System.getProperty(\"vs2.phase170NativeContactApplicationTick\")",
     "GATE_E_M1_NATIVE_BACKWARD_CONFIRMED",
     "GATE_E_M1_NATIVE_STRAFE_CONFIRMED",
@@ -172,4 +169,4 @@ for forbidden in [
 client_probe.write_text(probe_source, encoding="utf-8")
 contact_trace.write_text(trace_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 202: gates fixture jump on recent native Create contact and observes the vertical arc without gameplay mutation")
+print("Phase 202: keeps the M1 jump inside the fresh Create-owned wall/support window without gameplay mutation")

@@ -26,7 +26,7 @@ elif "phase154PreWalkPreviousLocal" not in source:
 
 anchor = '''            LOGGER.info(\n                "GATE_E_CLIENT_STATE'''
 probe = '''            if (productionSmokeFixture
-                    && player.tickCount >= 14 && player.tickCount <= 70
+                    && player.tickCount >= 14 && player.tickCount < 20
                     && carryBaselineCarriageId != Integer.MIN_VALUE) {
                 net.minecraft.world.entity.Entity phase154PreWalkCarriage = client.level.getEntity(carryBaselineCarriageId);
                 if (phase154PreWalkCarriage != null
@@ -146,7 +146,7 @@ required = [
     "phase154WalkStarted",
     "phase154PreWalkPreviousLocal",
     "GATE_E_PHASE154_PRE_WALK_TRACE",
-    "player.tickCount >= 14 && player.tickCount <= 70",
+    "player.tickCount >= 14 && player.tickCount < 20",
     "player.getDeltaMovement()",
     "exact_cell_present={}",
     "walk_started={}",

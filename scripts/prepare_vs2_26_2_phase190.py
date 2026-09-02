@@ -7,27 +7,29 @@ contact_trace = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin
 contact_source = contact_trace.read_text(encoding="utf-8")
 
 # Production-world #581 proved the sibling-first boundary after fixture walk start. Production-world
-# #686 now proves the same native ownership bug can happen before walking: at tick 19 carriage 5
-# publishes the first exact Create-native application, then stale sibling carriage 7 applies its own
-# ~8.95-block contact motion in the same LocalPlayer tick and throws the player off support before
-# walk readiness can settle. The existing Phase190 guard cannot see that case because its active
-# carriage identity is only established once the fixture walk starts.
+# #686 proved the same native ownership bug can happen before walking: one carriage publishes the
+# first exact Create-native application, then a stale sibling applies another return in the same
+# LocalPlayer tick. Production-world #706 exposed the inverse handoff boundary: after the tracked
+# active carriage rebases from 8 to 10, stale carriage 8 can still publish first in tick 18 and the
+# old same-tick de-dup then incorrectly rejects carriage 10 even though 10 is now the tracked active
+# frame. Preserve pre-walk first-owner de-dup, but once walk ownership exists let the tracked active
+# carriage win over a stale same-tick sibling. A later non-active sibling is still rejected.
 #
-# Reuse the exact native application tick/carriage already published by Phase170. Once one Create
-# carriage has applied native contact motion in the current LocalPlayer tick, reject only a second
-# different carriage's native return in that same tick. The first Create-native owner remains
-# authoritative, and a sole next-tick sibling handoff is still admitted. This only rejects the extra
-# duplicate return with ZERO; it does not synthesize movement, replay carry, teleport/setPos, mutate
-# trains/world state, alter collision response, or alter VS2 physics.
+# This only rejects an extra duplicate Create return with ZERO. It does not synthesize movement,
+# replay carry, teleport/setPos, mutate trains/world state, alter collision response, or alter VS2
+# physics.
 
 expected = '''            boolean phase172DuplicateSiblingNativeCarry = phase172NonActiveSibling
                 && (phase172ActiveAlreadyAppliedThisTick || phase172ActiveHealthyPreviousTick);
 '''
 replacement = '''            String phase190NativeApplicationTick = System.getProperty("vs2.phase170NativeContactApplicationTick");
             String phase190NativeApplicationCarriageId = System.getProperty("vs2.phase170NativeContactApplicationCarriageId");
+            boolean phase190CurrentActiveNativeOwner = phase172FixtureWalkActive
+                && phase172ActiveCarriageId.equals(Integer.toString(self.getId()));
             boolean phase190OtherNativeAlreadyAppliedThisTick = Integer.toString(phase170Player.tickCount).equals(phase190NativeApplicationTick)
                 && phase190NativeApplicationCarriageId != null
-                && !Integer.toString(self.getId()).equals(phase190NativeApplicationCarriageId);
+                && !Integer.toString(self.getId()).equals(phase190NativeApplicationCarriageId)
+                && !phase190CurrentActiveNativeOwner;
             boolean phase190ActiveNativePreviousTick = phase172FixtureWalkActive
                 && Integer.toString(phase170Player.tickCount - 1).equals(phase190NativeApplicationTick)
                 && phase172ActiveCarriageId.equals(phase190NativeApplicationCarriageId);
@@ -57,6 +59,7 @@ if "other_native_same_tick={}" not in contact_source:
 required = [
     "phase172ActiveAlreadyAppliedThisTick",
     "phase172ActiveHealthyPreviousTick",
+    "phase190CurrentActiveNativeOwner",
     "phase190OtherNativeAlreadyAppliedThisTick",
     "phase190ActiveNativePreviousTick",
     "vs2.phase170NativeContactApplicationTick",
@@ -81,5 +84,5 @@ for forbidden in [
         raise SystemExit("Phase 190 introduced forbidden gameplay mutation: " + forbidden)
 
 contact_trace.write_text(contact_source, encoding="utf-8")
-print("Phase 190: de-dups a second different Create-native carriage in the same player tick, including pre-walk")
+print("Phase 190: de-dups stale same-tick siblings while allowing the tracked active carriage to own a native handoff")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase191.py")), run_name="__main__")

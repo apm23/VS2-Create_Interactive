@@ -149,17 +149,17 @@ if lease_log_old in lease_source:
 elif "native_application_age={}" not in lease_source:
     raise SystemExit("Phase 203 could not update Create lease-grace accounting")
 
-# Production-world #620 proves the post-walk fixture itself now burns the last stable support tick:
-# forward sprint is confirmed at tick 61, tick 62 is still exactly carriage-local stable, but the
-# old reverse window waits until tick 63. By then local Y has already fallen below the floor plane;
-# reverse/strafe are subsequently accepted from vanilla horizontal velocity even though native Create
-# applications have stopped and the player later lags a full carriage behind. Start reverse on the
-# already-stable confirmation tick and allow strafe one tick after reverse begins. This changes only
-# disposable KeyMapping timing; it does not move the player or alter Create/VS2 collision/carry.
+# Production-world #620 proved reverse must begin promptly after a valid locomotion proof, but #718
+# proves the current cumulative harness now keeps the authoritative forward+sprint KeyMapping alive
+# through walkStart+7. The walk-confirmed property latched at tick 20 while Phase200 still owned
+# forward input through tick 22, so opening reverse at elapsed 0 made the backward request overlap
+# the still-active sprint window and it never confirmed. Keep the follow-up native and bounded, but
+# leave three callbacks after the walk-confirmed latch before reverse begins. This is fixture input
+# sequencing only: no player position/velocity, collision/carry, gravity, train, or world state.
 backward_old = '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;
         return elapsed >= 1 && elapsed <= 4;'''
 backward_new = '''        int elapsed = self.tickCount - vs2$walkConfirmedTick;
-        return elapsed >= 0 && elapsed <= 3;'''
+        return elapsed >= 3 && elapsed <= 6;'''
 strafe_old = '''        int elapsed = self.tickCount - vs2$backwardStartTick;
         return elapsed >= 2 && elapsed <= 5;'''
 strafe_new = '''        int elapsed = self.tickCount - vs2$backwardStartTick;
@@ -222,7 +222,7 @@ if lease_missing:
     raise SystemExit("Phase 203 lost bounded native Create lease anchors: " + ", ".join(lease_missing))
 
 fixture_required = [
-    "return elapsed >= 0 && elapsed <= 3;",
+    "return elapsed >= 3 && elapsed <= 6;",
     "return elapsed >= 1 && elapsed <= 4;",
     "client.options.keyDown.setDown(backwardWindow)",
     "client.options.keyRight.setDown(strafeWindow)",
@@ -244,4 +244,4 @@ for forbidden in [
 client_probe.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 203: preserves bounded Create contact ownership, admits unassisted exact-native carry proof for fixture locomotion, starts native reverse/strafe before fixture support decays, and keeps native aiStep alive through the headless jump arc")
+print("Phase 203: preserves bounded Create contact ownership, admits unassisted exact-native carry proof for fixture locomotion, sequences native reverse after sprint input release, and keeps native aiStep alive through the headless jump arc")

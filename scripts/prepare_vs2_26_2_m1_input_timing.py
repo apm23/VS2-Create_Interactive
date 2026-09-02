@@ -159,11 +159,9 @@ lease_source = lease_source.replace(lease_grace_overlap_old, lease_grace_overlap
 
 # Production-world #651 proved the native negative-Z strafe and wall convention. Production-world
 # #664 now proves the same strafe can hand Create-native ownership from the request carriage to an
-# authoritative sibling exactly one client tick later: request tick 23 is on carriage 5, identity-only
-# native-owner rebase occurs at tick 24 to carriage 7, and carriage 7 then supplies consecutive
-# grounded/broadphase samples through the wall window before the independently-proven native jump
-# begins at tick 29 and naturally lands at tick 42. Accept only request-tick or one-tick-later native
-# ownership rebases; do not chase later handoffs near the jump. Verifier bookkeeping only.
+# authoritative sibling exactly one client tick later. The current wall verifier selects the actual
+# supported three-tick same-carriage plateau directly, so retain that composition while reversing
+# only the wall direction back to the negative-Z fixture convention. Verifier bookkeeping only.
 wall_direction_replacements = [
     (
         'wall_geometry_seen = any(re.search(r"(?:^|\\|)-?\\d+, [123], 2(?:\\||$)", m.group(4)) for m in client_state_pattern.finditer(text))',
@@ -174,8 +172,8 @@ wall_direction_replacements = [
         'if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")',
     ),
     (
-        'start_z=before[-1][4]; wall_z=[s[4] for s in after]; max_z=max(wall_z)\nif max_z>=2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
-        'start_z=before[-1][4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)\nif min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; max_z=max(wall_z)\nif max_z>=2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)\nif min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
     ),
     (
         'strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) >= 0.02\nmaterial_approach = max_z-start_z >= 0.015',
@@ -188,9 +186,12 @@ wall_direction_replacements = [
 ]
 for old_wall, new_wall in wall_direction_replacements:
     if verifier_source.count(old_wall) != 1:
-        raise SystemExit("M1 wall verifier expected one transformed direction boundary: " + old_wall[:72])
+        raise SystemExit("M1 wall verifier expected one transformed current direction boundary: " + old_wall[:72])
     verifier_source = verifier_source.replace(old_wall, new_wall, 1)
 
+# Older verifier compositions used an explicit sibling-handoff window here. Keep the bounded
+# request-tick/+1 rewrite only when that legacy block is present. The current plateau selector
+# already follows the authoritative sibling and must not be rewritten back to request-tick pinning.
 late_handoff = r'''pre_wall_carriage=before[-1][1]
 rebase_pattern=re.compile(
     rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\n]*previous_carriage_id={pre_wall_carriage}[^\n]*carriage_id=(\d+)[^\n]*player_tick=(\d+)[^\n]*native_contact_owner=true[^\n]*identity_only=true")
@@ -215,9 +216,13 @@ for sample in after_window:
     if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
     after.append(sample); expected_tick+=1
 if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")'''
-if verifier_source.count(late_handoff) != 1:
-    raise SystemExit("M1 wall verifier expected one late-window sibling-handoff boundary")
-verifier_source = verifier_source.replace(late_handoff, bounded_handoff, 1)
+if verifier_source.count(late_handoff) == 1:
+    verifier_source = verifier_source.replace(late_handoff, bounded_handoff, 1)
+elif not (
+    'start_sample=pre_window[-1]' in verifier_source
+    and 'three consecutive supported samples on one Create carriage during strafe' in verifier_source
+):
+    raise SystemExit("M1 wall verifier lost both legacy handoff and current plateau boundaries")
 
 required = [
     'self.tickCount >= startTick + 4',
@@ -250,9 +255,12 @@ verifier_required = [
     'min_z=min(wall_z)',
     'float(strafe_move.group(3)) <= -0.02',
     'start_z-min(candidate_z)>=0.015',
-    'strafe_request_tick+1',
-    'wall_start_tick=int(rebase_match.group(2))',
 ]
+if 'start_sample=pre_window[-1]' not in verifier_source:
+    verifier_required.extend([
+        'strafe_request_tick+1',
+        'wall_start_tick=int(rebase_match.group(2))',
+    ])
 verifier_missing = [token for token in verifier_required if token not in verifier_source]
 if verifier_missing:
     raise SystemExit("M1 wall verifier lost bounded native-handoff proof anchors: " + ", ".join(verifier_missing))

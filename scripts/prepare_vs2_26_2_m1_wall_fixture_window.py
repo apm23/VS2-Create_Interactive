@@ -18,6 +18,11 @@ verifier_source = verifier.read_text(encoding="utf-8")
 # the vanilla forward+sprint KeyMappings alive through that observed movement callback, then allow
 # follow-up inputs on start+8. Harness timing only; no position, velocity, carry, collision, gravity,
 # train state, or world state is synthesized.
+#
+# The cumulative M1 strafe-alignment pass deliberately guards both forward pulse sites, including
+# Phase200's native applyInput pulse, and M1 input-timing then shifts both to start+1..+3. Therefore
+# these two guarded boundaries are the complete composed forward pulse surface; do not normalize an
+# unguarded Phase200 predicate a second time later in this pass.
 walk_pulse_old = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
 walk_pulse_new = 'boolean pulse = self.tickCount >= startTick + 4 && self.tickCount <= startTick + 7 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
 if source.count(walk_pulse_old) != 2:
@@ -36,27 +41,6 @@ walk_seen_new = '''            if (self.tickCount >= startTick + 8) {
 if source.count(walk_seen_old) != 1:
     raise SystemExit("M1 sprint sequencing expected one early follow-up fallback boundary")
 source = source.replace(walk_seen_old, walk_seen_new, 1)
-
-# Production-world #701 proves whole-class predicate counting is too broad after cumulative
-# composition. Phase200 has one uniquely named native applyInput method, so scope normalization to
-# that method and leave sibling fixture helpers alone. This changes only ordinary fixture KeyMapping
-# timing; no player position/velocity, carry, collision, gravity, train state, or world state.
-phase200_method = 'private void vs2$sampleFixtureInputAtNativeApplyInput(CallbackInfo ci) {'
-phase200_start = source.find(phase200_method)
-if phase200_start < 0:
-    raise SystemExit("M1 sprint alignment lost Phase200 native applyInput method")
-phase200_next_inject = source.find('\n    @Inject(', phase200_start + len(phase200_method))
-phase200_end = phase200_next_inject if phase200_next_inject >= 0 else source.find('\n}', phase200_start)
-if phase200_end < 0:
-    raise SystemExit("M1 sprint alignment could not bound Phase200 native applyInput method")
-phase200_body = source[phase200_start:phase200_end]
-phase200_old = 'boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;'
-phase200_new = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
-if phase200_body.count(phase200_old) == 1 and phase200_body.count(phase200_new) == 0:
-    phase200_body = phase200_body.replace(phase200_old, phase200_new, 1)
-elif phase200_body.count(phase200_old) != 0 or phase200_body.count(phase200_new) != 1:
-    raise SystemExit("M1 sprint alignment expected exactly one Phase200 pulse inside native applyInput method")
-source = source[:phase200_start] + phase200_body + source[phase200_end:]
 
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
 # is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps
@@ -190,4 +174,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: scopes Phase200 native sprint timing to its applyInput method, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: extends both composed guarded sprint pulses, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -40,25 +39,15 @@ source = source.replace(walk_seen_old, walk_seen_new, 1)
 
 # Production-world #697 proves the ordinary forward input is actually sampled on start+1..+3,
 # while the Phase200 native applyInput helper reports pulse=false and therefore leaves keySprint
-# false on those exact callbacks. Patch only that helper's pulse predicate to the already-observed
-# forward sampling window. This is input-harness alignment only: vanilla input owns locomotion and
-# no position, velocity, carry, collision, gravity, train, or world state is written.
-phase200_method_start = source.find('private void vs2$sampleFixtureInputAtNativeApplyInput')
-if phase200_method_start < 0:
-    raise SystemExit("M1 sprint alignment lost Phase200 native applyInput helper")
-phase200_method_end = source.find('\n    }', phase200_method_start)
-if phase200_method_end < 0:
-    raise SystemExit("M1 sprint alignment could not bound Phase200 native applyInput helper")
-phase200_method = source[phase200_method_start:phase200_method_end]
-phase200_method_new, phase200_count = re.subn(
-    r'boolean pulse = self\.tickCount >= startTick(?: \+ \d+)? && self\.tickCount <= startTick \+ \d+;',
-    'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;',
-    phase200_method,
-    count=1,
-)
-if phase200_count != 1:
-    raise SystemExit("M1 sprint alignment expected one Phase200 pulse predicate")
-source = source[:phase200_method_start] + phase200_method_new + source[phase200_method_end:]
+# false on those exact callbacks. Phase200 owns the only unguarded four-tick pulse predicate; the
+# other two cumulative pulse sites above include productionFixtureWalkConfirmed. Replace that exact
+# Phase200 predicate directly instead of trying to parse nested Java braces in the generated helper.
+# Input-harness alignment only: no gameplay/physics state is written.
+phase200_pulse_old = 'boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;'
+phase200_pulse_new = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
+if source.count(phase200_pulse_old) != 1:
+    raise SystemExit("M1 sprint alignment expected one unguarded Phase200 pulse predicate")
+source = source.replace(phase200_pulse_old, phase200_pulse_new, 1)
 
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
 # is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps

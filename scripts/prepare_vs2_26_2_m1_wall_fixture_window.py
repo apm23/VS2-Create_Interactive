@@ -9,6 +9,18 @@ source = fixture_input.read_text(encoding="utf-8")
 client_source = client_probe.read_text(encoding="utf-8")
 verifier_source = verifier.read_text(encoding="utf-8")
 
+# Production-world #693 starts the disposable forward pulse at tick 17 after only two stationary
+# supported samples (ticks 15-16), while the production carry gate intentionally requires five.
+# That makes the standing-before-walk proof impossible before locomotion changes contact ownership.
+# Delay only the harness KeyMapping pulse by three more ticks and keep the same three-tick pulse
+# length. This does not move/reposition the player or alter carry, collision, velocity, gravity,
+# train state, or world state; it only lets the existing standing carry proof complete first.
+walk_pulse_old = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
+walk_pulse_new = 'boolean pulse = self.tickCount >= startTick + 4 && self.tickCount <= startTick + 6 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
+if source.count(walk_pulse_old) != 2:
+    raise SystemExit("M1 standing carry sequencing expected two delayed forward pulse boundaries")
+source = source.replace(walk_pulse_old, walk_pulse_new)
+
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
 # is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps
 # six ticks after the request, so it never reaches any wall: the run only moves to about Z=+0.73
@@ -141,4 +153,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: keeps bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and preserves one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: delays locomotion until standing carry proof, keeps bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and preserves one supported baseline frame through a single grounded sampling gap")

@@ -24,16 +24,14 @@ dragger_source = entity_dragger.read_text(encoding="utf-8")
 # selecting getPrevAnchorVec(), so the supposed current-world target still used the previous anchor and
 # the player lost exactly one carriage frame-step per tick while the adapter logged as active. Use the
 # previous anchor only for world->local, and the current anchor for local->world. Production-world #556
-# then proved grounded Create carry is already healthy and that applying this external-frame bridge
-# while grounded duplicates the authoritative carry during ordinary locomotion. Therefore keep this
-# bridge strictly airborne-only. Production-world #557 then proved the jump leaves the current
-# carriage broadphase immediately even though the exact baseline carriage had native Create carry on
-# the preceding tick. Do not require current-world overlap after takeoff: the bounded exact-carriage
-# native-application lease is the moving reference-space authority during that airborne interval. No
+# proved this bridge must never run when grounded Create native carry already applied in the same tick,
+# because that duplicates the authoritative frame step. Production-world #677 confirmed the same rule
+# on jump takeoff. Production-world #688 now proves the complementary grounded gap: on a strict-supported
+# reversal tick the exact carriage frame moved ~4.27 blocks, but Create emitted no native application,
+# leaving the player in world space and producing the same ~4.22-block carriage-local discontinuity.
+# Fill only that exact grounded native-contact gap through the existing VS2 EntityDragger reference-
+# frame path. Same-tick Create application still wins, and airborne lease behavior is unchanged. No
 # synthetic velocity, gravity, collision response, train state, or world state is added.
-# Production-world #677 proved one narrower boundary: Create applied the exact carriage frame step
-# natively on jump tick 27, then this bridge applied the same step again. Suppress the external-frame
-# reanchor only on a same-tick native Create application; it remains available for subsequent gaps.
 dragger_anchor = "object EntityDragger {\n"
 dragger_helper = r'''object EntityDragger {
     /**
@@ -113,18 +111,20 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
             // Create owns a same-tick native contact application. The VS2 external-frame bridge
             // fills only native-contact gaps, so the carriage frame step can never be applied twice.
             boolean phase83NativeAppliedThisTick = phase83NativeApplicationAge == 0;
-            boolean phase83NativeFrameEligible = !player.onGround()
-                && !phase83NativeAppliedThisTick
-                && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
-            boolean phase83ExternalFrameLease = !player.onGround()
-                && !phase83NativeAppliedThisTick
-                && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             boolean phase83CurrentEnvelopeEligible = collisionEligible && broadphaseOverlap;
+            boolean phase83GroundedSupportGap = player.onGround()
+                && phase81PhysicalSupport
+                && phase83CurrentEnvelopeEligible
+                && !phase83NativeAppliedThisTick;
+            boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick
+                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
+            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick
+                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             if (Boolean.getBoolean("vs2.createCarryCompat")
                 && phase83ExactBaselineCarriage
                 && phase83NativeFrameEligible
                 && phase83ExternalFrameLease
-                && (phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {
+                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {
                 try {
                     java.lang.reflect.Method phase83ToPreviousLocal = carriage.getClass().getMethod(
                         "toLocalVector", Vec3.class, float.class, boolean.class);
@@ -138,9 +138,9 @@ condition_replacement = '''            String phase83NativeApplicationTickValue 
                     org.valkyrienskies.mod.common.util.EntityDragger.reanchorEntityWithExternalFrame(
                         player, phase83CurrentTarget);
                     LOGGER.info(
-                        "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_age={} airborne_native_lease={} supported_baseline_age={} airborne_supported_baseline_lease={} current_envelope={} previous_anchor_to_current_anchor=true airborne_only=true native_frame_eligible=true external_reference_frame=true create_authoritative_transform=true vs2_entity_dragger=true",
+                        "GATE_E_PHASE83_CONTACT_REFRESH carriage_id={} player_tick={} physical_support={} airborne={} vertical_gap={} on_ground={} native_application_age={} grounded_gap_bridge={} airborne_native_lease={} supported_baseline_age={} airborne_supported_baseline_lease={} current_envelope={} previous_anchor_to_current_anchor=true airborne_only=false native_frame_eligible=true external_reference_frame=true create_authoritative_transform=true vs2_entity_dragger=true",
                         carriage.getId(), player.tickCount, phase81PhysicalSupport, !player.onGround(), phase81VerticalGap, player.onGround(),
-                        phase83NativeApplicationAge, phase83AirborneNativeLease, phase83SupportedBaselineAge,
+                        phase83NativeApplicationAge, phase83GroundedSupportGap, phase83AirborneNativeLease, phase83SupportedBaselineAge,
                         phase83AirborneSupportedBaselineLease, phase83CurrentEnvelopeEligible);
                 } catch (ReflectiveOperationException | RuntimeException exception) {
                     LOGGER.info("GATE_E_PHASE83_CONTACT_REFRESH_ERROR type={}", exception.getClass().getSimpleName());
@@ -195,13 +195,14 @@ required = [
     "phase83AirborneNativeLease",
     "phase83AirborneSupportedBaselineLease",
     "phase83NativeAppliedThisTick",
-    "phase83NativeFrameEligible = !player.onGround()",
-    "phase83ExternalFrameLease = !player.onGround()",
+    "phase83GroundedSupportGap",
+    "phase83NativeFrameEligible = !phase83NativeAppliedThisTick",
+    "phase83ExternalFrameLease = !phase83NativeAppliedThisTick",
     "!phase83NativeAppliedThisTick",
     "phase83CurrentEnvelopeEligible",
     "vs2.phase83SupportedBaselineTick.",
     "phase83SupportedBaselineAge <= 20",
-    "phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease",
+    "phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease",
     "vs2.phase170NativeContactApplicationTick.",
     "phase83NativeApplicationAge <= 20",
     'Boolean.getBoolean("vs2.createCarryCompat")',
@@ -214,7 +215,8 @@ required = [
     "phase83CurrentTarget",
     "EntityDragger.reanchorEntityWithExternalFrame",
     "previous_anchor_to_current_anchor=true",
-    "airborne_only=true",
+    "grounded_gap_bridge={}",
+    "airborne_only=false",
     "external_reference_frame=true",
     "create_authoritative_transform=true",
     "vs2_entity_dragger=true",
@@ -251,7 +253,7 @@ for forbidden in [
 
 client_probe.write_text(source, encoding="utf-8")
 entity_dragger.write_text(dragger_source, encoding="utf-8")
-print("Phase 85: leaves grounded Create carry authoritative and keeps the exact Create frame through bounded airborne native-contact lease")
+print("Phase 85: bridges exact grounded native-contact gaps and bounded airborne gaps through the authoritative Create frame with VS2 EntityDragger")
 
 # Phase 86 separates verified compatibility movement from archived-save fixture normalization.
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase86.py")), run_name="__main__")

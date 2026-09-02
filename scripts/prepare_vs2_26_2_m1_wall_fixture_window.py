@@ -3,8 +3,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 fixture_input = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
+client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 verifier = Path(__file__).resolve().with_name("prepare_vs2_26_2_m1_jump_proof.py")
 source = fixture_input.read_text(encoding="utf-8")
+client_source = client_probe.read_text(encoding="utf-8")
 verifier_source = verifier.read_text(encoding="utf-8")
 
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
@@ -34,6 +36,23 @@ jump_new = 'self.tickCount >= vs2$strafeStartTick + 15'
 if source.count(jump_old) != 1:
     raise SystemExit("M1 wall fixture expected one short post-strafe jump delay")
 source = source.replace(jump_old, jump_new, 1)
+
+# Production-world #689 proves the grounded reference-frame bridge selected the stale baseline
+# carriage through a sibling handoff. At tick 34 the player has strict physical support on carriage
+# 5 and no same-tick Create native application, while baseline carriage 7 moved ~26.88 blocks away.
+# Phase83 already computes the current supported Create candidate as phase83GroundedSupportGap.
+# Let that validated current support own the existing VS2 previous->current frame bridge for only the
+# native-gap tick. Same-tick native Create application still disables the bridge, so no synthetic
+# carry, velocity, collision response, gravity, teleport, or extra world/train state is introduced.
+phase83_old = '''            if (Boolean.getBoolean("vs2.createCarryCompat")
+                && phase83ExactBaselineCarriage
+                && phase83NativeFrameEligible'''
+phase83_new = '''            if (Boolean.getBoolean("vs2.createCarryCompat")
+                && (phase83ExactBaselineCarriage || phase83GroundedSupportGap)
+                && phase83NativeFrameEligible'''
+if client_source.count(phase83_old) != 1:
+    raise SystemExit("M1 grounded sibling bridge expected one Phase83 exact-baseline gate")
+client_source = client_source.replace(phase83_old, phase83_new, 1)
 
 # Keep the read-only proof aligned with the actual occupied side and the expanded pre-jump window.
 replacements = [
@@ -68,5 +87,6 @@ for old, new in replacements:
     verifier_source = verifier_source.replace(old, new, 1)
 
 fixture_input.write_text(source, encoding="utf-8")
+client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: aims native right-strafe at nearby +Z wall and defers jump until bounded collision window completes")
+print("M1 wall fixture: keeps bounded wall timing and lets strict grounded sibling support own the existing VS2 frame bridge on native-gap ticks")

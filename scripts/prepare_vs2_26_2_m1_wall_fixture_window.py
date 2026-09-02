@@ -99,15 +99,17 @@ if client_source.count(phase83_old) != 1:
     raise SystemExit("M1 grounded sibling bridge expected one Phase83 exact-baseline gate")
 client_source = client_source.replace(phase83_old, phase83_new, 1)
 
-# Production-world #703 proves strict physical support can transiently disappear exactly one tick
-# after a valid Create-native application while the exact baseline carriage remains broadphase-valid,
-# the player remains grounded, and the authoritative carriage frame advances by ~6.06 blocks. The
-# existing Create contact lease already gives native Create one more opportunity on that tick, but
-# no same-tick application occurs, so the player otherwise remains in world space for one frame.
-# Lease the exact baseline's previous native application for age==1 only. The per-carriage Phase170
-# application tick already exists in Phase83, so this adds no new ownership state. The transform is
-# still Create previous->current through VS2 EntityDragger; no velocity, gravity, collision response,
-# teleport, or train/world state is synthesized.
+# Production-world #703 proved a one-tick grounded native-application gap, but #709 isolates the
+# deeper boundary: at tick 25 the exact active baseline carriage still has Create's own registered
+# collidingEntities contact, the player is grounded and inside the current carriage envelope, yet
+# Phase81's simplified floor-top heuristic flips false at vertical_gap=-0.0783. Phase83 then skips
+# the authoritative previous->current carriage frame for exactly the ~8.5-block train step and the
+# player immediately lags behind/sinks. Prefer Create's current registered contact over that derived
+# floor heuristic for exact-baseline frame ownership. This does not manufacture contact or motion:
+# Create still owns contact/carriage state and VS2 EntityDragger still applies only Create's actual
+# previous->current transform. Same-tick native Create application remains mutually exclusive, and
+# leaving the current envelope/grounded state drops the lease normally. No velocity, gravity,
+# collision response, teleport loop, or train/world state is synthesized.
 phase83_gap_old = '''            boolean phase83GroundedSupportGap = player.onGround()
                 && phase81PhysicalSupport
                 && phase83CurrentEnvelopeEligible
@@ -120,15 +122,15 @@ phase83_gap_new = '''            boolean phase83GroundedSupportGap = player.onGr
                 && phase81PhysicalSupport
                 && phase83CurrentEnvelopeEligible
                 && !phase83NativeAppliedThisTick;
-            boolean phase83GroundedRecentNativeBaselineLease = player.onGround()
+            boolean phase83GroundedRegisteredBaselineLease = player.onGround()
                 && phase83ExactBaselineCarriage
-                && phase83NativeApplicationAge == 1
+                && createRegisteredContact
                 && phase83CurrentEnvelopeEligible
                 && !phase83NativeAppliedThisTick;
             boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick
-                && (phase83GroundedSupportGap || phase83GroundedRecentNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
+                && (phase83GroundedSupportGap || phase83GroundedRegisteredBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick
-                && (phase83GroundedSupportGap || phase83GroundedRecentNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''
+                && (phase83GroundedSupportGap || phase83GroundedRegisteredBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''
 if client_source.count(phase83_gap_old) != 1:
     raise SystemExit("M1 grounded native-gap bridge expected one Phase83 eligibility block")
 client_source = client_source.replace(phase83_gap_old, phase83_gap_new, 1)
@@ -136,7 +138,7 @@ client_source = client_source.replace(phase83_gap_old, phase83_gap_new, 1)
 phase83_final_old = '''                && phase83ExternalFrameLease
                 && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {'''
 phase83_final_new = '''                && phase83ExternalFrameLease
-                && (phase83GroundedSupportGap || phase83GroundedRecentNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {'''
+                && (phase83GroundedSupportGap || phase83GroundedRegisteredBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {'''
 if client_source.count(phase83_final_old) != 1:
     raise SystemExit("M1 grounded native-gap bridge expected one Phase83 final lease gate")
 client_source = client_source.replace(phase83_final_old, phase83_final_new, 1)
@@ -176,4 +178,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: extends both composed authoritative sprint pulses, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases the exact previous native baseline frame through a one-tick grounded locomotion gap")
+print("M1 wall fixture: extends authoritative sprint input, preserves wall timing, restricts sibling bridging to the last native owner, and keeps the exact active Create registered-contact frame through strict-support floor seams")

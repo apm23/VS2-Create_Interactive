@@ -105,11 +105,14 @@ client_source = client_source.replace(phase83_old, phase83_new, 1)
 # heuristic reports false. #710 reaches both boundaries in one run: native Create owns carriage 7
 # through tick 33, then tick 34 has no same-tick application while carriage 7 itself advances by
 # -26.405 blocks; replacing the age==1 lease with registered-contact-only made that bounded seam
-# regress. Preserve both native evidences: current Create registered contact OR exactly one tick since
-# the exact baseline's last Create-native application. Both remain grounded/current-envelope bounded,
-# same-tick native application remains mutually exclusive, and VS2 EntityDragger applies only the
-# authoritative Create previous->current frame. No velocity, gravity, collision response, teleport,
-# synthetic carry vector, or train/world state is introduced.
+# regress. #711 proves the same native ownership gap can span two callbacks on the exact grounded
+# baseline: carriage 2 last applies natively at tick 13, age==1 bridges tick 14, then tick 15 remains
+# grounded/broadphase/support-latched while the carriage advances 7.2118 blocks and the age==1 lease
+# expires. Preserve current registered contact OR a bounded one-to-two-tick exact-baseline native
+# lease. Both remain grounded/current-envelope bounded, same-tick native application remains mutually
+# exclusive, and VS2 EntityDragger applies only the authoritative Create previous->current frame.
+# No velocity, gravity, collision response, teleport, synthetic carry vector, or train/world state is
+# introduced.
 phase83_gap_old = '''            boolean phase83GroundedSupportGap = player.onGround()
                 && phase81PhysicalSupport
                 && phase83CurrentEnvelopeEligible
@@ -124,7 +127,7 @@ phase83_gap_new = '''            boolean phase83GroundedSupportGap = player.onGr
                 && !phase83NativeAppliedThisTick;
             boolean phase83GroundedNativeBaselineLease = player.onGround()
                 && phase83ExactBaselineCarriage
-                && (createRegisteredContact || phase83NativeApplicationAge == 1)
+                && (createRegisteredContact || (phase83NativeApplicationAge >= 1 && phase83NativeApplicationAge <= 2))
                 && phase83CurrentEnvelopeEligible
                 && !phase83NativeAppliedThisTick;
             boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick
@@ -178,4 +181,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: preserves both live registered Create contact and the exact one-tick previous-native baseline lease across grounded train-frame seams")
+print("M1 wall fixture: keeps the exact grounded Create-native baseline frame for at most two missing-contact callbacks")

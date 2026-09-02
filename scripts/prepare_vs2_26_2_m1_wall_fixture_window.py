@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -36,6 +37,28 @@ walk_seen_new = '''            if (self.tickCount >= startTick + 8) {
 if source.count(walk_seen_old) != 1:
     raise SystemExit("M1 sprint sequencing expected one early follow-up fallback boundary")
 source = source.replace(walk_seen_old, walk_seen_new, 1)
+
+# Production-world #697 proves the ordinary forward input is actually sampled on start+1..+3,
+# while the Phase200 native applyInput helper reports pulse=false and therefore leaves keySprint
+# false on those exact callbacks. Patch only that helper's pulse predicate to the already-observed
+# forward sampling window. This is input-harness alignment only: vanilla input owns locomotion and
+# no position, velocity, carry, collision, gravity, train, or world state is written.
+phase200_method_start = source.find('private void vs2$sampleFixtureInputAtNativeApplyInput')
+if phase200_method_start < 0:
+    raise SystemExit("M1 sprint alignment lost Phase200 native applyInput helper")
+phase200_method_end = source.find('\n    }', phase200_method_start)
+if phase200_method_end < 0:
+    raise SystemExit("M1 sprint alignment could not bound Phase200 native applyInput helper")
+phase200_method = source[phase200_method_start:phase200_method_end]
+phase200_method_new, phase200_count = re.subn(
+    r'boolean pulse = self\.tickCount >= startTick(?: \+ \d+)? && self\.tickCount <= startTick \+ \d+;',
+    'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;',
+    phase200_method,
+    count=1,
+)
+if phase200_count != 1:
+    raise SystemExit("M1 sprint alignment expected one Phase200 pulse predicate")
+source = source[:phase200_method_start] + phase200_method_new + source[phase200_method_end:]
 
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
 # is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps
@@ -169,4 +192,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: lets standing proof finish, keeps native sprint through the observed forward movement callback, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: lets standing proof finish, aligns sprint with the sampled forward callbacks, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")

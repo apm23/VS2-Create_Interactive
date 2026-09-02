@@ -98,14 +98,15 @@ if client_source.count(phase83_old) != 1:
     raise SystemExit("M1 grounded sibling bridge expected one Phase83 exact-baseline gate")
 client_source = client_source.replace(phase83_old, phase83_new, 1)
 
-# Production-world #690 proves the complementary same-carriage boundary. Carriage 10 has strict
-# grounded support and uses the existing authoritative Create-frame -> VS2 EntityDragger bridge at
-# tick 24, then the simplified-support sampler transiently reports false at tick 25 while the exact
-# baseline carriage is still broadphase-valid and the player remains grounded. With no same-tick
-# native Create application, Phase83 currently drops the frame for exactly that sampling gap and the
-# player loses the full ~7.11-block carriage step. Lease only the immediately preceding supported
-# baseline for one grounded tick. This is still the same previous->current Create frame transform;
-# it adds no velocity, gravity, collision response, teleport, or train/world state.
+# Production-world #703 proves strict physical support can transiently disappear exactly one tick
+# after a valid Create-native application while the exact baseline carriage remains broadphase-valid,
+# the player remains grounded, and the authoritative carriage frame advances by ~6.06 blocks. The
+# existing Create contact lease already gives native Create one more opportunity on that tick, but
+# no same-tick application occurs, so the player otherwise remains in world space for one frame.
+# Lease the exact baseline's previous native application for age==1 only. The per-carriage Phase170
+# application tick already exists in Phase83, so this adds no new ownership state. The transform is
+# still Create previous->current through VS2 EntityDragger; no velocity, gravity, collision response,
+# teleport, or train/world state is synthesized.
 phase83_gap_old = '''            boolean phase83GroundedSupportGap = player.onGround()
                 && phase81PhysicalSupport
                 && phase83CurrentEnvelopeEligible
@@ -118,25 +119,25 @@ phase83_gap_new = '''            boolean phase83GroundedSupportGap = player.onGr
                 && phase81PhysicalSupport
                 && phase83CurrentEnvelopeEligible
                 && !phase83NativeAppliedThisTick;
-            boolean phase83GroundedSupportedBaselineLease = player.onGround()
+            boolean phase83GroundedRecentNativeBaselineLease = player.onGround()
                 && phase83ExactBaselineCarriage
-                && phase83SupportedBaselineAge == 1
+                && phase83NativeApplicationAge == 1
                 && phase83CurrentEnvelopeEligible
                 && !phase83NativeAppliedThisTick;
             boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick
-                && (phase83GroundedSupportGap || phase83GroundedSupportedBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
+                && (phase83GroundedSupportGap || phase83GroundedRecentNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick
-                && (phase83GroundedSupportGap || phase83GroundedSupportedBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''
+                && (phase83GroundedSupportGap || phase83GroundedRecentNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''
 if client_source.count(phase83_gap_old) != 1:
-    raise SystemExit("M1 grounded support-gap bridge expected one Phase83 eligibility block")
+    raise SystemExit("M1 grounded native-gap bridge expected one Phase83 eligibility block")
 client_source = client_source.replace(phase83_gap_old, phase83_gap_new, 1)
 
 phase83_final_old = '''                && phase83ExternalFrameLease
                 && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {'''
 phase83_final_new = '''                && phase83ExternalFrameLease
-                && (phase83GroundedSupportGap || phase83GroundedSupportedBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {'''
+                && (phase83GroundedSupportGap || phase83GroundedRecentNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {'''
 if client_source.count(phase83_final_old) != 1:
-    raise SystemExit("M1 grounded support-gap bridge expected one Phase83 final lease gate")
+    raise SystemExit("M1 grounded native-gap bridge expected one Phase83 final lease gate")
 client_source = client_source.replace(phase83_final_old, phase83_final_new, 1)
 
 # Keep the read-only proof aligned with the actual occupied side and the expanded pre-jump window.
@@ -174,4 +175,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: extends both composed guarded sprint pulses, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: extends both composed guarded sprint pulses, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases the exact previous native baseline frame through a one-tick grounded locomotion gap")

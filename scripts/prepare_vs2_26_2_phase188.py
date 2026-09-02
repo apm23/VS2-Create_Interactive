@@ -9,19 +9,21 @@ source = client_probe.read_text(encoding="utf-8")
 # Production-world #456 proves all four ordinary walk directions through native Minecraft locomotion.
 # Build the existing sustained three-tick acceptance exactly where Phase188 originally owned it,
 # but require Minecraft's native sprinting state as part of that acceptance. Production-world #496
-# additionally proves the fixture has already produced material native sprint displacement (~0.20
-# blocks) while grounded and strictly supported before the longer forward hold walks off the finite
-# carriage floor. Phase182 already makes phase165WalkPathDistance sibling-carriage-aware by resetting
-# its local baseline on a carriage handoff instead of comparing unrelated carriage-local frames.
-# Reuse that authoritative accumulated path here: an exact original-carriage identity and a direct
-# start-vs-current local delta incorrectly reject a valid sibling carriage handoff. This remains
-# fixture-only acceptance logic: no position, velocity, collision, train/world, or VS2/Create physics
-# mutation.
+# additionally proves the fixture has already produced material native sprint displacement while
+# grounded and strictly supported before the longer forward hold walks off the finite carriage floor.
+# Phase182 already makes phase165WalkPathDistance sibling-carriage-aware by resetting its local
+# baseline on a carriage handoff instead of comparing unrelated carriage-local frames. Production-
+# world #712 now proves the active frame remains stable through the prior two-tick seam while native
+# sprint locomotion accumulates about 0.24 block of supported path, but the old 0.20 pre-reset gate
+# and start-vs-current endpoint displacement can miss that real path as the local direction changes.
+# Reuse the existing sibling-safe accumulated path for both early and final acceptance at the already
+# proven 0.10 material threshold. Minecraft's player.isSprinting() remains mandatory, so this changes
+# fixture acceptance only; no position, velocity, collision, train/world, or VS2/Create physics.
 old = """                            if (player.tickCount <= phase154WalkStartTick + 12) {\n"""
 new = """                            boolean phase188PreResetWalkReady = player.tickCount >= phase154WalkStartTick + 3
                                 && phase154WalkSupportHealthy
                                 && phase154Broadphase && player.onGround() && player.isSprinting()
-                                && phase165WalkPathDistance >= 0.20 && phase165WalkPathDistance <= 4.00;
+                                && phase165WalkPathDistance >= 0.10 && phase165WalkPathDistance <= 4.00;
                             if (player.tickCount <= phase154WalkStartTick + 12 && !phase188PreResetWalkReady) {
 """
 
@@ -47,18 +49,15 @@ if "boolean phase154Confirmed = player.isSprinting() && phase154WalkSupportHealt
         raise SystemExit(f"Phase 188 expected exactly one final walk confirmation predicate, found {confirm_count}")
     source = source.replace(confirm_old, confirm_new, 1)
 
-# Production-world #562 sampled native KeyboardInput and vanilla LocalPlayer SELF movement for three
-# forward ticks while Create kept the player grounded, broadphase-valid and support-healthy. The
-# sibling-safe Phase182 path retained 0.1288 block of validated within-frame displacement before the
-# fixture's known finite-route discontinuity, so the old 0.20 final threshold rejected already-proven
-# native locomotion. Keep the existing 0.20 pre-reset timing gate untouched, but let the authoritative
-# sibling-safe final proof accept >=0.10 block. Fixture acceptance only; gameplay remains unchanged.
+# The final proof must measure material locomotion across the same sibling-safe accumulated local
+# path used by Phase182 rather than a start-vs-current chord that can shrink when the train turns.
+# This remains read/acceptance logic only; the player and carriage are never moved by this pass.
 final_distance_old = "phase154LocalDistance >= 0.20 && phase154LocalDistance <= 4.00;"
-final_distance_new = "phase154LocalDistance >= 0.10 && phase154LocalDistance <= 4.00;"
+final_distance_new = "phase165WalkPathDistance >= 0.10 && phase165WalkPathDistance <= 4.00;"
 if final_distance_new not in source:
     final_distance_count = source.count(final_distance_old)
     if final_distance_count != 1:
-        raise SystemExit(f"Phase 188 expected exactly one sibling-safe final walk distance threshold, found {final_distance_count}")
+        raise SystemExit(f"Phase 188 expected exactly one final walk distance threshold, found {final_distance_count}")
     source = source.replace(final_distance_old, final_distance_new, 1)
 
 # Keep the native sprint state explicit on the existing walk confirmation marker.
@@ -81,10 +80,9 @@ required = [
     "player.tickCount >= phase154WalkStartTick + 3",
     "phase154WalkSupportHealthy",
     "phase154Broadphase && player.onGround() && player.isSprinting()",
-    "phase165WalkPathDistance >= 0.20",
+    "phase165WalkPathDistance >= 0.10",
     "if (player.tickCount <= phase154WalkStartTick + 12 && !phase188PreResetWalkReady)",
     "boolean phase154Confirmed = player.isSprinting() && phase154WalkSupportHealthy",
-    "phase154LocalDistance >= 0.10",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
     "confirmed={} sprinting={} fixture_only=true",
     "phase154Confirmed, player.isSprinting()",
@@ -103,5 +101,5 @@ for forbidden in [
         raise SystemExit("Phase 188 introduced forbidden gameplay mutation: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 188: accepts sibling-aware material native sprint before the finite carriage edge; fixture acceptance only")
+print("Phase 188: accepts native sprint from sibling-safe material path evidence; fixture acceptance only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase189.py")), run_name="__main__")

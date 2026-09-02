@@ -14,10 +14,14 @@ verifier_source = verifier.read_text(encoding="utf-8")
 # owns the actual vanilla forward pulse; Phase165's GateEClientProbe walk-start block is a different
 # class and can never occur in this source. Delay only the real Phase197/strafe-aligned pulse by one
 # tick so the standing verifier gets its next callback before LocalPlayer consumes forward input.
-# Harness sequencing only: no player position/velocity, collision response, carry, gravity, train,
-# or world state is changed.
+# Production-world #707 then proves the bounded native pulse itself is being prematurely suppressed:
+# walkStart=32, yet both aiStep/applyInput observe pulse=false on ticks 33-35 while the final walk
+# proof remains false. Keep the start+1..+3 timing, but do not let a provisional fixture property
+# cancel the only native forward+sprint input window. Final Phase188/154 acceptance still requires
+# actual Minecraft sprinting plus supported displacement. Harness sequencing only: no player
+# position/velocity, collision response, carry, gravity, train, or world state is changed.
 walk_pulse_old = 'boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
-walk_pulse_new = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
+walk_pulse_new = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
 if source.count(walk_pulse_old) != 2:
     raise SystemExit("M1 input timing expected two cumulative Phase197 forward pulse boundaries")
 source = source.replace(walk_pulse_old, walk_pulse_new)

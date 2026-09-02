@@ -37,18 +37,26 @@ if source.count(walk_seen_old) != 1:
     raise SystemExit("M1 sprint sequencing expected one early follow-up fallback boundary")
 source = source.replace(walk_seen_old, walk_seen_new, 1)
 
-# Production-world #700 proves no preceding composition pass owns Phase200's unguarded native
-# applyInput pulse: after the guarded Phase197 pulses are delayed, the generated Phase200 predicate
-# is still start..start+3 and the old assertion aborts before runtime. Own that single harness
-# boundary here, beside the related sprint/follow-up timing, and make the rewrite idempotent. This
-# changes only ordinary fixture KeyMapping timing; no player position/velocity, carry, collision,
-# gravity, train state, or world state is written.
+# Production-world #701 proves whole-class predicate counting is too broad after cumulative
+# composition. Phase200 has one uniquely named native applyInput method, so scope normalization to
+# that method and leave sibling fixture helpers alone. This changes only ordinary fixture KeyMapping
+# timing; no player position/velocity, carry, collision, gravity, train state, or world state.
+phase200_method = 'private void vs2$sampleFixtureInputAtNativeApplyInput(CallbackInfo ci) {'
+phase200_start = source.find(phase200_method)
+if phase200_start < 0:
+    raise SystemExit("M1 sprint alignment lost Phase200 native applyInput method")
+phase200_next_inject = source.find('\n    @Inject(', phase200_start + len(phase200_method))
+phase200_end = phase200_next_inject if phase200_next_inject >= 0 else source.find('\n}', phase200_start)
+if phase200_end < 0:
+    raise SystemExit("M1 sprint alignment could not bound Phase200 native applyInput method")
+phase200_body = source[phase200_start:phase200_end]
 phase200_old = 'boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;'
 phase200_new = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
-if source.count(phase200_old) == 1 and source.count(phase200_new) == 0:
-    source = source.replace(phase200_old, phase200_new, 1)
-elif source.count(phase200_old) != 0 or source.count(phase200_new) != 1:
-    raise SystemExit("M1 sprint alignment expected exactly one Phase200 native pulse boundary")
+if phase200_body.count(phase200_old) == 1 and phase200_body.count(phase200_new) == 0:
+    phase200_body = phase200_body.replace(phase200_old, phase200_new, 1)
+elif phase200_body.count(phase200_old) != 0 or phase200_body.count(phase200_new) != 1:
+    raise SystemExit("M1 sprint alignment expected exactly one Phase200 pulse inside native applyInput method")
+source = source[:phase200_start] + phase200_body + source[phase200_end:]
 
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
 # is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps
@@ -182,4 +190,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: owns Phase200 native sprint timing, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: scopes Phase200 native sprint timing to its applyInput method, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")

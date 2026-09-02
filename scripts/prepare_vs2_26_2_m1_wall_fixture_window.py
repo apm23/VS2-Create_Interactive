@@ -44,11 +44,22 @@ source = source.replace(jump_old, jump_new, 1)
 # Let that validated current support own the existing VS2 previous->current frame bridge for only the
 # native-gap tick. Same-tick native Create application still disables the bridge, so no synthetic
 # carry, velocity, collision response, gravity, teleport, or extra world/train state is introduced.
+#
+# Production-world #691 proves physical support alone is not enough to choose a sibling: at tick 24
+# the loop saw strict support on carriage 4 even though carriage 5 was the last Create-native owner
+# through tick 23 and remained the walk/baseline carriage. Bridging carriage 4 applied the wrong
+# authoritative frame and produced a ~15.37-block local discontinuity. Admit a non-baseline sibling
+# only when its id matches Phase170's last native Create owner. This is ownership selection only;
+# the carried transform remains Create previous->current through VS2 EntityDragger.
 phase83_old = '''            if (Boolean.getBoolean("vs2.createCarryCompat")
                 && phase83ExactBaselineCarriage
                 && phase83NativeFrameEligible'''
-phase83_new = '''            if (Boolean.getBoolean("vs2.createCarryCompat")
-                && (phase83ExactBaselineCarriage || phase83GroundedSupportGap)
+phase83_new = '''            String phase83ActiveNativeOwner = System.getProperty(
+                "vs2.phase170NativeContactApplicationCarriageId");
+            boolean phase83GroundedNativeOwnerGap = phase83GroundedSupportGap
+                && Integer.toString(carriage.getId()).equals(phase83ActiveNativeOwner);
+            if (Boolean.getBoolean("vs2.createCarryCompat")
+                && (phase83ExactBaselineCarriage || phase83GroundedNativeOwnerGap)
                 && phase83NativeFrameEligible'''
 if client_source.count(phase83_old) != 1:
     raise SystemExit("M1 grounded sibling bridge expected one Phase83 exact-baseline gate")
@@ -130,4 +141,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: keeps bounded wall timing, bridges strict grounded sibling gaps, and preserves one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: keeps bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and preserves one supported baseline frame through a single grounded sampling gap")

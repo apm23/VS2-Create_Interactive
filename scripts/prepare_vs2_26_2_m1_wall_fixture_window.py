@@ -37,14 +37,18 @@ if source.count(walk_seen_old) != 1:
     raise SystemExit("M1 sprint sequencing expected one early follow-up fallback boundary")
 source = source.replace(walk_seen_old, walk_seen_new, 1)
 
-# The immediately preceding M1 input-timing composition pass already owns Phase200's native
-# applyInput pulse and rewrites it to the observed start+1..+3 sampling window. Do not mutate the
-# same boundary a second time here: just assert that the composed source contains the intended
-# unguarded Phase200 predicate exactly once. This keeps this wall-fixture pass independent from the
-# earlier input-timing implementation detail and avoids a prepare-time false failure.
-phase200_expected = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
-if source.count(phase200_expected) != 1:
-    raise SystemExit("M1 sprint alignment expected composed Phase200 start+1..+3 pulse predicate")
+# Production-world #700 proves no preceding composition pass owns Phase200's unguarded native
+# applyInput pulse: after the guarded Phase197 pulses are delayed, the generated Phase200 predicate
+# is still start..start+3 and the old assertion aborts before runtime. Own that single harness
+# boundary here, beside the related sprint/follow-up timing, and make the rewrite idempotent. This
+# changes only ordinary fixture KeyMapping timing; no player position/velocity, carry, collision,
+# gravity, train state, or world state is written.
+phase200_old = 'boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;'
+phase200_new = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
+if source.count(phase200_old) == 1 and source.count(phase200_new) == 0:
+    source = source.replace(phase200_old, phase200_new, 1)
+elif source.count(phase200_old) != 0 or source.count(phase200_new) != 1:
+    raise SystemExit("M1 sprint alignment expected exactly one Phase200 native pulse boundary")
 
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
 # is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps
@@ -178,4 +182,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: trusts composed Phase200 sprint timing, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: owns Phase200 native sprint timing, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")

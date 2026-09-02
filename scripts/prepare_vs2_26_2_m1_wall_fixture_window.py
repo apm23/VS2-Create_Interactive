@@ -12,27 +12,25 @@ verifier_source = verifier.read_text(encoding="utf-8")
 # Production-world #693 starts the disposable forward pulse at tick 17 after only two stationary
 # supported samples (ticks 15-16), while the production carry gate intentionally requires five.
 # That makes the standing-before-walk proof impossible before locomotion changes contact ownership.
-# Delay only the harness KeyMapping pulse by three more ticks and keep the same three-tick pulse
-# length. This does not move/reposition the player or alter carry, collision, velocity, gravity,
-# train state, or world state; it only lets the existing standing carry proof complete first.
+# Production-world #695 then proves the three sampled sprint ticks (start+4..+6) are consumed one
+# callback before material horizontal movement becomes visible: the first real local displacement is
+# observed at start+7, exactly when the old follow-up sequencer took over and released sprint. Keep
+# the vanilla forward+sprint KeyMappings alive through that observed movement callback, then allow
+# follow-up inputs on start+8. Harness timing only; no position, velocity, carry, collision, gravity,
+# train state, or world state is synthesized.
 walk_pulse_old = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
-walk_pulse_new = 'boolean pulse = self.tickCount >= startTick + 4 && self.tickCount <= startTick + 6 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
+walk_pulse_new = 'boolean pulse = self.tickCount >= startTick + 4 && self.tickCount <= startTick + 7 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
 if source.count(walk_pulse_old) != 2:
     raise SystemExit("M1 standing carry sequencing expected two delayed forward pulse boundaries")
 source = source.replace(walk_pulse_old, walk_pulse_new)
 
-# Production-world #694 proves the delayed native forward+sprint pulse now begins at ticks 20-22,
-# but the disposable follow-up sequencer still treats walkStart+4 (tick 20) as permission to begin
-# backward/strafe setup. That collides with the first sprint aiStep, so Phase188 never observes a
-# completed native sprint acceptance even though the player remains grounded and support-healthy.
-# Let the three-tick vanilla forward+sprint pulse finish before follow-up inputs can start. Harness
-# sequencing only: this changes KeyMapping timing, not player motion, carry, collision, or train state.
+# Keep follow-up backward/strafe/jump sequencing strictly after the extended native sprint window.
 walk_seen_old = '''            if (self.tickCount >= startTick + 4) {
                 vs2$walkConfirmedTick = startTick + 4;
                 return true;
             }'''
-walk_seen_new = '''            if (self.tickCount >= startTick + 7) {
-                vs2$walkConfirmedTick = startTick + 7;
+walk_seen_new = '''            if (self.tickCount >= startTick + 8) {
+                vs2$walkConfirmedTick = startTick + 8;
                 return true;
             }'''
 if source.count(walk_seen_old) != 1:
@@ -171,4 +169,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: lets standing proof finish, keeps the native sprint pulse ahead of follow-up inputs, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: lets standing proof finish, keeps native sprint through the observed forward movement callback, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")

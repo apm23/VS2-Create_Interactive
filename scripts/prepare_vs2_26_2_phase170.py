@@ -26,6 +26,14 @@ contact_source = contact_trace.read_text(encoding="utf-8")
 # sibling Create carriages apply native contact in one LocalPlayer tick. Preserve the historical
 # globals, but also publish a per-carriage application tick so later fixture accounting can observe
 # exact active-carriage native evidence even when a sibling writes afterward in the same tick.
+#
+# Production-world #704 proves the same-tick suppression must also be carriage-scoped. During the
+# first native locomotion handoff, strict support/active ownership moved to carriage 7 while Create
+# still emitted native contact from carriage 5 for ticks 19-21. The old global tick predicate treated
+# that sibling application as if carriage 7 had applied and disabled the already-existing bounded
+# recovery on the actual active carriage, producing multi-block local discontinuities. Suppress only
+# when the same active carriage owns the same-tick native application; no carry vector or physics is
+# added here.
 
 contact_anchor = '''        net.minecraft.world.phys.Vec3 motion = cir.getReturnValue();
         LOGGER.info(
@@ -53,7 +61,9 @@ old_decl = "boolean phase161SupportedLocomotionNativeLoss = productionSmoke && e
 new_decl = '''boolean phase170FixtureWalkActive = productionSmokeFixture
             && phase154WalkStarted && !phase154WalkFinished;
         boolean phase170NativeContactAppliedThisTick = Integer.toString(player.tickCount).equals(
-            System.getProperty("vs2.phase170NativeContactApplicationTick"));
+            System.getProperty("vs2.phase170NativeContactApplicationTick"))
+            && Integer.toString(carriage.getId()).equals(
+                System.getProperty("vs2.phase170NativeContactApplicationCarriageId"));
         boolean phase170FixtureWalkRecoveryWindow = phase170FixtureWalkActive
             && !phase170NativeContactAppliedThisTick;
         boolean phase170RecoveryLocomotionWindow = phase170FixtureWalkRecoveryWindow
@@ -137,6 +147,8 @@ required = [
     "phase170RecoveryLocomotionWindow",
     "phase161LocomotionWindow",
     "vs2.phase170NativeContactApplicationTick",
+    "vs2.phase170NativeContactApplicationCarriageId",
+    "Integer.toString(carriage.getId()).equals(",
     "&& phase170RecoveryLocomotionWindow",
     "phase170FixtureWalkRecoveryWindow || Integer.toString(player.tickCount - 1)",
     "GATE_E_PHASE170_NATIVE_CONTACT_SUPPRESSES_RECOVERY",
@@ -174,4 +186,4 @@ for forbidden in [
 
 contact_trace.write_text(contact_source, encoding="utf-8")
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 170: consumes Phase161 locomotion-window abstraction, tracks exact native application per carriage, and suppresses fixture recovery when Create native contact already applied this tick")
+print("Phase 170: consumes Phase161 locomotion-window abstraction, tracks exact native application per carriage, and suppresses fixture recovery only for same-carriage native contact")

@@ -31,15 +31,16 @@ if source.count(walk_pulse_old) != 2:
 source = source.replace(walk_pulse_old, walk_pulse_new)
 
 # Production-world #714 proves the delayed forward+sprint KeyMappings can exist without any native
-# LocalPlayer aiStep consuming them in the headless client: Phase198's fallback still considered only
-# the obsolete start..start+3 window, while the composed authoritative pulse now lives at start+4..+7.
-# Align that existing fallback window with the same bounded pulse. This only decides when the harness
-# calls vanilla LocalPlayer.aiStep if the normal headless tick skipped it; it does not write position,
-# velocity, carry, collision response, gravity, train state, or world state.
-fallback_walk_old = 'boolean walkWindow = self.tickCount >= startTick && self.tickCount <= startTick + 3;'
+# LocalPlayer aiStep consuming them in the headless client. Production-world #715 then proves the
+# composition order matters: M1 strafe alignment has already guarded the Phase198 walkWindow before
+# this pass runs, so match that composed form and move it to the same authoritative start+4..+7
+# window while dropping the provisional completion guard just like the two forward pulse sites.
+# This only decides when the harness calls vanilla LocalPlayer.aiStep if normal headless tick skipped
+# it; it does not write position, velocity, carry, collision response, gravity, train, or world state.
+fallback_walk_old = 'boolean walkWindow = self.tickCount >= startTick && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
 fallback_walk_new = 'boolean walkWindow = self.tickCount >= startTick + 4 && self.tickCount <= startTick + 7;'
 if source.count(fallback_walk_old) != 1:
-    raise SystemExit("M1 standing carry sequencing expected one headless native aiStep fallback window")
+    raise SystemExit("M1 standing carry sequencing expected one composed guarded headless native aiStep fallback window")
 source = source.replace(fallback_walk_old, fallback_walk_new, 1)
 
 # Keep follow-up backward/strafe/jump sequencing strictly after the extended native sprint window.

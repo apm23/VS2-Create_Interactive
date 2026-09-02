@@ -51,14 +51,22 @@ if "boolean phase154Confirmed = player.isSprinting() && phase154WalkSupportHealt
 
 # The final proof must measure material locomotion across the same sibling-safe accumulated local
 # path used by Phase182 rather than a start-vs-current chord that can shrink when the train turns.
+# Production-world #716 exposed an idempotence bug here: final_distance_new already appeared in the
+# pre-reset predicate above, so the old global "new not in source" guard skipped this distinct final
+# predicate and left phase154LocalDistance >= 0.20 active. Replace the final old predicate whenever it
+# is still present; otherwise require exactly two sibling-safe threshold occurrences (pre-reset + final).
 # This remains read/acceptance logic only; the player and carriage are never moved by this pass.
 final_distance_old = "phase154LocalDistance >= 0.20 && phase154LocalDistance <= 4.00;"
 final_distance_new = "phase165WalkPathDistance >= 0.10 && phase165WalkPathDistance <= 4.00;"
-if final_distance_new not in source:
-    final_distance_count = source.count(final_distance_old)
-    if final_distance_count != 1:
-        raise SystemExit(f"Phase 188 expected exactly one final walk distance threshold, found {final_distance_count}")
+final_distance_count = source.count(final_distance_old)
+if final_distance_count == 1:
     source = source.replace(final_distance_old, final_distance_new, 1)
+elif final_distance_count != 0:
+    raise SystemExit(f"Phase 188 expected at most one final walk distance threshold, found {final_distance_count}")
+if source.count(final_distance_new) != 2:
+    raise SystemExit(
+        f"Phase 188 expected sibling-safe walk threshold at pre-reset and final confirmation, found {source.count(final_distance_new)}"
+    )
 
 # Keep the native sprint state explicit on the existing walk confirmation marker.
 sprint_log_old = '"GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick={} carriage_id={} local_start={} local_end={} local_distance={} duration_ticks={} on_ground={} broadphase={} support_healthy={} confirmed={} fixture_only=true",'

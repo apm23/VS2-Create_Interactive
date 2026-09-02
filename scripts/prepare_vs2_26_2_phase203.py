@@ -24,13 +24,26 @@ fixture_source = fixture_input.read_text(encoding="utf-8")
 # exact whole-statement Phase194 anchor is not composition-stable. Rewrite only the unique candidate
 # prefix and preserve whichever existing acquisition expression follows it, then alias the stricter
 # Phase203 candidate before the immediate-ready consumer. Harness composition only.
+#
+# Production-world #678 proves the remaining blocker is fixture admission rather than moving-train
+# carry: after the hard 32-attempt fixture acquisition boundary, carriage 2 supplies six consecutive
+# grounded, broadphase, strict-support, exact native Create applications with zero carriage-local
+# displacement, while Phase194's historical carry-health publication is absent and the walk never
+# arms. Treat that direct unassisted exact-native same-carriage state as carry proof for this fixture
+# branch only. Phase194's existing next-tick exact-native confirmation still rejects stale/sibling
+# ownership. This changes admission accounting only; no player/train/collision/physics state.
 old_prefix = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
                             && phase194ProvenNativeCarryHealth'''
-new_prefix = '''                        boolean phase203CarryHealthCandidate = !phase154WalkStarted
+new_prefix = '''                        boolean phase203DirectNativeCarryProof = productionSmokeFixture
+                            && fixtureContactAcquireTicks >= 32
+                            && phase81PhysicalSupport
+                            && Integer.toString(player.tickCount).equals(System.getProperty(
+                                "vs2.phase170NativeContactApplicationTick." + phase154Carriage.getId()));
+                        boolean phase203CarryHealthCandidate = !phase154WalkStarted
                             && phase154SupportNow
                             && phase154Carriage.getId() == carryBaselineCarriageId
                             && collisionEligible && broadphaseOverlap && player.onGround()
-                            && phase194ProvenNativeCarryHealth'''
+                            && (phase194ProvenNativeCarryHealth || phase203DirectNativeCarryProof)'''
 if source.count(old_prefix) != 1:
     raise SystemExit("Phase 203 expected one Phase194 direct-native candidate prefix")
 source = source.replace(old_prefix, new_prefix, 1)
@@ -40,12 +53,13 @@ source = source.replace(old_prefix, new_prefix, 1)
 # broadphase, exact-native Phase185 frames at ticks 19-20; those same frames already satisfy the
 # production carry proof with zero local span, but the third frame loses fresh native application so
 # input is never admitted. Accept the already-proven two-frame native readiness. The candidate still
-# requires Phase194 proven native carry health, same-baseline support, grounded broadphase collision,
-# and the existing next-tick exact-native confirmation. Fixture admission only; no player movement,
-# collision response, carry vector, train/world state, Create behavior, or VS2 physics is modified.
+# requires Phase194 proven native carry health or the #678 unassisted exact-native proof, same-baseline
+# support, grounded broadphase collision, and the existing next-tick exact-native confirmation.
+# Fixture admission only; no player movement, collision response, carry vector, train/world state,
+# Create behavior, or VS2 physics is modified.
 settled_walk_gate_old = '''                            && phase194ProvenNativeCarryHealth
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);'''
-settled_walk_gate_new = '''                            && phase194ProvenNativeCarryHealth
+settled_walk_gate_new = '''                            && (phase194ProvenNativeCarryHealth || phase203DirectNativeCarryProof)
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32 || phase185WalkReadyTicks >= 2);'''
 if source.count(settled_walk_gate_old) != 1:
     raise SystemExit("Phase 203 expected one hard direct-native walk acquisition gate")
@@ -183,12 +197,14 @@ if fixture_source.count(jump_fallback_old) != 1:
 fixture_source = fixture_source.replace(jump_fallback_old, jump_fallback_new, 1)
 
 required = [
+    "phase203DirectNativeCarryProof",
     "phase203CarryHealthCandidate",
     "phase154SupportNow",
     "phase154Carriage.getId() == carryBaselineCarriageId",
     "collisionEligible && broadphaseOverlap && player.onGround()",
-    "phase194ProvenNativeCarryHealth",
+    "phase194ProvenNativeCarryHealth || phase203DirectNativeCarryProof",
     "fixtureContactAcquireTicks >= 32",
+    "vs2.phase170NativeContactApplicationTick.",
     "phase185WalkReadyTicks >= 2",
     "phase194ConfirmedDirectNativeReady",
     "phase194PendingWalkAge == 1",
@@ -238,4 +254,4 @@ for forbidden in [
 client_probe.write_text(source, encoding="utf-8")
 contact_lease.write_text(lease_source, encoding="utf-8")
 fixture_input.write_text(fixture_source, encoding="utf-8")
-print("Phase 203: preserves bounded Create contact ownership, admits already-settled native walk readiness, starts native reverse/strafe before fixture support decays, and keeps native aiStep alive through the headless jump arc")
+print("Phase 203: preserves bounded Create contact ownership, admits unassisted exact-native carry proof for fixture locomotion, starts native reverse/strafe before fixture support decays, and keeps native aiStep alive through the headless jump arc")

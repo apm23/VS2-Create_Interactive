@@ -13,8 +13,9 @@ source = client_probe.read_text(encoding="utf-8")
 # the cumulative compound branch structurally rather than the obsolete bare +12 form. Phase166
 # already defines delayed fixture-pulse accounting through +20 ticks. Harness-only: no player
 # movement, carry vector, collision, train/world state, inventory, Create behavior, or VS2 physics
-# mutation is introduced. Phase188 now accepts material native sprint from 0.20 blocks, so keep this
-# downstream composition guard aligned with that same fixture-only threshold.
+# mutation is introduced. Phase188 now accepts material native sprint from the sibling-safe 0.10
+# block path threshold, so keep this downstream composition guard aligned with that fixture-only
+# acceptance instead of requiring the obsolete 0.20 anchor.
 
 old = "if (player.tickCount <= phase154WalkStartTick + 12 && !phase188PreResetWalkReady) {"
 new = "if (player.tickCount <= phase154WalkStartTick + 20 && !phase188PreResetWalkReady) {"
@@ -28,7 +29,7 @@ required = [
     "phase166FixturePulseObservation",
     "phase188PreResetWalkReady",
     "player.tickCount <= phase154WalkStartTick + 20 && !phase188PreResetWalkReady",
-    "phase165WalkPathDistance >= 0.20",
+    "phase165WalkPathDistance >= 0.10",
     "player.tickCount >= phase154WalkStartTick + 3",
     "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
     "GATE_E_PHASE166_FIXTURE_PULSE_RESPONSE",

@@ -17,7 +17,15 @@ source = client_probe.read_text(encoding="utf-8")
 #
 # Production-world #437 proved a sibling native application can arrive on the third readiness tick
 # before the walk-active Phase172 property exists. Pre-arm only that existing disposable sibling
-# de-dup guard after two settled ticks.
+# de-dup guard once the frame is settled.
+#
+# Production-world #687 proved waiting for a second ready tick is still one tick too late. Carriage 7
+# had strict physical support, fresh native evidence and the completed two-tick rebase settle at tick
+# 26, but the guard was not yet armed. At tick 27 stale sibling carriage 5 therefore became the first
+# native owner and Phase190 suppressed carriage 7 even though carriage 7's contact motion exactly
+# matched its frame step. Publish the already-validated active carriage on the first Phase185 ready
+# tick so the existing Phase172 previous-health sibling-first rejection owns that boundary. This does
+# not relax the separate locomotion-start threshold and does not synthesize any motion.
 #
 # Production-world #438 then exposed the important distinction between "health sample missing" and
 # "health sample measured bad": carriage 10 had a same-tick Phase170 application at tick 19, but the
@@ -72,7 +80,7 @@ if "GATE_E_PHASE185_SETTLED_WALK_READY" not in source:
                             }
                             if (phase185WalkReadyNow
                                     && phase185WalkReadyCarriageId == phase154Carriage.getId()
-                                    && phase185WalkReadyTicks >= 2) {
+                                    && phase185WalkReadyTicks >= 1) {
                                 System.setProperty("vs2.phase172WalkActiveCarriageId", Integer.toString(phase154Carriage.getId()));
                                 LOGGER.info(
                                     "GATE_E_PHASE185_SIBLING_GUARD_PREARM player_tick={} carriage_id={} ready_ticks={} fixture_only=true existing_guard_only=true",
@@ -110,7 +118,7 @@ required = [
     "GATE_E_PHASE185_SETTLED_WALK_READY",
     "GATE_E_PHASE185_SIBLING_GUARD_PREARM",
     "vs2.phase172WalkActiveCarriageId",
-    "phase185WalkReadyTicks >= 2",
+    "phase185WalkReadyTicks >= 1",
     "phase185WalkReadyTicks >= 3",
     "balance_measurement_fresh={}",
     "direct_native_fallback={}",
@@ -134,5 +142,5 @@ for forbidden in [
         raise SystemExit("Phase 185 introduced forbidden gameplay mutation token: " + forbidden)
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 185: preserves downstream two-frame direct-native composition seam while prearming sibling guard after two settled frames")
+print("Phase 185: preserves downstream locomotion gate while prearming sibling guard on the first strict native-ready frame")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase186.py")), run_name="__main__")

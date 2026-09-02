@@ -37,17 +37,14 @@ if source.count(walk_seen_old) != 1:
     raise SystemExit("M1 sprint sequencing expected one early follow-up fallback boundary")
 source = source.replace(walk_seen_old, walk_seen_new, 1)
 
-# Production-world #697 proves the ordinary forward input is actually sampled on start+1..+3,
-# while the Phase200 native applyInput helper reports pulse=false and therefore leaves keySprint
-# false on those exact callbacks. Phase200 owns the only unguarded four-tick pulse predicate; the
-# other two cumulative pulse sites above include productionFixtureWalkConfirmed. Replace that exact
-# Phase200 predicate directly instead of trying to parse nested Java braces in the generated helper.
-# Input-harness alignment only: no gameplay/physics state is written.
-phase200_pulse_old = 'boolean pulse = self.tickCount >= startTick && self.tickCount <= startTick + 3;'
-phase200_pulse_new = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
-if source.count(phase200_pulse_old) != 1:
-    raise SystemExit("M1 sprint alignment expected one unguarded Phase200 pulse predicate")
-source = source.replace(phase200_pulse_old, phase200_pulse_new, 1)
+# The immediately preceding M1 input-timing composition pass already owns Phase200's native
+# applyInput pulse and rewrites it to the observed start+1..+3 sampling window. Do not mutate the
+# same boundary a second time here: just assert that the composed source contains the intended
+# unguarded Phase200 predicate exactly once. This keeps this wall-fixture pass independent from the
+# earlier input-timing implementation detail and avoids a prepare-time false failure.
+phase200_expected = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
+if source.count(phase200_expected) != 1:
+    raise SystemExit("M1 sprint alignment expected composed Phase200 start+1..+3 pulse predicate")
 
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
 # is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps
@@ -181,4 +178,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: lets standing proof finish, aligns sprint with the sampled forward callbacks, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: trusts composed Phase200 sprint timing, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")

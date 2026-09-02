@@ -32,9 +32,15 @@ fixture_source = fixture_input.read_text(encoding="utf-8")
 # arms. Treat that direct unassisted exact-native same-carriage state as carry proof for this fixture
 # branch only. Phase194's existing next-tick exact-native confirmation still rejects stale/sibling
 # ownership. This changes admission accounting only; no player/train/collision/physics state.
-old_prefix = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
-                            && phase194ProvenNativeCarryHealth'''
-new_prefix = '''                        boolean phase203DirectNativeCarryProof = productionSmokeFixture
+#
+# Production-world #679 then failed before Minecraft launch because the #678 rewrite first replaced
+# the Phase194 candidate prefix and immediately tried to match the consumed pre-rewrite health+gate
+# fragment a second time. Rewrite the complete candidate atomically instead. This is cumulative-prepare
+# correctness only and leaves the intended fixture admission semantics unchanged.
+old_candidate = '''                        boolean phase194DirectNativeCandidate = !phase154WalkStarted
+                            && phase194ProvenNativeCarryHealth
+                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);'''
+new_candidate = '''                        boolean phase203DirectNativeCarryProof = productionSmokeFixture
                             && fixtureContactAcquireTicks >= 32
                             && phase81PhysicalSupport
                             && Integer.toString(player.tickCount).equals(System.getProperty(
@@ -43,27 +49,11 @@ new_prefix = '''                        boolean phase203DirectNativeCarryProof =
                             && phase154SupportNow
                             && phase154Carriage.getId() == carryBaselineCarriageId
                             && collisionEligible && broadphaseOverlap && player.onGround()
-                            && (phase194ProvenNativeCarryHealth || phase203DirectNativeCarryProof)'''
-if source.count(old_prefix) != 1:
-    raise SystemExit("Phase 203 expected one Phase194 direct-native candidate prefix")
-source = source.replace(old_prefix, new_prefix, 1)
-
-# Production-world #667 proves the hard three-frame settled-native admission is stale for this
-# disposable direct-native branch. The real train supplies two consecutive strict-support, grounded,
-# broadphase, exact-native Phase185 frames at ticks 19-20; those same frames already satisfy the
-# production carry proof with zero local span, but the third frame loses fresh native application so
-# input is never admitted. Accept the already-proven two-frame native readiness. The candidate still
-# requires Phase194 proven native carry health or the #678 unassisted exact-native proof, same-baseline
-# support, grounded broadphase collision, and the existing next-tick exact-native confirmation.
-# Fixture admission only; no player movement, collision response, carry vector, train/world state,
-# Create behavior, or VS2 physics is modified.
-settled_walk_gate_old = '''                            && phase194ProvenNativeCarryHealth
-                            && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32);'''
-settled_walk_gate_new = '''                            && (phase194ProvenNativeCarryHealth || phase203DirectNativeCarryProof)
+                            && (phase194ProvenNativeCarryHealth || phase203DirectNativeCarryProof)
                             && (!productionSmokeFixture || fixtureContactAcquireTicks >= 32 || phase185WalkReadyTicks >= 2);'''
-if source.count(settled_walk_gate_old) != 1:
-    raise SystemExit("Phase 203 expected one hard direct-native walk acquisition gate")
-source = source.replace(settled_walk_gate_old, settled_walk_gate_new, 1)
+if source.count(old_candidate) != 1:
+    raise SystemExit("Phase 203 expected one complete Phase194 direct-native candidate")
+source = source.replace(old_candidate, new_candidate, 1)
 
 consumer_anchor = '''                        boolean phase194ImmediateHealthyNativeReady = phase194DirectNativeCandidate'''
 consumer_replacement = '''                        boolean phase194DirectNativeCandidate = phase203CarryHealthCandidate;
@@ -242,7 +232,7 @@ fixture_missing = [token for token in fixture_required if token not in fixture_s
 if fixture_missing:
     raise SystemExit("Phase 203 lost compact native M1 fixture timing anchors: " + ", ".join(fixture_missing))
 
-inserted = new_prefix + settled_walk_gate_new + consumer_replacement + lease_new + lease_log_new + backward_new + strafe_new + jump_fallback_new
+inserted = new_candidate + consumer_replacement + lease_new + lease_log_new + backward_new + strafe_new + jump_fallback_new
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",

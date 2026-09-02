@@ -54,6 +54,47 @@ if client_source.count(phase83_old) != 1:
     raise SystemExit("M1 grounded sibling bridge expected one Phase83 exact-baseline gate")
 client_source = client_source.replace(phase83_old, phase83_new, 1)
 
+# Production-world #690 proves the complementary same-carriage boundary. Carriage 10 has strict
+# grounded support and uses the existing authoritative Create-frame -> VS2 EntityDragger bridge at
+# tick 24, then the simplified-support sampler transiently reports false at tick 25 while the exact
+# baseline carriage is still broadphase-valid and the player remains grounded. With no same-tick
+# native Create application, Phase83 currently drops the frame for exactly that sampling gap and the
+# player loses the full ~7.11-block carriage step. Lease only the immediately preceding supported
+# baseline for one grounded tick. This is still the same previous->current Create frame transform;
+# it adds no velocity, gravity, collision response, teleport, or train/world state.
+phase83_gap_old = '''            boolean phase83GroundedSupportGap = player.onGround()
+                && phase81PhysicalSupport
+                && phase83CurrentEnvelopeEligible
+                && !phase83NativeAppliedThisTick;
+            boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick
+                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
+            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick
+                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''
+phase83_gap_new = '''            boolean phase83GroundedSupportGap = player.onGround()
+                && phase81PhysicalSupport
+                && phase83CurrentEnvelopeEligible
+                && !phase83NativeAppliedThisTick;
+            boolean phase83GroundedSupportedBaselineLease = player.onGround()
+                && phase83ExactBaselineCarriage
+                && phase83SupportedBaselineAge == 1
+                && phase83CurrentEnvelopeEligible
+                && !phase83NativeAppliedThisTick;
+            boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick
+                && (phase83GroundedSupportGap || phase83GroundedSupportedBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
+            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick
+                && (phase83GroundedSupportGap || phase83GroundedSupportedBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''
+if client_source.count(phase83_gap_old) != 1:
+    raise SystemExit("M1 grounded support-gap bridge expected one Phase83 eligibility block")
+client_source = client_source.replace(phase83_gap_old, phase83_gap_new, 1)
+
+phase83_final_old = '''                && phase83ExternalFrameLease
+                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {'''
+phase83_final_new = '''                && phase83ExternalFrameLease
+                && (phase83GroundedSupportGap || phase83GroundedSupportedBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease)) {'''
+if client_source.count(phase83_final_old) != 1:
+    raise SystemExit("M1 grounded support-gap bridge expected one Phase83 final lease gate")
+client_source = client_source.replace(phase83_final_old, phase83_final_new, 1)
+
 # Keep the read-only proof aligned with the actual occupied side and the expanded pre-jump window.
 replacements = [
     (
@@ -89,4 +130,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: keeps bounded wall timing and lets strict grounded sibling support own the existing VS2 frame bridge on native-gap ticks")
+print("M1 wall fixture: keeps bounded wall timing, bridges strict grounded sibling gaps, and preserves one supported baseline frame through a single grounded sampling gap")

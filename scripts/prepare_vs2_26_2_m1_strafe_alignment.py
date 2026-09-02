@@ -202,8 +202,8 @@ verifier_replacements = [
         'if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=2")',
     ),
     (
-        'start_z=before[-1][4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)\nif min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
-        'start_z=before[-1][4]; wall_z=[s[4] for s in after]; max_z=max(wall_z)\nif max_z>=2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)\nif min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; max_z=max(wall_z)\nif max_z>=2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
     ),
     (
         'strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) <= -0.02\nmaterial_approach = start_z-min_z >= 0.015',
@@ -216,15 +216,13 @@ verifier_replacements = [
 ]
 for old, new in verifier_replacements:
     if verifier_source.count(old) != 1:
-        raise SystemExit("M1 +Z wall verifier expected one exact legacy boundary: " + old[:72])
+        raise SystemExit("M1 +Z wall verifier expected one exact current boundary: " + old[:72])
     verifier_source = verifier_source.replace(old, new, 1)
 
-# The current production smoke proves a legitimate Create-native sibling handoff can occur after
-# the strafe request, once the transient frame seam has passed. The verifier previously looked for
-# that rebase only on the exact request tick and then required its supported streak to begin there,
-# rejecting the native wall samples that begin on the authoritative sibling at the later rebase.
-# Follow the first identity-only native-contact-owner rebase inside the bounded strafe window and
-# start the unchanged three-frame solid-wall streak there. Verifier bookkeeping only.
+# The wall verifier now selects the actual supported three-tick same-carriage plateau directly.
+# Older verifier revisions needed a separate exact-request-tick rebase rewrite; keep that rewrite
+# only when its legacy block is still present. Current plateau selection already follows a native
+# sibling handoff without pinning proof to the request-tick carriage. Verifier bookkeeping only.
 wall_handoff_anchor = '''pre_wall_carriage=before[-1][1]
 rebase_match=re.search(
     rf"GATE_E_PHASE136_SUPPORTED_SIBLING_REBASE[^\\n]*previous_carriage_id={pre_wall_carriage}[^\\n]*carriage_id=(\\d+)[^\\n]*player_tick={strafe_request_tick}[^\\n]*native_contact_owner=true[^\\n]*identity_only=true",
@@ -248,9 +246,13 @@ for sample in after_window:
     if sample[0]!=expected_tick or sample[1]!=wall_carriage: break
     after.append(sample); expected_tick+=1
 if len(after)<3: raise SystemExit("M1 wall proof did not retain three consecutive samples on the Create-authoritative strafe carriage")'''
-if verifier_source.count(wall_handoff_anchor) != 1:
-    raise SystemExit("M1 wall handoff verifier expected one exact request-tick rebase boundary")
-verifier_source = verifier_source.replace(wall_handoff_anchor, wall_handoff_replacement, 1)
+if verifier_source.count(wall_handoff_anchor) == 1:
+    verifier_source = verifier_source.replace(wall_handoff_anchor, wall_handoff_replacement, 1)
+elif not (
+    'start_sample=pre_window[-1]' in verifier_source
+    and 'three consecutive supported samples on one Create carriage during strafe' in verifier_source
+):
+    raise SystemExit("M1 wall handoff verifier lost both legacy rebase and current plateau boundaries")
 
 required_source = [
     'if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE)',
@@ -290,8 +292,9 @@ required_verifier = [
     'max_z=max(wall_z)',
     'float(strafe_move.group(3)) >= 0.02',
     'max(candidate_z)-start_z>=0.015',
-    'wall_start_tick=int(rebase_match.group(2))',
 ]
+if 'start_sample=pre_window[-1]' not in verifier_source:
+    required_verifier.append('wall_start_tick=int(rebase_match.group(2))')
 missing = [token for token in required_verifier if token not in verifier_source]
 if missing:
     raise SystemExit("M1 +Z wall verifier lost anchors: " + ", ".join(missing))

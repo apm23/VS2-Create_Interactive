@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1] / "upstream"
+fixture_input = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
+verifier = Path(__file__).resolve().with_name("prepare_vs2_26_2_m1_jump_proof.py")
+source = fixture_input.read_text(encoding="utf-8")
+verifier_source = verifier.read_text(encoding="utf-8")
+
+# Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
+# is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps
+# six ticks after the request, so it never reaches any wall: the run only moves to about Z=+0.73
+# before jump. Aim the disposable vanilla right KeyMapping at the nearby occupied +Z wall and keep
+# it active long enough to reach a real collision plateau before jump. Harness input/view timing
+# only: no position, velocity, collision response, carry vector, gravity, train, or world state.
+yaw_old = '''        if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE) {
+            self.setYRot(90.0F);
+        }'''
+yaw_new = '''        if (strafeWindow && vs2$strafeStartTick == Integer.MIN_VALUE) {
+            self.setYRot(-90.0F);
+        }'''
+if source.count(yaw_old) != 2:
+    raise SystemExit("M1 wall fixture expected two final negative-Z orientation sites")
+source = source.replace(yaw_old, yaw_new)
+
+window_old = 'return strafeElapsed >= 0 && strafeElapsed <= 3;'
+window_new = 'return strafeElapsed >= 0 && strafeElapsed <= 12;'
+if source.count(window_old) != 1:
+    raise SystemExit("M1 wall fixture expected one short strafe window")
+source = source.replace(window_old, window_new, 1)
+
+jump_old = 'self.tickCount >= vs2$strafeStartTick + 6'
+jump_new = 'self.tickCount >= vs2$strafeStartTick + 15'
+if source.count(jump_old) != 1:
+    raise SystemExit("M1 wall fixture expected one short post-strafe jump delay")
+source = source.replace(jump_old, jump_new, 1)
+
+# Keep the read-only proof aligned with the actual occupied side and the expanded pre-jump window.
+replacements = [
+    (
+        'wall_geometry_seen = any(re.search(r"(?:^|\\|)-?\\d+, [123], -2(?:\\||$)", m.group(4)) for m in client_state_pattern.finditer(text))',
+        'wall_geometry_seen = any(re.search(r"(?:^|\\|)-?\\d+, [123], 2(?:\\||$)", m.group(4)) for m in client_state_pattern.finditer(text))',
+    ),
+    (
+        'if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")',
+        'if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=2")',
+    ),
+    (
+        'after_window=[s for s in samples if strafe_request_tick<=s[0]<=min(strafe_request_tick+9, request_tick-1) and s[5] and s[6] and s[7]]',
+        'after_window=[s for s in samples if strafe_request_tick<=s[0]<=min(strafe_request_tick+14, request_tick-1) and s[5] and s[6] and s[7]]',
+    ),
+    (
+        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)\nif min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; max_z=max(wall_z)\nif max_z>=2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+    ),
+    (
+        'strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) <= -0.02\nmaterial_approach = start_z-min_z >= 0.015',
+        'strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) >= 0.02\nmaterial_approach = max_z-start_z >= 0.015',
+    ),
+    (
+        'if stable_plateau and (start_z-min(candidate_z)>=0.015 or strafe_requested_toward_wall):',
+        'if stable_plateau and (max(candidate_z)-start_z>=0.015 or strafe_requested_toward_wall):',
+    ),
+]
+for old, new in replacements:
+    if verifier_source.count(old) != 1:
+        raise SystemExit("M1 wall fixture lost expected verifier boundary: " + old[:80])
+    verifier_source = verifier_source.replace(old, new, 1)
+
+fixture_input.write_text(source, encoding="utf-8")
+verifier.write_text(verifier_source, encoding="utf-8")
+print("M1 wall fixture: aims native right-strafe at nearby +Z wall and defers jump until bounded collision window completes")

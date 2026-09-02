@@ -253,9 +253,9 @@ jobs:
               best = []
               for sample in samples:
                   broadphase, on_ground, baseline_captured, physical_support, collision_eligible, baseline_frame = sample[5:11]
-                  valid = broadphase and on_ground and baseline_captured and collision_eligible and baseline_frame
-                  if require_physical_support:
-                      valid = valid and physical_support
+                  valid = broadphase and on_ground and collision_eligible and (
+                      physical_support if require_physical_support else (baseline_captured and baseline_frame)
+                  )
                   if not valid:
                       streak = []
                       continue

@@ -21,6 +21,24 @@ if source.count(walk_pulse_old) != 2:
     raise SystemExit("M1 standing carry sequencing expected two delayed forward pulse boundaries")
 source = source.replace(walk_pulse_old, walk_pulse_new)
 
+# Production-world #694 proves the delayed native forward+sprint pulse now begins at ticks 20-22,
+# but the disposable follow-up sequencer still treats walkStart+4 (tick 20) as permission to begin
+# backward/strafe setup. That collides with the first sprint aiStep, so Phase188 never observes a
+# completed native sprint acceptance even though the player remains grounded and support-healthy.
+# Let the three-tick vanilla forward+sprint pulse finish before follow-up inputs can start. Harness
+# sequencing only: this changes KeyMapping timing, not player motion, carry, collision, or train state.
+walk_seen_old = '''            if (self.tickCount >= startTick + 4) {
+                vs2$walkConfirmedTick = startTick + 4;
+                return true;
+            }'''
+walk_seen_new = '''            if (self.tickCount >= startTick + 7) {
+                vs2$walkConfirmedTick = startTick + 7;
+                return true;
+            }'''
+if source.count(walk_seen_old) != 1:
+    raise SystemExit("M1 sprint sequencing expected one early follow-up fallback boundary")
+source = source.replace(walk_seen_old, walk_seen_new, 1)
+
 # Production-world #684 starts native right-strafe near local Z=+1.02, while the occupied +Z side
 # is at Z=+2. The current post-composition fixture points toward the much farther -Z wall and jumps
 # six ticks after the request, so it never reaches any wall: the run only moves to about Z=+0.73
@@ -153,4 +171,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: delays locomotion until standing carry proof, keeps bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and preserves one supported baseline frame through a single grounded sampling gap")
+print("M1 wall fixture: lets standing proof finish, keeps the native sprint pulse ahead of follow-up inputs, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases one supported baseline frame through a single grounded sampling gap")

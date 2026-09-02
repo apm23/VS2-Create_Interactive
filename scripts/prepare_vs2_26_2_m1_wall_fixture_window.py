@@ -20,11 +20,12 @@ verifier_source = verifier.read_text(encoding="utf-8")
 # train state, or world state is synthesized.
 #
 # The cumulative M1 strafe-alignment pass deliberately guards both forward pulse sites, including
-# Phase200's native applyInput pulse, and M1 input-timing then shifts both to start+1..+3. Therefore
-# these two guarded boundaries are the complete composed forward pulse surface; do not normalize an
-# unguarded Phase200 predicate a second time later in this pass.
-walk_pulse_old = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
-walk_pulse_new = 'boolean pulse = self.tickCount >= startTick + 4 && self.tickCount <= startTick + 7 && !Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");'
+# Phase200's native applyInput pulse, and M1 input-timing then shifts both to start+1..+3. Run #707
+# proved that the provisional walk-confirmed property must not cancel this bounded native pulse, so
+# the input-timing pass now removes that guard. Extend exactly those two composed unguarded pulse
+# boundaries here and preserve the same authoritative input ownership through start+7.
+walk_pulse_old = 'boolean pulse = self.tickCount >= startTick + 1 && self.tickCount <= startTick + 3;'
+walk_pulse_new = 'boolean pulse = self.tickCount >= startTick + 4 && self.tickCount <= startTick + 7;'
 if source.count(walk_pulse_old) != 2:
     raise SystemExit("M1 standing carry sequencing expected two delayed forward pulse boundaries")
 source = source.replace(walk_pulse_old, walk_pulse_new)
@@ -175,4 +176,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: extends both composed guarded sprint pulses, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases the exact previous native baseline frame through a one-tick grounded locomotion gap")
+print("M1 wall fixture: extends both composed authoritative sprint pulses, lets standing proof finish, preserves bounded wall timing, restricts sibling frame bridging to the last Create-native owner, and leases the exact previous native baseline frame through a one-tick grounded locomotion gap")

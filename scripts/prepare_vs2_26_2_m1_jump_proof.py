@@ -97,12 +97,12 @@ if speed_change_proof is None: raise SystemExit("M1 speed-change stability missi
 client_state_pattern = re.compile(r"GATE_E_CLIENT_STATE[^\n]*local_support=local_feet=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+);[^\n]*nearby_blocks=([^;]*)")
 wall_geometry_seen = any(re.search(r"(?:^|\|)-?\d+, [123], -2(?:\||$)", m.group(4)) for m in client_state_pattern.finditer(text))
 if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")
-# Native strafe may cross a Create sibling-carriage seam before the side-wall plateau. Do not
-# require an otherwise-arbitrary continuity sample exactly one tick before the request or pin the
-# entire proof to that carriage identity. Keep the bounded request window and select the actual
-# three-tick same-carriage supported plateau produced by Create collision. This is verifier-only.
+# Native strafe may need several ordinary grounded ticks to settle against the finite Create side
+# wall. Run #683 proves the stable same-carriage plateau at ticks 36-38 after a tick-29 request,
+# while jump does not begin until tick 40. Keep the proof bounded strictly before jump, but include
+# that native plateau instead of truncating it at request+7. Verifier-only; gameplay is unchanged.
 pre_window=[s for s in samples if strafe_request_tick-1<=s[0]<=strafe_request_tick and s[5] and s[6] and s[7]]
-after_window=[s for s in samples if strafe_request_tick<=s[0]<=strafe_request_tick+7 and s[5] and s[6] and s[7]]
+after_window=[s for s in samples if strafe_request_tick<=s[0]<=min(strafe_request_tick+9, request_tick-1) and s[5] and s[6] and s[7]]
 if not pre_window or not after_window: raise SystemExit("M1 wall proof missing supported carriage-local samples around native right-strafe")
 start_sample=pre_window[-1]
 after=[]

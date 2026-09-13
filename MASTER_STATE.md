@@ -10,8 +10,9 @@ GitHub code is the implementation source of truth. This file is the durable proj
 
 ## Current state
 - project_state: `ROOT_REDESIGN — reference-frame / collision ownership boundary`
-- current_head: `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e`
-- last_good_commit: `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e` (exact-shape regression removed; not M1 complete)
+- current_head: `AUTO_RECONCILE_GIT_HEAD` (state-only `[skip ci]` ledger commits may advance Git HEAD; compare implementation files before treating that as a gameplay change)
+- implementation_head: `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e`
+- last_good_implementation_commit: `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e` (exact-shape regression removed; not M1 complete)
 - active_blocker: `native right-strafe leaves the supported carriage frame: Create contact ownership hands off across carriages while physical support disappears, VS2 EntityDragger continues external-frame reanchoring, and the player falls through/away before jump can arm`
 - active_hypothesis: `the remaining failure is unstable/double moving-frame ownership at the Create-contact ↔ VS2-EntityDragger boundary, not missing fixture input or a need for another collision workaround`
 - next_safe_action: `freeze gameplay mutation and build/inspect the smallest read-only ownership/collision micro-proof around the strafe-loss ticks: one active carriage, Create collision owner, VS2 external frame, transform order, physical-support state, and final allowed movement. Do not add leases/replays/clamps or change jump timing.`
@@ -51,7 +52,7 @@ Important: strafe INPUT/MOTION dispatch is green; post-strafe carriage support/c
 - production-world-smoke #720 regressed protected walking/reference continuity before wall/jump proof
 - experiment is locked failed and was reverted
 
-### revert commit `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e`
+### revert implementation `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e`
 - restores Phase39 runtime-only Create dependency and the previously proven LocalPlayer PlayerType.CLIENT bridge
 - removes the exact-shape redirect entirely
 
@@ -65,10 +66,10 @@ Important: strafe INPUT/MOTION dispatch is green; post-strafe carriage support/c
 - after strafe, the actual gameplay state still collapses at the ownership/collision boundary:
   - by tick 43 LocalPlayer is airborne at world Y about `-59.67`; saved baseline carriage is 7 while current contact/rebase work is on carriage 5
   - `GATE_E_PHASE81_SUPPORT_CONTINUITY` reports `same_carriage=false physical_support=false`
-  - VS2 `EntityDragger#reanchorEntityWithExternalFrame` still applies the carriage-frame translation while physical support is false
+  - VS2 `EntityDragger#reanchorEntityWithExternalFrame` still applies carriage-frame translation while physical support is false
   - carriage-local feet for carriage 5 are already below the carriage support plane (`local_feet ... y=-0.674...` at tick 43)
   - by tick 47 local feet are about `y=-1.0`, broadphase becomes false, and the player has left the real carriage envelope
-- no native jump request occurs because the healthy supported/native-contact prerequisites are already lost downstream of strafe; this is NOT evidence to change jump timing
+- no native jump request occurs because healthy supported/native-contact prerequisites are already lost downstream of strafe; this is NOT evidence to change jump timing
 - conclusion: revert is validated, but M1 remains blocked by Create/VS2 frame/collision ownership during lateral locomotion
 
 ## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
@@ -114,8 +115,9 @@ The next investigation must answer exactly one ownership question before gamepla
 
 ## Fresh-chat protocol
 1. Read this file completely.
-2. Inspect actual GitHub HEAD and reconcile it here.
-3. Inspect only latest relevant Actions needed for the active blocker.
-4. Respect protected/frozen green and failed-hypothesis locks.
-5. Continue only from `next_safe_action`.
-6. FINAL_READY is terminal and only the user may reopen development after it.
+2. Inspect actual GitHub HEAD.
+3. If `current_head` is `AUTO_RECONCILE_GIT_HEAD`, compare commits since `implementation_head`; state-only `[skip ci]` ledger commits do not count as gameplay changes.
+4. Inspect only latest relevant Actions needed for the active blocker.
+5. Respect protected/frozen green and failed-hypothesis locks.
+6. Continue only from `next_safe_action`.
+7. FINAL_READY is terminal and only the user may reopen development after it.

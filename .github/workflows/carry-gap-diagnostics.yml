@@ -22,15 +22,150 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
-      - name: Correlate native contact and replay seam
+      - name: Prove Create VS2 ownership ordering
         shell: bash
         run: |
           set -euo pipefail
           LOG="diagnostics/production-world-smoke.log"
           test -f "$LOG"
-          echo '=== carry gap correlation ==='
-          grep -E 'GATE_E_(CARRIAGE_LOCAL_CONTINUITY|CLIENT_CARRY_DELTA|PHASE85_CARRY_REPLAY|PHASE130_REPLAY_GUARD|PHASE170|PHASE171|PHASE177|PHASE179|PHASE181|PHASE189|PHASE190|PHASE193|PHASE194|PHASE201|PHASE202)' "$LOG" | tail -520 || true
-          echo '=== focused player ticks 14-26 ==='
-          grep -E 'player_tick=(1[4-9]|2[0-6])([^0-9]|$)' "$LOG" \
-            | grep -E 'GATE_E_(CARRIAGE_LOCAL_CONTINUITY|CLIENT_CARRY_DELTA|PHASE85_CARRY_REPLAY|PHASE130_REPLAY_GUARD|PHASE170|PHASE171|PHASE177|PHASE179|PHASE181|PHASE189|PHASE190|PHASE193|PHASE194|PHASE201|PHASE202)' \
-            || true
+          python3 - "$LOG" <<'PY'
+          import re, sys
+          from collections import defaultdict
+
+          path = sys.argv[1]
+          raw = open(path, encoding="utf-8", errors="replace").read()
+          ansi = re.compile(r"\x1b\[[0-9;]*m")
+          lines = [ansi.sub("", line) for line in raw.splitlines()]
+
+          def first_tick(marker):
+              for line in lines:
+                  if marker not in line:
+                      continue
+                  m = re.search(r"player_tick=(\d+)", line)
+                  if m:
+                      return int(m.group(1))
+              return None
+
+          walk_tick = first_tick("GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED")
+          strafe_tick = first_tick("GATE_E_M1_NATIVE_STRAFE_REQUESTED")
+          if walk_tick is None or strafe_tick is None:
+              raise SystemExit("OWNERSHIP_MICRO_PROOF insufficient locomotion markers")
+
+          support = []
+          support_re = re.compile(
+              r"GATE_E_PHASE81_SUPPORT_CONTINUITY .*saved_carriage_id=(-?\d+) .*current_carriage_id=(-?\d+) "
+              r".*same_carriage=(true|false) .*physical_support=(true|false) .*player_tick=(\d+) "
+              r".*on_ground=(true|false) .*collision_eligible=(true|false) .*broadphase_overlap=(true|false)"
+          )
+          for index, line in enumerate(lines):
+              m = support_re.search(line)
+              if m:
+                  support.append({
+                      "index": index,
+                      "saved": int(m.group(1)),
+                      "current": int(m.group(2)),
+                      "same": m.group(3) == "true",
+                      "physical": m.group(4) == "true",
+                      "tick": int(m.group(5)),
+                      "grounded": m.group(6) == "true",
+                      "collision": m.group(7) == "true",
+                      "broadphase": m.group(8) == "true",
+                  })
+          if not support:
+              raise SystemExit("OWNERSHIP_MICRO_PROOF missing Phase81 support telemetry")
+
+          baseline_candidates = [s for s in support if s["saved"] != -2147483648]
+          baseline = baseline_candidates[0]["saved"] if baseline_candidates else support[0]["current"]
+          losses = [s for s in support if not s["physical"]]
+          if not losses:
+              raise SystemExit("OWNERSHIP_MICRO_PROOF no physical-support loss observed")
+          first_loss = losses[0]
+
+          native_re = re.compile(
+              r"GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION player_tick=(\d+) carriage_id=(-?\d+) motion=\(([^)]*)\)"
+          )
+          native = []
+          for index, line in enumerate(lines):
+              m = native_re.search(line)
+              if m:
+                  native.append((index, int(m.group(1)), int(m.group(2)), m.group(3)))
+
+          refresh_re = re.compile(
+              r"GATE_E_PHASE83_CONTACT_REFRESH carriage_id=(-?\d+) player_tick=(\d+) "
+              r"physical_support=(true|false).*on_ground=(true|false).*native_application_age=(-?\d+)"
+          )
+          refresh = []
+          for index, line in enumerate(lines):
+              m = refresh_re.search(line)
+              if m:
+                  refresh.append((index, int(m.group(2)), int(m.group(1)), m.group(3) == "true", m.group(4) == "true", int(m.group(5))))
+
+          setpos = []
+          for index, line in enumerate(lines):
+              if "GATE_E_LOCALPLAYER_SET_POS" not in line:
+                  continue
+              tm = re.search(r"player_tick=(\d+)", line)
+              dm = re.search(r"delta=([^ ]+)", line)
+              if not tm:
+                  continue
+              owner = "other"
+              if "ContraptionColliderClient#collideEntities" in line:
+                  owner = "create"
+              elif "EntityDragger#reanchorEntityWithExternalFrame" in line:
+                  owner = "vs2_external_frame"
+              setpos.append((index, int(tm.group(1)), owner, dm.group(1) if dm else "unknown"))
+
+          unsupported_refresh = [r for r in refresh if not r[3]]
+          post_loss_native_other = [n for n in native if n[1] >= first_loss["tick"] and n[2] != baseline]
+          external_moves = [s for s in setpos if s[2] == "vs2_external_frame"]
+
+          relation = "before" if first_loss["tick"] < strafe_tick else ("same_tick" if first_loss["tick"] == strafe_tick else "after")
+          print("=== OWNERSHIP MICRO PROOF ===")
+          print(
+              f"OWNERSHIP_MICRO_PROOF baseline_carriage={baseline} walk_tick={walk_tick} strafe_tick={strafe_tick} "
+              f"first_physical_support_loss_tick={first_loss['tick']} first_loss_current_carriage={first_loss['current']} "
+              f"first_loss_same_carriage={str(first_loss['same']).lower()} support_loss_vs_strafe={relation}"
+          )
+          print(
+              f"OWNERSHIP_FACT unsupported_external_reanchor={str(bool(unsupported_refresh)).lower()} "
+              f"external_reanchor_count={len(external_moves)} native_owner_handoff_after_loss={str(bool(post_loss_native_other)).lower()}"
+          )
+          if unsupported_refresh:
+              r = unsupported_refresh[0]
+              print(
+                  f"OWNERSHIP_FIRST_UNSUPPORTED_REANCHOR tick={r[1]} carriage={r[2]} "
+                  f"on_ground={str(r[4]).lower()} native_application_age={r[5]}"
+              )
+          if post_loss_native_other:
+              n = post_loss_native_other[0]
+              print(f"OWNERSHIP_FIRST_NATIVE_HANDOFF tick={n[1]} carriage={n[2]} motion=({n[3]})")
+
+          lo = max(0, min(first_loss["tick"], walk_tick, strafe_tick) - 2)
+          hi = strafe_tick + 10
+          focus_markers = (
+              "GATE_E_PHASE81_SUPPORT_CONTINUITY",
+              "GATE_E_PHASE83_CONTACT_REFRESH",
+              "GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION",
+              "GATE_E_PHASE168_CONTACT_OWNER",
+              "GATE_E_PHASE171_CARRIAGE_FRAME_STEP",
+              "GATE_E_LOCALPLAYER_SET_POS",
+              "GATE_E_M1_NATIVE_BACKWARD",
+              "GATE_E_M1_NATIVE_STRAFE",
+              "GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED",
+          )
+          print(f"=== ORDERED TIMELINE ticks {lo}-{hi} ===")
+          for line in lines:
+              if not any(marker in line for marker in focus_markers):
+                  continue
+              tm = re.search(r"player_tick=(\d+)", line)
+              if tm and lo <= int(tm.group(1)) <= hi:
+                  print(line)
+
+          # This proof is deliberately diagnostic: require the exact ambiguity we are investigating,
+          # but do not mutate gameplay or claim the correct owner before the evidence is reviewed.
+          if not unsupported_refresh:
+              raise SystemExit("OWNERSHIP_MICRO_PROOF did not reproduce unsupported external-frame reanchor")
+          if not external_moves:
+              raise SystemExit("OWNERSHIP_MICRO_PROOF missing EntityDragger reanchor setPos evidence")
+          print("OWNERSHIP_MICRO_PROOF_COMPLETE read_only=true gameplay_mutation=false")
+          PY

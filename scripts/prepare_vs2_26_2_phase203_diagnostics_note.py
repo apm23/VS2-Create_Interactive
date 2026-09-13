@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""CI trigger note for the post-run native carry-gap correlation workflow.
+"""CI trigger for the M1 Create/VS2 ownership-order micro-proof.
 
-This file is intentionally not part of the cumulative source-patching chain. Its presence
-keeps the next production-world smoke run tied to a repository change while all additional
-inspection remains read-only in .github/workflows/carry-gap-diagnostics.yml.
+This file is intentionally outside the cumulative source-patching chain. Changing it triggers
+production-world-smoke through the existing scripts/prepare_vs2_26_2*.py path filter without
+changing generated gameplay code. The workflow_run diagnostic then correlates existing read-only
+Create contact, support, LocalPlayer setPos, and VS2 EntityDragger telemetry around the first
+ownership loss.
 """
-print("Phase 203 diagnostics trigger: no gameplay/source mutation")
+print("Phase 204 ownership micro-proof trigger: read-only diagnostics, no gameplay/source mutation")

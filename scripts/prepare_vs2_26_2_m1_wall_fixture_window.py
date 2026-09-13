@@ -122,10 +122,16 @@ client_source = client_source.replace(phase83_old, phase83_new, 1)
 # baseline: carriage 2 last applies natively at tick 13, age==1 bridges tick 14, then tick 15 remains
 # grounded/broadphase/support-latched while the carriage advances 7.2118 blocks and the age==1 lease
 # expires. Preserve current registered contact OR a bounded one-to-two-tick exact-baseline native
-# lease. Both remain grounded/current-envelope bounded, same-tick native application remains mutually
-# exclusive, and VS2 EntityDragger applies only the authoritative Create previous->current frame.
-# No velocity, gravity, collision response, teleport, synthetic carry vector, or train/world state is
-# introduced.
+# lease, but only while that baseline is still Phase170's most recent Create-native owner.
+#
+# Production-world #722's read-only ownership micro-proof closes the previously ambiguous handoff:
+# at tick 35 Create first applies carriage 5 and setPos, then Phase83 reanchors from stale baseline
+# carriage 7 solely because its registered-contact/native-age lease remains eligible while physical
+# support is false. Tick 36 repeats the same competing-owner sequence. Therefore registered contact
+# or lease age alone cannot retain baseline authority after Create has handed native ownership to a
+# different carriage. Reuse the already-published Phase170 owner identity to arbitrate this boundary.
+# This removes duplicate ownership only; it adds no velocity, gravity, collision response, teleport,
+# synthetic carry vector, or train/world state.
 phase83_gap_old = '''            boolean phase83GroundedSupportGap = player.onGround()
                 && phase81PhysicalSupport
                 && phase83CurrentEnvelopeEligible
@@ -140,6 +146,7 @@ phase83_gap_new = '''            boolean phase83GroundedSupportGap = player.onGr
                 && !phase83NativeAppliedThisTick;
             boolean phase83GroundedNativeBaselineLease = player.onGround()
                 && phase83ExactBaselineCarriage
+                && Integer.toString(carriage.getId()).equals(phase83ActiveNativeOwner)
                 && (createRegisteredContact || (phase83NativeApplicationAge >= 1 && phase83NativeApplicationAge <= 2))
                 && phase83CurrentEnvelopeEligible
                 && !phase83NativeAppliedThisTick;
@@ -194,4 +201,4 @@ for old, new in replacements:
 fixture_input.write_text(source, encoding="utf-8")
 client_probe.write_text(client_source, encoding="utf-8")
 verifier.write_text(verifier_source, encoding="utf-8")
-print("M1 wall fixture: keeps the exact grounded Create-native baseline frame for at most two missing-contact callbacks")
+print("M1 wall fixture: keeps the exact grounded Create-native baseline frame only while it remains the most recent native owner")

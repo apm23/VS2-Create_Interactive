@@ -9,15 +9,15 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Architecture: Create owns train/carriage gameplay and collision geometry; VS2 supplies moving reference-space/transform foundation; this project is a thin adapter.
 
 ## Current state
-- project_state: `WORKING — native-owner arbitration test in flight`
+- project_state: `WORKING — prepare/composition recovery test in flight`
 - current_head: `AUTO_RECONCILE_GIT_HEAD` (state-only `[skip ci]` ledger commits may advance Git HEAD; compare implementation files before treating that as a gameplay change)
-- implementation_head: `6a4d960e65d79a6f4a4c5973a83b2e6debd5aa2e`
+- implementation_head: `881f1a737c92efdd39b7e5fcda13efb6908b475f`
 - diagnostic_head: `69044c59a804e8b473038258d2d7c7ec2a843372`
 - last_good_implementation_commit: `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e` (exact-shape regression removed; not M1 complete)
-- candidate_implementation_commit: `6a4d960e65d79a6f4a4c5973a83b2e6debd5aa2e` (unproven until its real-train production smoke completes)
-- active_blocker: `Create can hand native LocalPlayer ownership to a sibling carriage while Phase83 still treats the old exact-baseline carriage's registered-contact/native-age lease as authoritative; this creates same-tick Create setPos followed by VS2 EntityDragger reanchor from a stale carriage frame`
+- candidate_implementation_commit: `881f1a737c92efdd39b7e5fcda13efb6908b475f` (same native-owner arbitration gameplay predicate as `6a4d960e`; only the generated-local declaration order was repaired so the candidate can compile)
+- active_blocker: `production-world-smoke #723 never reached runtime because prepare/composition emitted GateEClientProbe with phase83ActiveNativeOwner referenced before declaration; the native-owner gameplay hypothesis is therefore still untested`
 - active_hypothesis: `a grounded exact-baseline Phase83 lease is valid only while that baseline remains Phase170's most recent Create-native owner; owner identity should arbitrate the bridge without changing Create collision, input, gravity, or carry velocity`
-- next_safe_action: `inspect the production-world-smoke triggered by implementation_head 6a4d960e. If it is queued/in_progress, HOLD. When complete, verify frozen locomotion remains green and specifically whether unsupported Phase83 external reanchors after a different Create-native owner disappear. Only then classify any remaining floor/support failure.`
+- next_safe_action: `inspect the smallest compile/build proof for implementation_head 881f1a. If queued/in_progress, HOLD. Once compile is green, inspect the automatically-triggered production-world smoke for the same commit and verify frozen locomotion plus absence of stale unsupported Phase83 reanchors after a different Create-native owner. Do not change the gameplay predicate again before that evidence.`
 
 ## Architecture contract
 Forbidden unless new direct evidence proves unavoidable:
@@ -84,13 +84,28 @@ Important: strafe INPUT/MOTION dispatch is green; post-input carriage support/co
 - tick 36 repeats Create-native carriage `5` setPos followed by unsupported Phase83 carriage-7 external reanchor
 - direct conclusion: registered contact / bounded native-age alone can keep a stale baseline bridge alive after Create has handed native ownership to another carriage, producing duplicate moving-frame ownership
 
-### candidate ownership-arbitration implementation `6a4d960e65d79a6f4a4c5973a83b2e6debd5aa2e`
+### native-owner arbitration candidate `6a4d960e65d79a6f4a4c5973a83b2e6debd5aa2e`
 - changes only `scripts/prepare_vs2_26_2_m1_wall_fixture_window.py`
-- existing Phase83 grounded exact-baseline registered-contact/native-age lease now additionally requires that baseline carriage id equals Phase170's most recent native Create owner id
+- intended gameplay predicate: existing Phase83 grounded exact-baseline registered-contact/native-age lease additionally requires that baseline carriage id equals Phase170's most recent native Create owner id
 - does NOT alter Create collision solver, exact-shape policy, input windows, jump, gravity, velocity, train state, world state, or add new carry state
 - preserves the prior one-to-two-tick / registered-contact lease only while ownership identity still agrees
 - purpose: prevent stale carriage-7 VS2 reanchor after Create has already handed native ownership to carriage 5, while preserving prior bounded same-owner gap behavior
-- validation pending real-train production smoke
+
+### production-world-smoke #723 / run `34789741282`
+- classification: `prepare/composition`, not gameplay/runtime
+- all preparation before Java compilation succeeded
+- `:fabric:compileJava` failed in generated `GateEClientProbe.java`
+- exact compiler error: `cannot find symbol variable phase83ActiveNativeOwner` at the new grounded-baseline owner predicate
+- cause: the composition script inserted the owner local in a later Phase83 source region while the eligibility block referenced it earlier
+- therefore #723 provides zero runtime evidence for or against native-owner arbitration and does not authorize any physics/input/collision change
+
+### composition recovery `881f1a737c92efdd39b7e5fcda13efb6908b475f`
+- changes only `scripts/prepare_vs2_26_2_m1_wall_fixture_window.py`
+- gameplay predicate is unchanged from `6a4d960e`
+- moves the existing `phase83ActiveNativeOwner = System.getProperty("vs2.phase170NativeContactApplicationCarriageId")` local declaration to the first Phase83 use, before `phase83GroundedNativeBaselineLease`
+- removes the later duplicate declaration and continues to reuse the same local for the current-supported-owner gap gate
+- no gameplay state, carry vector, collision behavior, input, gravity, train/world state, or verifier acceptance was changed
+- validation is in flight; compile/build proof is the immediate gate before interpreting any production runtime result
 
 ## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
 - `EXACT_SHAPES_LOCALPLAYER_0fa4aa`: forcing `ContraptionColliderClient` LocalPlayer to use exact per-block shapes. Run #720 regressed protected locomotion/reference-frame continuity. Do not reintroduce as-is.
@@ -103,12 +118,10 @@ Important: strafe INPUT/MOTION dispatch is green; post-input carriage support/co
 - broad unqualified sibling/global suppression as a substitute for owner identity; arbitration must be tied to direct Create-native ownership evidence
 
 ## Root-cause classification
-Current: `native Create/VS2 integration — reference-frame ownership + collision boundary`.
+Immediate recovery blocker: `prepare/composition`.
+Underlying M1 blocker, once the candidate compiles: `native Create/VS2 integration — reference-frame ownership + collision boundary`.
 
-Ownership proof answered the immediate ambiguity:
-- Create native collision/setPos can establish carriage `5` as current native owner.
-- Phase83 can subsequently move the same LocalPlayer again from stale baseline carriage `7` while physical support is false.
-- the candidate fix therefore makes Phase170 native-owner identity an explicit prerequisite for retaining the grounded exact-baseline external-frame lease.
+#723 is not a runtime regression. It proves only that the candidate's generated Java declaration order was invalid. The correct recovery is to repair composition scope without changing the gameplay predicate, then resume the already-defined native-owner proof.
 
 ## Anti-loop lock
 - Do not change sprint/reverse/strafe input windows.
@@ -117,7 +130,7 @@ Ownership proof answered the immediate ambiguity:
 - Do not re-enable exact-shape LocalPlayer redirect.
 - Do not patch jump acceptance.
 - Do not add synthetic carry, velocity, gravity, or manual collision clamps.
-- Do not mutate the candidate ownership predicate again until its real-train proof completes.
+- Do not mutate the native-owner gameplay predicate again until `881f1a` compiles and its real-train production proof completes.
 - If candidate regresses frozen-green, REVERT before any compensating workaround.
 - If candidate removes duplicate Phase83 ownership but floor/support still fails, classify the remaining vertical/collision boundary separately rather than extending the bridge again.
 

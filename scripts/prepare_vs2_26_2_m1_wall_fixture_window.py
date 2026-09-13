@@ -101,9 +101,7 @@ source = source.replace(jump_old, jump_new, 1)
 phase83_old = '''            if (Boolean.getBoolean("vs2.createCarryCompat")
                 && phase83ExactBaselineCarriage
                 && phase83NativeFrameEligible'''
-phase83_new = '''            String phase83ActiveNativeOwner = System.getProperty(
-                "vs2.phase170NativeContactApplicationCarriageId");
-            boolean phase83GroundedNativeOwnerGap = phase83GroundedSupportGap
+phase83_new = '''            boolean phase83GroundedNativeOwnerGap = phase83GroundedSupportGap
                 && Integer.toString(carriage.getId()).equals(phase83ActiveNativeOwner);
             if (Boolean.getBoolean("vs2.createCarryCompat")
                 && (phase83ExactBaselineCarriage || phase83GroundedNativeOwnerGap)
@@ -132,6 +130,11 @@ client_source = client_source.replace(phase83_old, phase83_new, 1)
 # different carriage. Reuse the already-published Phase170 owner identity to arbitrate this boundary.
 # This removes duplicate ownership only; it adds no velocity, gravity, collision response, teleport,
 # synthetic carry vector, or train/world state.
+#
+# Production-world #723 never reached runtime: the generated Java referenced
+# phase83ActiveNativeOwner in this eligibility block before that local was declared later in the same
+# method. Keep the gameplay predicate unchanged and compose the owner read at the first use so the
+# candidate can actually compile and be tested.
 phase83_gap_old = '''            boolean phase83GroundedSupportGap = player.onGround()
                 && phase81PhysicalSupport
                 && phase83CurrentEnvelopeEligible
@@ -140,7 +143,9 @@ phase83_gap_old = '''            boolean phase83GroundedSupportGap = player.onGr
                 && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
             boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick
                 && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''
-phase83_gap_new = '''            boolean phase83GroundedSupportGap = player.onGround()
+phase83_gap_new = '''            String phase83ActiveNativeOwner = System.getProperty(
+                "vs2.phase170NativeContactApplicationCarriageId");
+            boolean phase83GroundedSupportGap = player.onGround()
                 && phase81PhysicalSupport
                 && phase83CurrentEnvelopeEligible
                 && !phase83NativeAppliedThisTick;

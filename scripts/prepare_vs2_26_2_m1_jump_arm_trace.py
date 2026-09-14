@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add read-only telemetry for the final M1 native-jump admission boundary."""
+"""Add M1 jump admission telemetry and repair fixture-local floor-support bookkeeping."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
@@ -32,18 +32,29 @@ if source.count(anchor) != 1:
     raise SystemExit(f"M1 jump-arm trace expected one final admission boundary, found {source.count(anchor)}")
 source = source.replace(anchor, replacement, 1)
 
-# #728 proves backward+strafe are already native-confirmed while jumpArmReady remains false because
-# the live floor-support publisher stays false. Instrument the exact publisher predicate before its
-# state is rolled forward, so we can distinguish continuity cadence, sibling-owner identity, local
-# movement, broadphase, grounding, and baseline mismatch without changing acceptance or gameplay.
+# Production-world #729 isolates the first post-walk support failure to the old local-step gate:
+# tick/carriage/broadphase/onGround/baseline all remain valid while ordinary backward/strafe motion
+# makes m1StepSq > 0.0001. Requiring the player to be almost motionless therefore contradicts the
+# native input sequence we are trying to prove. Keep the safety intent from #604 (reject non-floor
+# Create contact), but classify the fixed M1 fixture floor by carriage-local feet Y instead of total
+# XYZ displacement. The proven floor after walk is at local Y ~= 1.0001, while #604's bad contact
+# was local Y ~= 1.812. This changes fixture acceptance bookkeeping only; no player, collision,
+# carriage, train, or world state is mutated.
 floor_anchor = '''                            m1ContinuitySettledSupport = m1PrevTick + 1 == player.tickCount
                                 && m1PrevCarriage == localFrameCarriage.getId()
                                 && m1StepSq <= 0.0001
                                 && broadphase && player.onGround()
                                 && localFrameCarriage.getId() == carryBaselineCarriageId;
 '''
-floor_replacement = floor_anchor + '''                            LOGGER.info(
-                                "GATE_E_M1_JUMP_FLOOR_TRACE player_tick={} carriage_id={} previous_tick={} previous_carriage_id={} tick_consecutive={} same_carriage={} local_step_sq={} locally_settled={} broadphase={} on_ground={} baseline_carriage_id={} baseline_match={} support_now={} fixture_only=true read_only=true",
+floor_replacement = '''                            boolean m1FixtureFloorAligned = Math.abs(
+                                m1JumpContinuityLocal.y - Math.rint(m1JumpContinuityLocal.y)) <= 0.05;
+                            m1ContinuitySettledSupport = m1PrevTick + 1 == player.tickCount
+                                && m1PrevCarriage == localFrameCarriage.getId()
+                                && m1FixtureFloorAligned
+                                && broadphase && player.onGround()
+                                && localFrameCarriage.getId() == carryBaselineCarriageId;
+                            LOGGER.info(
+                                "GATE_E_M1_JUMP_FLOOR_TRACE player_tick={} carriage_id={} previous_tick={} previous_carriage_id={} tick_consecutive={} same_carriage={} local_step_sq={} locally_settled={} local_y={} floor_aligned={} broadphase={} on_ground={} baseline_carriage_id={} baseline_match={} support_now={} fixture_only=true bookkeeping_fix=true",
                                 player.tickCount,
                                 localFrameCarriage.getId(),
                                 m1PrevTick,
@@ -52,6 +63,8 @@ floor_replacement = floor_anchor + '''                            LOGGER.info(
                                 m1PrevCarriage == localFrameCarriage.getId(),
                                 m1StepSq,
                                 m1StepSq <= 0.0001,
+                                m1JumpContinuityLocal.y,
+                                m1FixtureFloorAligned,
                                 broadphase,
                                 player.onGround(),
                                 carryBaselineCarriageId,
@@ -59,7 +72,7 @@ floor_replacement = floor_anchor + '''                            LOGGER.info(
                                 m1ContinuitySettledSupport);
 '''
 if probe_source.count(floor_anchor) != 1:
-    raise SystemExit(f"M1 jump-floor trace expected one continuity publisher boundary, found {probe_source.count(floor_anchor)}")
+    raise SystemExit(f"M1 jump-floor fix expected one continuity publisher boundary, found {probe_source.count(floor_anchor)}")
 probe_source = probe_source.replace(floor_anchor, floor_replacement, 1)
 
 required = [
@@ -80,13 +93,16 @@ required_probe = [
     "same_carriage={}",
     "local_step_sq={}",
     "locally_settled={}",
+    "local_y={}",
+    "floor_aligned={}",
     "baseline_match={}",
     "support_now={}",
-    "fixture_only=true read_only=true",
+    "bookkeeping_fix=true",
+    "Math.rint(m1JumpContinuityLocal.y)",
 ]
 missing_probe = [token for token in required_probe if token not in probe_source]
 if missing_probe:
-    raise SystemExit("M1 jump-floor trace lost anchors: " + ", ".join(missing_probe))
+    raise SystemExit("M1 jump-floor fix lost anchors: " + ", ".join(missing_probe))
 
 for forbidden in [
     "self.setPos(", "self.setDeltaMovement(", "self.move(", ".teleport(",
@@ -94,8 +110,8 @@ for forbidden in [
     "keyJump.setDown(true)",
 ]:
     if forbidden in replacement + floor_replacement:
-        raise SystemExit("M1 jump trace introduced mutation token: " + forbidden)
+        raise SystemExit("M1 jump fix introduced mutation token: " + forbidden)
 
 java.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 jump-arm/floor trace: read-only final admission predicate telemetry installed")
+print("M1 jump floor bookkeeping: native horizontal motion allowed while fixed fixture-floor alignment remains required")

@@ -1,0 +1,116 @@
+name: m1-floor-predicate-postmortem
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/m1-floor-predicate-postmortem.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  classify-floor-predicate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download production-world #729 diagnostics
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/${GITHUB_REPOSITORY}/actions/artifacts/10330053055/zip > artifact.zip
+          unzip -q artifact.zip -d artifact
+          test -s artifact/production-world-smoke.log
+
+      - name: Parse first false floor-support predicate after supported walk
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
+          from pathlib import Path
+
+          lines = Path('artifact/production-world-smoke.log').read_text(encoding='utf-8', errors='replace').splitlines()
+          walk_index = next((i for i, line in enumerate(lines)
+                             if 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED' in line
+                             and 'on_ground=true' in line
+                             and 'broadphase=true' in line
+                             and 'support_healthy=true' in line
+                             and 'confirmed=true' in line), None)
+          if walk_index is None:
+              print('first_false=no_supported_walk')
+              raise SystemExit(0)
+
+          fields = [
+              ('tick_consecutive', r'tick_consecutive=(true|false)'),
+              ('same_carriage', r'same_carriage=(true|false)'),
+              ('locally_settled', r'locally_settled=(true|false)'),
+              ('broadphase', r'broadphase=(true|false)'),
+              ('on_ground', r'on_ground=(true|false)'),
+              ('baseline_match', r'baseline_match=(true|false)'),
+          ]
+
+          traces = [line for line in lines[walk_index:]
+                    if 'GATE_E_M1_JUMP_FLOOR_TRACE' in line and 'support_now=false' in line]
+          if not traces:
+              print('first_false=no_false_trace')
+              raise SystemExit(0)
+
+          for line in traces:
+              values = []
+              parse_ok = True
+              for name, pattern in fields:
+                  match = re.search(pattern, line)
+                  if not match:
+                      parse_ok = False
+                      break
+                  values.append((name, match.group(1) == 'true'))
+              if not parse_ok:
+                  continue
+              false_names = [name for name, value in values if not value]
+              if false_names:
+                  print(f'first_false={false_names[0]}')
+                  print('false_set=' + ','.join(false_names))
+                  raise SystemExit(0)
+
+          print('first_false=unparsed')
+          PY
+
+      - name: FIRST FALSE — continuity tick adjacency
+        if: steps.classify.outputs.first_false == 'tick_consecutive'
+        run: echo 'first false predicate is tick_consecutive'
+
+      - name: FIRST FALSE — same carriage identity
+        if: steps.classify.outputs.first_false == 'same_carriage'
+        run: echo 'first false predicate is same_carriage'
+
+      - name: FIRST FALSE — local settled-step threshold
+        if: steps.classify.outputs.first_false == 'locally_settled'
+        run: echo 'first false predicate is locally_settled'
+
+      - name: FIRST FALSE — broadphase
+        if: steps.classify.outputs.first_false == 'broadphase'
+        run: echo 'first false predicate is broadphase'
+
+      - name: FIRST FALSE — onGround
+        if: steps.classify.outputs.first_false == 'on_ground'
+        run: echo 'first false predicate is on_ground'
+
+      - name: FIRST FALSE — carry baseline carriage identity
+        if: steps.classify.outputs.first_false == 'baseline_match'
+        run: echo 'first false predicate is baseline_match'
+
+      - name: CLASSIFICATION ERROR — supported walk not found
+        if: steps.classify.outputs.first_false == 'no_supported_walk'
+        run: exit 1
+
+      - name: CLASSIFICATION ERROR — false trace not found
+        if: steps.classify.outputs.first_false == 'no_false_trace'
+        run: exit 1
+
+      - name: CLASSIFICATION ERROR — trace unparsable
+        if: steps.classify.outputs.first_false == 'unparsed'
+        run: exit 1

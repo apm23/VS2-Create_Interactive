@@ -9,14 +9,15 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Architecture: Create owns train/carriage gameplay and collision geometry; VS2 supplies moving reference-space/transform foundation; this project is a thin adapter.
 
 ## Current state
-- project_state: `ACTIVE_BLOCKER — native Create LocalPlayer vertical collision-response consumption boundary`
+- project_state: `ACTIVE_BLOCKER — collision: native Create LocalPlayer vertical response-consumption seam`
 - current_head: `AUTO_RECONCILE_GIT_HEAD` (state-only `[skip ci]` ledger commits may advance Git HEAD; compare implementation files before treating that as gameplay change)
-- implementation_head: `057d1b117960620f473eef1573821986f176ae76` (read-only diagnostic delta over the validated native-owner candidate)
+- implementation_head: `4479e094848b5ce75b0d3f4dc7aed55c9ac9ef47` (read-only OBB/LocalPlayer correlation diagnostic)
+- previous_diagnostic_head: `057d1b117960620f473eef1573821986f176ae76`
 - candidate_gameplay_commit: `881f1a737c92efdd39b7e5fcda13efb6908b475f`
 - last_good_implementation_commit: `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e` (exact-shape regression removed; not M1 complete)
-- active_blocker: `#724 proves Create detects an upward floor contact after LocalPlayer has moved downward, but the native Create response-consumption path applies no vertical position correction before support is lost; the exact internal zero-response branch is now being traced read-only`
-- active_hypothesis: `the remaining sink begins inside the native Create LocalPlayer collision-response consumption path: ContinuousOBBCollider reports surface contact/upward normal while collisionResponse is zero, so the first ContraptionCollider.collide(totalResponse, entity) may authorize zero displacement and the later contact-point carry moves only horizontally`
-- next_safe_action: `wait for the automatically-triggered proofs for diagnostic head 057d1b. Do not mutate gameplay while any relevant run is queued/in_progress. Once compile is green, inspect production-world logs for GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT adjacent to Phase65 collideMany and Phase76 setPos. If the zero-response path is proven, choose the smallest native Create collision-consumption fix; do not add clamps, leases, replay, synthetic carry, or jump/input changes.`
+- active_blocker: `#725 proves the first Create collision-consumption call receives totalResponse=(0,0,0) and returns allowed=(0,0,0) after vanilla LocalPlayer movement has already consumed downward Y. The later native contact-point carry applies X/Z only, so the already-consumed vertical sink is not repaired.`
+- active_hypothesis: `the remaining sink is inside native Create LocalPlayer collision-response consumption. The next proof must correlate the same LocalPlayer tick with ContinuousOBBCollider surface/temporal/normal/zero-response output so a correction can be derived from Create-native collision data rather than a manual floor clamp.`
+- next_safe_action: `Do not mutate gameplay while the proof set for 4479e094 is queued/in_progress. When production-world-smoke #726 completes, inspect the extended GATE_E_CREATE_COLLIDE_MANY_RESULT records immediately adjacent to GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT. If the same-tick OBB result proves surface/temporal/up-normal/zero-response, design the smallest native Create collision-consumption fix. Do not add clamps, leases, replay, synthetic carry, fake gravity, or jump/input changes.`
 
 ## Architecture contract
 Forbidden unless new direct evidence proves unavoidable:
@@ -79,41 +80,67 @@ Important: movement input dispatch is green. Missing jump proof is downstream of
 
 ### composition recovery `881f1a737c92efdd39b7e5fcda13efb6908b475f`
 - moved the existing native-owner local declaration to first use; gameplay predicate unchanged
-- `port-build #891` completed SUCCESS, closing the prepare/composition blocker
-- `production-carry-smoke #693` completed SUCCESS
-- `production-world-smoke #724` reached real runtime and completed FAILURE at the later jump gate
+- `port-build #891` SUCCESS, closing prepare/composition blocker
+- `production-carry-smoke #693` SUCCESS
+- `production-world-smoke #724` reached runtime and failed later at jump gate
 
 ### production-world #724 / run `34790108716`
-Frozen/protected locomotion remains available:
-- supported forward/sprint confirmed at LocalPlayer tick `19`
-- native backward requested/confirmed at tick `23`
-- native right-strafe dispatch still reached later
+Frozen locomotion remained available:
+- supported forward/sprint confirmed
+- native backward confirmed
+- native right-strafe dispatch reached
 
 Native-owner arbitration result:
-- Create establishes sibling carriage `5` as native owner at tick `34`
-- the former #722 stale-baseline Phase83 reanchor after that handoff does not recur
-- therefore the exact duplicate-owner seam targeted by `881f1a` is considered proven fixed/frozen; do not widen or retune it merely because M1 still fails
+- Create establishes sibling carriage `5` as native owner
+- the former #722 stale-baseline Phase83 reanchor after handoff does not recur
+- exact duplicate-owner seam targeted by `881f1a` is proven fixed/frozen
 
-Deeper collision boundary exposed on carriage `4` before the sibling handoff:
-- tick `20`: strict physical support is true; local floor top is `2.0`
-- tick `21`: inherited vanilla `Entity.move` requests about `Y=-0.03632`; actual move also consumes about `-0.03632 Y` because the moving Create floor is not vanilla world collision geometry
-- immediately afterward Create `ContinuousOBBCollider.collideMany` reports `surface=true`, upward collision normal about `+0.062 Y`, and `response=(0,0,0)`
-- Create's first observed `setPos` at the collision response site is a no-op in position
-- Phase170 then applies native carriage-4 contact motion; the observed Create collision allowance/contact carry is horizontal only
-- Create's later `setPos` moves X only, leaving Y at the sunk value
-- Phase131 then changes to `physical_support=false` while the player remains inside X/Z floor footprint
-- tick `22` support deteriorates further; the legacy Phase83 age-1 same-owner lease reanchor is downstream of the already-lost floor support and is not the root fix
-- shell eventually reports missing native jump/landing, but jump never had a healthy support boundary to start from
+Deeper collision boundary exposed:
+- strict physical support is initially true, floor top local Y `2.0`
+- vanilla `Entity.move` consumes downward Y because moving Create floor is not vanilla world collision geometry
+- Create `ContinuousOBBCollider.collideMany` reports surface contact/upward normal while `collisionResponse=(0,0,0)`
+- first observed Create response-site `setPos` is a no-op
+- later Create contact carry is horizontal only
+- physical support is then lost while X/Z remain over the train floor
+- missing jump is downstream, not an input/verifier bug
 
-Direct classification from #724: `collision — native Create LocalPlayer vertical response consumption`, not input, jump verifier, fixture, or prepare/composition.
+Direct classification from #724: `collision — native Create LocalPlayer vertical response consumption`.
 
 ### read-only collision-consumption diagnostic `057d1b117960620f473eef1573821986f176ae76`
-- changes only `scripts/prepare_vs2_26_2_phase75.py`
-- retains existing horizontal requested-vs-allowed `ContraptionCollider.collide` trace
-- adds `GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT` for zero-vector LocalPlayer collide requests, including player tick, returned allowance, current delta movement, position, onGround, and thread
-- purpose: correlate Phase65 `ContinuousOBBCollider.collideMany` surface/up-normal/zero-response result with the first Create `ContraptionCollider.collide(totalResponse, entity)` consumption call and Phase76 `setPos`, before the later horizontal contact-point carry
-- strictly read-only: no position, velocity, onGround, collision, input, gravity, train/world, lease, replay, or reference-frame mutation
-- push automatically triggered the normal proof set; no duplicate manual workflow trigger is allowed while those runs are active
+- changed only `scripts/prepare_vs2_26_2_phase75.py`
+- added `GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT` for zero-vector LocalPlayer `ContraptionCollider.collide` requests
+- no position, velocity, onGround, collision, input, gravity, train/world, lease, replay, or reference-frame mutation
+- `port-build #892`, `client-smoke #809`, `production-carry-smoke #694`, and `runtime-smoke #851` completed SUCCESS
+- `world-smoke #812` and `production-world-smoke #725` completed FAILURE at later acceptance/runtime gates, giving real diagnostic evidence rather than compile failure
+
+### production-world #725 / run `34791239228`
+The zero-response path is directly proven:
+- LocalPlayer tick `21`: vanilla `Entity.move` consumes downward Y before Create collision handling
+- immediately afterward `GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT` logs `requested=0,0,0`, `allowed=0,0,0`; the first Create response-site `setPos` therefore performs no vertical correction
+- Phase170 then identifies native carriage owner and Create contact motion is horizontal
+- the later Create contact-point `setPos` changes X/Z but leaves Y unchanged
+- support is still only barely within tolerance at tick 21, then progressively sinks below the local floor on following ticks
+- this closes the question whether the zero `totalResponse` consumption call itself contributes vertical correction: it does not
+
+### OBB/LocalPlayer correlation diagnostic `4479e094848b5ce75b0d3f4dc7aed55c9ac9ef47`
+- changes only `scripts/prepare_vs2_26_2_phase65.py`
+- extends the read-only `ContinuousOBBCollider.collideMany` trace window from 64 to 128 calls because #725 reached the LocalPlayer zero-response seam just after the old cap
+- adds current LocalPlayer tick, position, delta movement, and onGround state to each OBB result log
+- does not mutate collision, movement, position, velocity, train/world, input, leases, or reference frames
+- purpose: correlate the OBB surface/temporal/normal/zero-response result with the exact same LocalPlayer tick as the zero `ContraptionCollider.collide` call, so the next gameplay patch can use native Create collision information rather than inventing a floor clamp
+- push automatically triggered the normal proof set; as of this ledger update the relevant runs, including `production-world-smoke #726` / run `34793031275`, are in progress. Do not duplicate-trigger while active.
+
+## Native Create-Fly source finding locked for next design step
+Pinned Create Fly runtime is `26.2-rc-2-6.0.9-1`.
+In native `ContraptionColliderClient.collideEntities`:
+- `hardCollision` is false when `totalResponse == Vec3.ZERO`
+- `surfaceCollision` may still be true
+- Create then calls `ContraptionCollider.collide(totalResponse, entity)` and applies the returned vector to XYZ
+- for zero `totalResponse`, #725 proves this returns zero and does not repair already-consumed Y
+- inside the later `surfaceCollision` contact carry, Create computes `contactPointMotion`, calls `ContraptionCollider.collide(contactPointMotion, entity)`, then applies only X and Z while explicitly retaining the existing Y
+- temporal collision handling adjusts delta movement, not the already-consumed current position
+
+This is source evidence for the collision-consumption seam, not permission for a manual floor-height correction. The next patch must stay native-data-driven.
 
 ## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
 - `EXACT_SHAPES_LOCALPLAYER_0fa4aa`
@@ -128,7 +155,7 @@ Direct classification from #724: `collision — native Create LocalPlayer vertic
 ## Root-cause classification
 Current: `collision`.
 
-Prepare/composition is closed by successful `port-build #891`. The #722 reference-frame double-owner seam is closed at its exact target by #724. The first still-broken boundary is now the native Create LocalPlayer vertical collision-response consumption path after `ContinuousOBBCollider` reports a floor surface/upward normal but zero collision response.
+Prepare/composition is closed. The exact #722 reference-frame double-owner seam is closed and frozen by #724. The first still-broken boundary is native Create LocalPlayer vertical collision-response consumption after moving-floor contact is detected.
 
 ## Anti-loop lock
 - Do not change sprint/reverse/strafe input windows.
@@ -137,8 +164,8 @@ Prepare/composition is closed by successful `port-build #891`. The #722 referenc
 - Do not add replay/recovery branches.
 - Do not re-enable exact-shape LocalPlayer redirect.
 - Do not add synthetic carry, velocity, fake gravity, or manual floor/wall clamps.
-- Do not retune the now-proven Phase83 native-owner predicate unless a direct regression reproduces that exact stale-owner seam.
-- First prove how Create consumes the zero collision response; then patch only that native collision boundary if evidence warrants it.
+- Do not retune the proven Phase83 native-owner predicate unless direct regression reproduces that exact seam.
+- First correlate same-tick OBB result to zero-response consumption; then patch only that native collision boundary if evidence warrants it.
 - If a future collision patch regresses any frozen-green subsystem, REVERT before adding compensation.
 
 ## M1 acceptance — all required in one real moving-train proof

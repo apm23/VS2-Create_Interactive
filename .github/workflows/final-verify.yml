@@ -24,20 +24,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git diff --name-only c7da75df793502f3fe4f61d0dd093190e00a06fa..c33eaf48c1083716c5a5a0c4a7e7207286ae4890 > changed.txt
+          git diff --name-only c7da75df793502f3fe4f61d0dd093190e00a06fa..f3d1335c9fc89283d936af039eba34aa9778bd05 > changed.txt
           cat changed.txt
-          test "$(wc -l < changed.txt)" -eq 2
+          test "$(wc -l < changed.txt)" -eq 3
           grep -qx '.github/workflows/final-build.yml' changed.txt
+          grep -qx '.github/workflows/final-verify.yml' changed.txt
           grep -qx 'MASTER_STATE.md' changed.txt
 
-      - name: Download exact successful final-build artifact
+      - name: Download exact successful runtime-fixed final-build artifact
         uses: actions/download-artifact@v4
         with:
           name: VS2-Create-Interactive-M1-final
           path: final-artifact
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: 34816785467
+          run-id: 34823149030
 
       - name: Verify final artifact identity and integrity
         shell: bash
@@ -46,9 +47,10 @@ jobs:
           cd final-artifact
           test -f BUILD_INFO.txt
           test -f SHA256SUMS.txt
-          grep -qx 'source_commit=c33eaf48c1083716c5a5a0c4a7e7207286ae4890' BUILD_INFO.txt
+          grep -qx 'source_commit=f3d1335c9fc89283d936af039eba34aa9778bd05' BUILD_INFO.txt
           grep -qx 'proven_m1_run=34799207093' BUILD_INFO.txt
-          grep -qx '3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4  valkyrienskies-26-2-2.4.205+0bc19eac8f.jar' SHA256SUMS.txt
+          grep -qx 'bootstrap_packaging=kotlin-runtime-embedded' BUILD_INFO.txt
+          grep -qx '7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51  valkyrienskies-26-2-2.4.205+0bc19eac8f.jar' SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
           unzip -tq valkyrienskies-26-2-2.4.205+0bc19eac8f.jar
 
@@ -64,4 +66,31 @@ jobs:
           unzip -p "$JAR" org/valkyrienskies/mod/fabric/client/GateEClientProbe.class | strings | grep -q 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED'
           unzip -p "$JAR" org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.class | strings | grep -q 'GATE_E_CREATE_GROUNDED_Y_CLIP'
           unzip -p "$JAR" org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.class | strings | grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED'
-          echo 'FINAL_VERIFY artifact identity, integrity, frozen-green composition, and compiled seams passed.'
+
+      - name: Require embedded Kotlin runtime chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import io
+          import json
+          import zipfile
+          from pathlib import Path
+
+          jar = Path('final-artifact/valkyrienskies-26-2-2.4.205+0bc19eac8f.jar')
+          with zipfile.ZipFile(jar) as outer:
+              meta = json.loads(outer.read('fabric.mod.json'))
+              flk = [entry.get('file') for entry in meta.get('jars', []) if isinstance(entry, dict) and 'fabric-language-kotlin' in entry.get('file', '')]
+              if len(flk) != 1:
+                  raise SystemExit(f'expected exactly one embedded Fabric Language Kotlin jar, found {flk}')
+              with zipfile.ZipFile(io.BytesIO(outer.read(flk[0]))) as nested:
+                  nested_meta = json.loads(nested.read('fabric.mod.json'))
+                  if nested_meta.get('id') != 'fabric-language-kotlin':
+                      raise SystemExit('embedded runtime mod id mismatch')
+                  names = nested.namelist()
+                  required = ['kotlin-stdlib-', 'kotlin-stdlib-jdk7-', 'kotlin-stdlib-jdk8-', 'kotlin-reflect-']
+                  missing = [token for token in required if not any(name.startswith('META-INF/jars/') and token in name for name in names)]
+                  if missing:
+                      raise SystemExit('embedded Kotlin runtime chain missing: ' + ', '.join(missing))
+          print('FINAL_VERIFY runtime-fixed artifact identity, integrity, frozen-green seams, and Kotlin runtime chain passed.')
+          PY

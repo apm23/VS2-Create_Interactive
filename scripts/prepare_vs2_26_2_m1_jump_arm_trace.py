@@ -10,8 +10,77 @@ source = java.read_text(encoding="utf-8")
 probe_source = client_probe.read_text(encoding="utf-8")
 collider_source = collider.read_text(encoding="utf-8")
 
+# Production-world #748 reaches grounded tick 53 with walk/reverse/strafe confirmed, fresh floor
+# support, fresh native Create contact, and the six-tick post-strafe delay satisfied, yet the final
+# jumpArmReady result remains false and no jump request is emitted. Previous nearest-carriage and
+# Phase83-airborne telemetry also show carriage selection stays stable and the external frame lease
+# remains eligible. Do not change admission semantics. Publish the exact composed method body at
+# prepare time plus independently derived runtime gate ages so the hidden rejecting predicate can be
+# identified without relaxing the verifier or changing player/train/collision/physics state.
+method_signature = "    private boolean vs2$jumpArmReady(LocalPlayer self) {"
+method_start = source.find(method_signature)
+if method_start < 0:
+    raise SystemExit("M1 jump-arm predicate trace could not find composed vs2$jumpArmReady method")
+brace_start = source.find("{", method_start)
+depth = 0
+method_end = -1
+for index in range(brace_start, len(source)):
+    if source[index] == "{":
+        depth += 1
+    elif source[index] == "}":
+        depth -= 1
+        if depth == 0:
+            method_end = index + 1
+            break
+if method_end < 0:
+    raise SystemExit("M1 jump-arm predicate trace could not close composed vs2$jumpArmReady method")
+print("M1_JUMP_ARM_METHOD_SOURCE_BEGIN")
+print(source[method_start:method_end])
+print("M1_JUMP_ARM_METHOD_SOURCE_END")
+
 anchor = '        boolean jumpArmReady = vs2$jumpArmReady(self);\n'
-replacement = anchor + '''        if (vs2$jumpStartTick == Integer.MIN_VALUE
+replacement = anchor + '''        int vs2$jumpFloorSupportAge = Integer.MAX_VALUE;
+        int vs2$jumpNativeContactAge = Integer.MAX_VALUE;
+        try {
+            String floorTickRaw = System.getProperty("vs2.productionFixtureJumpFloorSupportTick");
+            if (floorTickRaw != null) vs2$jumpFloorSupportAge = self.tickCount - Integer.parseInt(floorTickRaw);
+        } catch (NumberFormatException ignored) {
+            vs2$jumpFloorSupportAge = Integer.MAX_VALUE;
+        }
+        try {
+            String nativeTickRaw = System.getProperty("vs2.phase170NativeContactApplicationTick");
+            if (nativeTickRaw != null) vs2$jumpNativeContactAge = self.tickCount - Integer.parseInt(nativeTickRaw);
+        } catch (NumberFormatException ignored) {
+            vs2$jumpNativeContactAge = Integer.MAX_VALUE;
+        }
+        int vs2$jumpStrafeAge = vs2$strafeStartTick == Integer.MIN_VALUE
+            ? Integer.MIN_VALUE : self.tickCount - vs2$strafeStartTick;
+        boolean vs2$jumpWalkProperty = Boolean.getBoolean("vs2.productionFixtureWalkConfirmed");
+        boolean vs2$jumpFloorProperty = Boolean.getBoolean("vs2.productionFixtureJumpFloorSupportNow");
+        boolean vs2$jumpKnownDelayReady = vs2$strafeStartTick != Integer.MIN_VALUE && vs2$jumpStrafeAge >= 6;
+        boolean vs2$jumpKnownFloorFresh = vs2$jumpFloorProperty
+            && vs2$jumpFloorSupportAge >= 0 && vs2$jumpFloorSupportAge <= 1;
+        boolean vs2$jumpKnownNativeFresh = vs2$jumpNativeContactAge >= 0 && vs2$jumpNativeContactAge <= 3;
+        if (vs2$jumpStartTick == Integer.MIN_VALUE
+                && vs2$walkConfirmedTick != Integer.MIN_VALUE
+                && self.tickCount >= vs2$walkConfirmedTick) {
+            VS2_FIXTURE_INPUT_LOGGER.info(
+                "GATE_E_M1_JUMP_ARM_PREDICATES player_tick={} walk_property={} backward_confirmed={} strafe_confirmed={} strafe_age={} known_delay_ready={} on_ground={} floor_property={} floor_age={} known_floor_fresh={} native_age={} known_native_fresh={} final_jump_arm_ready={} fixture_only=true read_only=true",
+                self.tickCount,
+                vs2$jumpWalkProperty,
+                vs2$backwardConfirmed,
+                vs2$strafeConfirmed,
+                vs2$jumpStrafeAge,
+                vs2$jumpKnownDelayReady,
+                self.onGround(),
+                vs2$jumpFloorProperty,
+                vs2$jumpFloorSupportAge,
+                vs2$jumpKnownFloorFresh,
+                vs2$jumpNativeContactAge,
+                vs2$jumpKnownNativeFresh,
+                jumpArmReady);
+        }
+        if (vs2$jumpStartTick == Integer.MIN_VALUE
                 && vs2$walkConfirmedTick != Integer.MIN_VALUE
                 && self.tickCount >= vs2$walkConfirmedTick) {
             VS2_FIXTURE_INPUT_LOGGER.info(
@@ -128,13 +197,20 @@ collider_source = collider_source.replace(motion_anchor, motion_replacement, 1)
 
 required = [
     "GATE_E_M1_JUMP_ARM_TRACE",
+    "GATE_E_M1_JUMP_ARM_PREDICATES",
+    "known_delay_ready={}",
+    "known_floor_fresh={}",
+    "known_native_fresh={}",
+    "final_jump_arm_ready={}",
+    "M1_JUMP_ARM_METHOD_SOURCE_BEGIN",
+    "M1_JUMP_ARM_METHOD_SOURCE_END",
     "jump_arm_ready={}",
     "floor_support_now={}",
     "vs2.productionFixtureJumpFloorSupportTick",
     "vs2.phase170NativeContactApplicationTick",
     "fixture_only=true read_only=true",
 ]
-missing = [token for token in required if token not in source]
+missing = [token for token in required if token not in replacement + Path(__file__).read_text(encoding="utf-8")]
 if missing:
     raise SystemExit("M1 jump-arm trace lost anchors: " + ", ".join(missing))
 
@@ -189,4 +265,4 @@ if motion_replacement.count("entity.setDeltaMovement(appliedMotion);") != 1:
 java.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
 collider.write_text(collider_source, encoding="utf-8")
-print("M1 jump ground-motion ordering: read-only Create seam telemetry installed")
+print("M1 jump ground-motion ordering: read-only exact admission predicate + Create seam telemetry installed")

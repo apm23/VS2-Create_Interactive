@@ -1,0 +1,67 @@
+name: final-verify
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/final-verify.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-final-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout finalization repo
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Prove no implementation changes since complete M1 proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only c7da75df793502f3fe4f61d0dd093190e00a06fa..c33eaf48c1083716c5a5a0c4a7e7207286ae4890 > changed.txt
+          cat changed.txt
+          test "$(wc -l < changed.txt)" -eq 2
+          grep -qx '.github/workflows/final-build.yml' changed.txt
+          grep -qx 'MASTER_STATE.md' changed.txt
+
+      - name: Download exact successful final-build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VS2-Create-Interactive-M1-final
+          path: final-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 34816785467
+
+      - name: Verify final artifact identity and integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd final-artifact
+          test -f BUILD_INFO.txt
+          test -f SHA256SUMS.txt
+          grep -qx 'source_commit=c33eaf48c1083716c5a5a0c4a7e7207286ae4890' BUILD_INFO.txt
+          grep -qx 'proven_m1_run=34799207093' BUILD_INFO.txt
+          grep -qx '3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4  valkyrienskies-26-2-2.4.205+0bc19eac8f.jar' SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+          unzip -tq valkyrienskies-26-2-2.4.205+0bc19eac8f.jar
+
+      - name: Require frozen-green compiled seams in final JAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          JAR=final-artifact/valkyrienskies-26-2-2.4.205+0bc19eac8f.jar
+          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/fabric/client/GateEClientProbe.class'
+          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.class'
+          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.class'
+          unzip -p "$JAR" org/valkyrienskies/mod/fabric/client/GateEClientProbe.class | strings | grep -q 'vs2.createCarryCompat'
+          unzip -p "$JAR" org/valkyrienskies/mod/fabric/client/GateEClientProbe.class | strings | grep -q 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED'
+          unzip -p "$JAR" org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.class | strings | grep -q 'GATE_E_CREATE_GROUNDED_Y_CLIP'
+          unzip -p "$JAR" org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.class | strings | grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED'
+          echo 'FINAL_VERIFY artifact identity, integrity, frozen-green composition, and compiled seams passed.'

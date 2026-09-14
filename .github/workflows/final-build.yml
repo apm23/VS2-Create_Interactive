@@ -34,7 +34,7 @@ jobs:
           for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
           python3 scripts/prepare_vs2_26_2_phase98.py
           grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
-          grep -q 'GATE_E_CREATE_GROUNDED_Y_CLIP' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'GATE_E_CREATE_GROUNDED_Y_CLIP' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.java
           grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
 
       - name: Build final Fabric distributable

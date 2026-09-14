@@ -16,6 +16,11 @@ old = '''            Entity carriage = client.level.getEntitiesOfClass(
                 .min(Comparator.comparingDouble(entity -> entity.distanceToSqr(player)))
                 .orElse(null);'''
 
+# Production-world #747 proves the airborne reference-frame loss begins exactly when the
+# generic nearest-carriage candidate changes from baseline carriage 7 to sibling carriage 8.
+# Keep selection behavior unchanged. Publish stable entity ids plus the selected nearest-center
+# owner at this root boundary so the next proof can distinguish a legitimate native handoff from
+# nearest-center arbitration stealing the still-authoritative airborne baseline. Read-only only.
 new = '''            var carriageCandidates = client.level.getEntitiesOfClass(
                     Entity.class,
                     player.getBoundingBox().inflate(64.0),
@@ -55,24 +60,31 @@ new = '''            var carriageCandidates = client.level.getEntitiesOfClass(
                 boolean candidateBroadphase = candidate.getBoundingBox().inflate(2.0)
                     .expandTowards(0.0, 32.0, 0.0).intersects(player.getBoundingBox());
                 candidateState.append('#').append(candidateIndex++)
-                    .append("@pos=").append(candidate.getX()).append(',').append(candidate.getY()).append(',').append(candidate.getZ())
+                    .append("@id=").append(candidate.getId())
+                    .append(";pos=").append(candidate.getX()).append(',').append(candidate.getY()).append(',').append(candidate.getZ())
                     .append(";center_d2=").append(candidate.distanceToSqr(player))
                     .append(";broadphase=").append(candidateBroadphase)
                     .append(";local_feet=").append(localFeetState)
                     .append(";nearest_top_d2=").append(nearestTopDistanceSq)
                     .append(";blocks=").append(blockCount);
             }
-            LOGGER.info("GATE_E_CARRIAGE_CANDIDATES count={} state={}", carriageCandidates.size(), candidateState);
+            LOGGER.info("GATE_E_CARRIAGE_CANDIDATES player_tick={} count={} state={} read_only=true", player.tickCount, carriageCandidates.size(), candidateState);
 
             Entity carriage = carriageCandidates.stream()
                 .min(Comparator.comparingDouble(entity -> entity.distanceToSqr(player)))
-                .orElse(null);'''
+                .orElse(null);
+            LOGGER.info(
+                "GATE_E_CARRIAGE_SELECTION player_tick={} selected_id={} selected_center_d2={} on_ground={} candidate_count={} arbitration=nearest_entity_center read_only=true",
+                player.tickCount,
+                carriage == null ? -1 : carriage.getId(),
+                carriage == null ? Double.NaN : carriage.distanceToSqr(player),
+                player.onGround(), carriageCandidates.size());'''
 
 if old not in source:
     raise SystemExit("Phase 55 could not find Gate E carriage selection anchor")
 source = source.replace(old, new, 1)
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 55: traced every nearby Create carriage candidate and local block-support distance; read-only telemetry only")
+print("Phase 55: traced candidate ids and nearest-center carriage selection at the airborne sibling-owner root boundary; read-only telemetry only")
 
 # Chain Phase 56 so workflows that currently terminate preparation at Phase 54 still
 # receive the exact coordinate transform comparison used by Create's own collider.

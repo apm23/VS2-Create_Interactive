@@ -1,0 +1,99 @@
+name: m1-floor-owner-diagnostic
+
+on:
+  workflow_run:
+    workflows:
+      - production-world-smoke
+    types:
+      - completed
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose-floor-owner:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact production-world diagnostics
+        uses: actions/download-artifact@v4
+        with:
+          name: vs2-production-real-train-world-smoke-log
+          path: production-world-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: Trace floor owner handoff read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path('production-world-artifact/production-world-smoke.log')
+          text = path.read_text(encoding='utf-8', errors='replace')
+
+          continuity = re.compile(
+              r'GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
+              r'[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
+              r'[^\n]*broadphase=(true|false)[^\n]*on_ground=(true|false)[^\n]*baseline_frame=(true|false)'
+          )
+          selection = re.compile(
+              r'GATE_E_CARRIAGE_SELECTION[^\n]*player_tick=(\d+)[^\n]*selected_id=(\d+)'
+          )
+          reanchor = re.compile(
+              r'GATE_E_PHASE205_PRE_COLLISION_REANCHOR[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
+              r'[^\n]*native_age=(\d+)[^\n]*frame_step=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
+          )
+
+          samples = [
+              (int(m.group(1)), int(m.group(2)), float(m.group(3)), float(m.group(4)), float(m.group(5)),
+               m.group(6) == 'true', m.group(7) == 'true', m.group(8) == 'true')
+              for m in continuity.finditer(text)
+          ]
+          selected = {int(m.group(1)): int(m.group(2)) for m in selection.finditer(text)}
+          anchors = [
+              (int(m.group(1)), int(m.group(2)), int(m.group(3)),
+               float(m.group(4)), float(m.group(5)), float(m.group(6)))
+              for m in reanchor.finditer(text)
+          ]
+
+          best = []
+          streak = []
+          for sample in samples:
+              tick, carriage, x, y, z, broadphase, on_ground, baseline = sample
+              if not (broadphase and on_ground and baseline):
+                  streak = []
+                  continue
+              if streak:
+                  prev = streak[-1]
+                  step_sq = (x-prev[2])**2 + (y-prev[3])**2 + (z-prev[4])**2
+                  if tick != prev[0] + 1 or carriage != prev[1] or step_sq > 0.75**2 or abs(y-prev[3]) > 0.05:
+                      streak = []
+              streak.append(sample)
+              if len(streak) > len(best):
+                  best = list(streak)
+
+          mismatches = []
+          for tick, carriage, age, dx, dy, dz in anchors:
+              selected_id = selected.get(tick)
+              if selected_id is not None and selected_id != carriage:
+                  mismatches.append((tick, carriage, selected_id, age, dx, dy, dz))
+
+          print(f'M1_FLOOR_OWNER_DIAGNOSTIC best_supported_streak={len(best)} '
+                f'best_ticks={best[0][0] if best else -1}-{best[-1][0] if best else -1} '
+                f'phase205_selection_mismatches={len(mismatches)} read_only=true')
+          for row in mismatches[:20]:
+              tick, owner, selected_id, age, dx, dy, dz = row
+              print(f'M1_FLOOR_OWNER_MISMATCH tick={tick} phase205_carriage={owner} '
+                    f'selected_carriage={selected_id} native_age={age} '
+                    f'frame_step=({dx},{dy},{dz}) read_only=true')
+
+          if len(best) < 5:
+              raise SystemExit('floor support remains unstable: fewer than five consecutive supported baseline-frame samples')
+          if mismatches:
+              raise SystemExit('Phase205 reanchor owner diverges from same-tick selected carriage; resolve ownership before physics changes')
+          PY

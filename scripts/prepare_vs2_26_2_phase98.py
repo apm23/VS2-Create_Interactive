@@ -192,5 +192,6 @@ if cumulative_prepared:
     runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_m1_input_timing.py")), run_name="__main__")
     runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_m1_wall_fixture_window.py")), run_name="__main__")
     runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase132.py")), run_name="__main__")
+    runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_m1_jump_arm_trace.py")), run_name="__main__")
 else:
     print("Phase 98: retained read-only native interaction/held-block entrypoint profiling and narrowed the one-shot production fixture to tick 14 after startup discontinuity; no interaction dispatch or gameplay mutation")

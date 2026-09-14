@@ -142,6 +142,30 @@ if "phase205PreCollisionReanchoredThisTick" not in probe_source:
         raise SystemExit("Phase 205 expected one Phase83 grounded support-gap boundary")
     probe_source = probe_source.replace(grounded_anchor, grounded_replacement, 1)
 
+# #746 reaches a genuine native airborne arc but intermittently misses the Phase83 external-frame
+# application on ticks 47-48, after which the carriage-local X jumps by about one full train frame.
+# Do not alter eligibility yet. Publish the already-computed gate inputs at the exact root boundary so
+# the next production-world run can identify whether baseline identity, native age, envelope, or the
+# de-dup owner is suppressing the reference-frame bridge. This is read-only fixture telemetry.
+phase83_gate_anchor = '''            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick
+                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
+            if (Boolean.getBoolean("vs2.createCarryCompat")'''
+phase83_gate_replacement = '''            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick
+                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);
+            if (Boolean.getBoolean("vs2.productionSmokeFixture") && !player.onGround()) {
+                LOGGER.info(
+                    "GATE_E_PHASE205_AIRBORNE_FRAME_GATE player_tick={} carriage_id={} exact_baseline={} native_age={} supported_baseline_age={} current_envelope={} native_applied_this_tick={} airborne_native_lease={} airborne_supported_baseline_lease={} native_frame_eligible={} external_frame_lease={} collision_eligible={} broadphase={} read_only=true",
+                    player.tickCount, carriage.getId(), phase83ExactBaselineCarriage, phase83NativeApplicationAge,
+                    phase83SupportedBaselineAge, phase83CurrentEnvelopeEligible, phase83NativeAppliedThisTick,
+                    phase83AirborneNativeLease, phase83AirborneSupportedBaselineLease, phase83NativeFrameEligible,
+                    phase83ExternalFrameLease, collisionEligible, broadphaseOverlap);
+            }
+            if (Boolean.getBoolean("vs2.createCarryCompat")'''
+if "GATE_E_PHASE205_AIRBORNE_FRAME_GATE" not in probe_source:
+    if probe_source.count(phase83_gate_anchor) != 1:
+        raise SystemExit("Phase 205 expected one Phase83 external-frame gate boundary")
+    probe_source = probe_source.replace(phase83_gate_anchor, phase83_gate_replacement, 1)
+
 required_collider = [
     "GATE_E_PHASE205_PRE_COLLISION_REANCHOR",
     "nativeAge != 1",
@@ -166,6 +190,8 @@ required_probe = [
     "!phase205PreCollisionReanchoredThisTick",
     "phase83AirborneNativeLease",
     "phase83AirborneSupportedBaselineLease",
+    "GATE_E_PHASE205_AIRBORNE_FRAME_GATE",
+    "read_only=true",
 ]
 missing_probe = [token for token in required_probe if token not in probe_source]
 if missing_probe:
@@ -174,7 +200,7 @@ if missing_probe:
 # No floor coordinate, Y clamp, gravity replacement, synthetic velocity, train/world mutation,
 # or LocalPlayer direct setPos is introduced. The only movement call is the existing VS2 reference-
 # frame primitive, now ordered before Create's native collision sampling.
-inserted = prebridge + grounded_replacement
+inserted = prebridge + grounded_replacement + phase83_gate_replacement
 for forbidden in [
     "player.setPos(", "player.setDeltaMovement(", "player.move(", ".teleport(",
     "setBlock(", "setSchedule(", "setTrain(", "setVelocity(", "syncCarriage(",
@@ -185,4 +211,4 @@ for forbidden in [
 
 collider.write_text(collider_source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("Phase 205: orders the existing VS2 external-frame reanchor before Create OBB and suppresses only duplicate same-frame Create carry; Create collision remains authoritative")
+print("Phase 205: orders the existing VS2 external-frame reanchor before Create OBB, suppresses duplicate same-frame Create carry, and traces the airborne Phase83 gate read-only")

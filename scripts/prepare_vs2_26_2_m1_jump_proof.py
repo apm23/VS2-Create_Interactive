@@ -137,19 +137,19 @@ impact_z=[s[4] for s in plateau]
 
 # Existing Phase66/73 telemetry distinguishes two native ceiling-stop shapes. The common shape has
 # an airborne zero-Y apex followed by ordinary negative-Y descent. Create can also resolve a very
-# low ceiling by publishing grounded on the zero-Y stop frame immediately after a positive airborne
+# low ceiling by publishing grounded on the zero-Y stop frame immediately after the native takeoff
 # rise; in that case there is intentionally no intermediate negative-Y SELF move. Both forms remain
 # read-only proofs and still require finite carriage overhead geometry below.
 move_pattern=re.compile(r"GATE_E_LOCALPLAYER_ENTITY_MOVE_HEAD[^\n]*player_tick=(\d+)[^\n]*mover=SELF[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)[^\n]*on_ground=(true|false)")
 moves=[(int(m.group(1)),float(m.group(2)),float(m.group(3)),float(m.group(4)),m.group(5)=="true") for m in move_pattern.finditer(text) if request_tick<=int(m.group(1))<=landed_tick]
 takeoff=next((m for m in moves if m[0]==request_tick and m[2]>=0.40 and m[4]),None)
-positive_airborne=next((m for m in moves if request_tick<m[0]<landed_tick and not m[4] and m[2]>0.05),None)
+positive_rise=next((m for m in moves if request_tick<=m[0]<landed_tick and m[2]>0.05),None)
 airborne_apex=next((m for m in moves if request_tick<m[0]<landed_tick and not m[4] and abs(m[2])<=1e-6),None)
 descent=next((m for m in moves if airborne_apex is not None and airborne_apex[0]<m[0]<landed_tick and not m[4] and m[2]<=-0.05),None)
-grounded_stop=next((m for m in moves if positive_airborne is not None and positive_airborne[0]<m[0]<=landed_tick and m[4] and abs(m[2])<=1e-6 and m[0]-positive_airborne[0]<=2),None)
+grounded_stop=next((m for m in moves if positive_rise is not None and positive_rise[0]<m[0]<=landed_tick and m[4] and abs(m[2])<=1e-6 and m[0]-positive_rise[0]<=2),None)
 classic_ceiling_stop = airborne_apex is not None and descent is not None
 ceiling_stop = airborne_apex if classic_ceiling_stop else grounded_stop
-if takeoff is None or positive_airborne is None or ceiling_stop is None:
+if takeoff is None or positive_rise is None or ceiling_stop is None:
     raise SystemExit(f"M1 ceiling collision signature missing: moves={moves}")
 continuity_tick=None; overhead=[]
 for line in text.splitlines():

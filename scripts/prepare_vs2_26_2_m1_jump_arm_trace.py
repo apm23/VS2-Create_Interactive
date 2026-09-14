@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Add M1 jump admission telemetry and repair fixture-local floor-support bookkeeping."""
+"""Add M1 jump admission telemetry, floor-support bookkeeping, and read-only jump seam tracing."""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 java = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
 client_probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
+collider = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.java"
 source = java.read_text(encoding="utf-8")
 probe_source = client_probe.read_text(encoding="utf-8")
+collider_source = collider.read_text(encoding="utf-8")
 
 anchor = '        boolean jumpArmReady = vs2$jumpArmReady(self);\n'
 replacement = anchor + '''        if (vs2$jumpStartTick == Integer.MIN_VALUE
@@ -75,6 +77,55 @@ if probe_source.count(floor_anchor) != 1:
     raise SystemExit(f"M1 jump-floor fix expected one continuity publisher boundary, found {probe_source.count(floor_anchor)}")
 probe_source = probe_source.replace(floor_anchor, floor_replacement, 1)
 
+# Production-world #730 proves the native jump request and positive vertical arc execute, while
+# LocalPlayer still reports grounded through most of the arc and later transfers to a sibling
+# carriage before landing. Do not alter collision, grounding, velocity, input, lease, or ownership.
+# Instead correlate the exact Create setOnGround decision with the later final motion write.
+ground_anchor = '''    private static void vs2$preserveVanillaAirborneDuringCreateCarry(Entity entity, boolean onGround) {
+        boolean risingLocalPlayer = Boolean.getBoolean("vs2.createCarryCompat")
+            && "net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName())
+            && entity.getDeltaMovement().y > 0.05;
+        entity.setOnGround(onGround && !risingLocalPlayer);
+    }
+'''
+ground_replacement = '''    private static void vs2$preserveVanillaAirborneDuringCreateCarry(Entity entity, boolean onGround) {
+        boolean compatLocalPlayer = Boolean.getBoolean("vs2.createCarryCompat")
+            && "net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName());
+        double deltaYAtCall = entity.getDeltaMovement().y;
+        boolean risingLocalPlayer = compatLocalPlayer && deltaYAtCall > 0.05;
+        boolean appliedOnGround = onGround && !risingLocalPlayer;
+        if (compatLocalPlayer && entity.tickCount >= 45 && entity.tickCount <= 80) {
+            LOGGER.info(
+                "GATE_E_CREATE_SET_ON_GROUND_SEAM player_tick={} requested_on_ground={} before_on_ground={} delta_y_at_call={} rising_guard={} applied_on_ground={} pos={},{},{} fixture_only=true read_only=true",
+                entity.tickCount, onGround, entity.onGround(), deltaYAtCall, risingLocalPlayer, appliedOnGround,
+                entity.getX(), entity.getY(), entity.getZ());
+        }
+        entity.setOnGround(appliedOnGround);
+    }
+'''
+if collider_source.count(ground_anchor) != 1:
+    raise SystemExit(f"M1 ground-motion trace expected one Create setOnGround seam, found {collider_source.count(ground_anchor)}")
+collider_source = collider_source.replace(ground_anchor, ground_replacement, 1)
+
+motion_anchor = '''        entity.setDeltaMovement(appliedMotion);
+    }
+'''
+motion_replacement = '''        boolean compatLocalPlayer = Boolean.getBoolean("vs2.createCarryCompat")
+            && "net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName());
+        if (compatLocalPlayer && entity.tickCount >= 45 && entity.tickCount <= 80) {
+            LOGGER.info(
+                "GATE_E_CREATE_FINAL_MOTION_SEAM player_tick={} on_ground_before_write={} current_delta_y={} incoming_y={} applied_y={} grounded_clip={} pos={},{},{} fixture_only=true read_only=true",
+                entity.tickCount, entity.onGround(), entity.getDeltaMovement().y,
+                motion.y, appliedMotion.y, groundedLocalPlayer && motion.y < 0.0,
+                entity.getX(), entity.getY(), entity.getZ());
+        }
+        entity.setDeltaMovement(appliedMotion);
+    }
+'''
+if collider_source.count(motion_anchor) != 1:
+    raise SystemExit(f"M1 ground-motion trace expected one final native-motion write, found {collider_source.count(motion_anchor)}")
+collider_source = collider_source.replace(motion_anchor, motion_replacement, 1)
+
 required = [
     "GATE_E_M1_JUMP_ARM_TRACE",
     "jump_arm_ready={}",
@@ -104,6 +155,22 @@ missing_probe = [token for token in required_probe if token not in probe_source]
 if missing_probe:
     raise SystemExit("M1 jump-floor fix lost anchors: " + ", ".join(missing_probe))
 
+required_collider = [
+    "GATE_E_CREATE_SET_ON_GROUND_SEAM",
+    "requested_on_ground={}",
+    "delta_y_at_call={}",
+    "applied_on_ground={}",
+    "GATE_E_CREATE_FINAL_MOTION_SEAM",
+    "on_ground_before_write={}",
+    "incoming_y={}",
+    "applied_y={}",
+    "grounded_clip={}",
+    "fixture_only=true read_only=true",
+]
+missing_collider = [token for token in required_collider if token not in collider_source]
+if missing_collider:
+    raise SystemExit("M1 ground-motion trace lost anchors: " + ", ".join(missing_collider))
+
 for forbidden in [
     "self.setPos(", "self.setDeltaMovement(", "self.move(", ".teleport(",
     "setBlock(", "syncCarriage(", "setVelocity(", "setOnGround(",
@@ -112,6 +179,14 @@ for forbidden in [
     if forbidden in replacement + floor_replacement:
         raise SystemExit("M1 jump fix introduced mutation token: " + forbidden)
 
+# The collider replacements preserve the exact existing writes. They only name the already-computed
+# ground boolean and log state around the same setOnGround/final setDeltaMovement calls.
+if ground_replacement.count("entity.setOnGround(appliedOnGround);") != 1:
+    raise SystemExit("M1 ground trace must preserve exactly one native setOnGround write")
+if motion_replacement.count("entity.setDeltaMovement(appliedMotion);") != 1:
+    raise SystemExit("M1 motion trace must preserve exactly one final native-motion write")
+
 java.write_text(source, encoding="utf-8")
 client_probe.write_text(probe_source, encoding="utf-8")
-print("M1 jump floor bookkeeping: native horizontal motion allowed while fixed fixture-floor alignment remains required")
+collider.write_text(collider_source, encoding="utf-8")
+print("M1 jump ground-motion ordering: read-only Create seam telemetry installed")

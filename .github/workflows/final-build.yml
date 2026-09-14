@@ -1,0 +1,66 @@
+name: final-build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/final-build.yml'
+
+jobs:
+  build-proven-m1-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Reconstruct exact proven M1 composition
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'GATE_E_CREATE_GROUNDED_Y_CLIP' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+
+      - name: Build final Fabric distributable
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :fabric:build
+
+      - name: Stage final artifact and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p final-dist
+          mapfile -t jars < <(find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' | sort)
+          test "${#jars[@]}" -ge 1
+          cp "${jars[@]}" final-dist/
+          (cd final-dist && sha256sum *.jar > SHA256SUMS.txt)
+          printf 'source_commit=%s\nproven_m1_run=34799207093\n' "$GITHUB_SHA" > final-dist/BUILD_INFO.txt
+          cat final-dist/SHA256SUMS.txt
+
+      - name: Upload final distributable
+        uses: actions/upload-artifact@v4
+        with:
+          name: VS2-Create-Interactive-M1-final
+          path: final-dist/*
+          if-no-files-found: error
+          retention-days: 90

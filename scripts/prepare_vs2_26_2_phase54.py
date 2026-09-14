@@ -70,6 +70,7 @@ runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase135.py")), ru
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase136.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase203.py")), run_name="__main__")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_m1_strafe_alignment.py")), run_name="__main__")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_m1_input_timing_script_compat.py")), run_name="__main__")
 
 # Production-world #659 proves the remaining M1 failure is not fixture jump timing: carriage 8
 # applies Create-native contact through player tick 31, then native applications disappear at tick

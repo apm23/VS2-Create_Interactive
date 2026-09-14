@@ -9,15 +9,14 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Architecture: Create owns train/carriage gameplay and collision geometry; VS2 supplies moving reference-space/transform foundation; this project is a thin adapter.
 
 ## Current state
-- project_state: `WORKING — prepare/composition recovery test in flight`
-- current_head: `AUTO_RECONCILE_GIT_HEAD` (state-only `[skip ci]` ledger commits may advance Git HEAD; compare implementation files before treating that as a gameplay change)
-- implementation_head: `881f1a737c92efdd39b7e5fcda13efb6908b475f`
-- diagnostic_head: `69044c59a804e8b473038258d2d7c7ec2a843372`
+- project_state: `ACTIVE_BLOCKER — native Create LocalPlayer vertical collision-response consumption boundary`
+- current_head: `AUTO_RECONCILE_GIT_HEAD` (state-only `[skip ci]` ledger commits may advance Git HEAD; compare implementation files before treating that as gameplay change)
+- implementation_head: `057d1b117960620f473eef1573821986f176ae76` (read-only diagnostic delta over the validated native-owner candidate)
+- candidate_gameplay_commit: `881f1a737c92efdd39b7e5fcda13efb6908b475f`
 - last_good_implementation_commit: `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e` (exact-shape regression removed; not M1 complete)
-- candidate_implementation_commit: `881f1a737c92efdd39b7e5fcda13efb6908b475f` (same native-owner arbitration gameplay predicate as `6a4d960e`; only the generated-local declaration order was repaired so the candidate can compile)
-- active_blocker: `production-world-smoke #723 never reached runtime because prepare/composition emitted GateEClientProbe with phase83ActiveNativeOwner referenced before declaration; the native-owner gameplay hypothesis is therefore still untested`
-- active_hypothesis: `a grounded exact-baseline Phase83 lease is valid only while that baseline remains Phase170's most recent Create-native owner; owner identity should arbitrate the bridge without changing Create collision, input, gravity, or carry velocity`
-- next_safe_action: `inspect the smallest compile/build proof for implementation_head 881f1a. If queued/in_progress, HOLD. Once compile is green, inspect the automatically-triggered production-world smoke for the same commit and verify frozen locomotion plus absence of stale unsupported Phase83 reanchors after a different Create-native owner. Do not change the gameplay predicate again before that evidence.`
+- active_blocker: `#724 proves Create detects an upward floor contact after LocalPlayer has moved downward, but the native Create response-consumption path applies no vertical position correction before support is lost; the exact internal zero-response branch is now being traced read-only`
+- active_hypothesis: `the remaining sink begins inside the native Create LocalPlayer collision-response consumption path: ContinuousOBBCollider reports surface contact/upward normal while collisionResponse is zero, so the first ContraptionCollider.collide(totalResponse, entity) may authorize zero displacement and the later contact-point carry moves only horizontally`
+- next_safe_action: `wait for the automatically-triggered proofs for diagnostic head 057d1b. Do not mutate gameplay while any relevant run is queued/in_progress. Once compile is green, inspect production-world logs for GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT adjacent to Phase65 collideMany and Phase76 setPos. If the zero-response path is proven, choose the smallest native Create collision-consumption fix; do not add clamps, leases, replay, synthetic carry, or jump/input changes.`
 
 ## Architecture contract
 Forbidden unless new direct evidence proves unavoidable:
@@ -30,6 +29,13 @@ Forbidden unless new direct evidence proves unavoidable:
 - duplicate authority / duplicate world state
 - workaround chains hiding Create+VS2 double ownership
 
+Preferred order:
+1. native Create/Minecraft collision mechanism
+2. reuse existing authoritative VS2/Create transform
+3. simplify/remove duplicate ownership
+4. thin adapter
+5. new workaround only with direct evidence and explicit justification
+
 ## Frozen / protected green
 Do not modify without direct regression evidence:
 - boot/no-crash baseline
@@ -39,100 +45,101 @@ Do not modify without direct regression evidence:
 - forward/sprint input and supported walking proof
 - native backward input/motion proof
 - native right-strafe input/motion dispatch proof
+- Phase83 stale-baseline sibling-owner arbitration at the exact #722 competing-owner seam: #724 hands Create native ownership to carriage `5` without the former unsupported Phase83 reanchor from stale carriage `4`
 
-Important: strafe INPUT/MOTION dispatch is green; post-input carriage support/collision stability is NOT green. #721/#722 show the first Phase81 physical-support disagreement occurs before the strafe request, so do not treat strafe timing as causal.
+Important: movement input dispatch is green. Missing jump proof is downstream of support loss and is not permission to change jump/input timing.
 
 ## Latest durable evidence
-### production-world-smoke #719 (pre-exact-shape)
-- forward/sprint, reverse and right-strafe input paths reached proof
-- jump became airborne but final natural landing proof was not completed
-- lateral wall collision remained broken: player crossed occupied wall geometry
-- this isolated wall/collision ownership as the blocker without invalidating basic locomotion
-
 ### exact-shape experiment `0fa4aa246021c6b7168b7212406d4f61fac59add`
-- experiment forced LocalPlayer from Create simplified colliders onto exact per-block VoxelShapes
-- production-world-smoke #720 regressed protected walking/reference continuity before wall/jump proof
-- experiment is locked failed and was reverted
+- forced LocalPlayer to exact per-block shapes
+- production-world #720 regressed protected locomotion/reference continuity
+- locked failed and reverted; DO NOT REINTRODUCE without genuinely new evidence
 
-### revert implementation `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e`
-- restores Phase39 runtime-only Create dependency and the previously proven LocalPlayer PlayerType.CLIENT bridge
-- removes the exact-shape redirect entirely
+### revert `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e`
+- removed exact-shape redirect
+- restored protected movement baseline
 
-### production-world-smoke #721 / run `34769096716`
-- revert validation build/startup succeeded
-- standing carry returned: `PRODUCTION_CARRY carry_delta_plus_local_stable carriage_id=7 ticks=25-28 samples=4 span=0.000000000`
-- supported walk/sprint returned: `GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED ... player_tick=30 ... confirmed=true sprinting=true`
-- backward request + native motion confirmed at tick 34
-- right-strafe request + native motion confirmed at tick 35
-- therefore the exact-shape-specific locomotion regression is gone
-- deeper ordered-log inspection changes the causal boundary: the first Phase81 physical-support failure occurs before right-strafe
+### production-world #721 / run `34769096716`
+- standing carry, supported forward/sprint, native backward, and native right-strafe dispatch returned
+- support/frame loss remained before jump proof
 
-### diagnostic commit `69044c59a804e8b473038258d2d7c7ec2a843372`
-- gameplay/generated source unchanged
-- adds a deterministic read-only Create/VS2 ownership micro-proof to downstream diagnostics
+### production-world #722 / run `34788419359`
+- read-only ownership proof isolated duplicate ownership
+- Create handed native LocalPlayer ownership to sibling carriage `5`
+- stale exact-baseline carriage `7` could still perform Phase83 `EntityDragger#reanchorEntityWithExternalFrame` afterward with physical support false
+- this justified owner-identity arbitration instead of another lease/replay workaround
 
-### production-world-smoke #722 / run `34788419359` + carry-gap-diagnostics #221 / run `34788726817`
-- real-train blocker reproduced while protected locomotion markers remained available
-- downstream ownership micro-proof completed successfully and is read-only
-- baseline carriage `7`; walk confirmed tick `30`; right-strafe request tick `35`
-- first physical-support loss is tick `31`, current carriage `7`, same-carriage `true`: support loss begins BEFORE strafe
-- Create continues native carriage-7 applications on ticks 31-33 while support is false
-- tick 35: Create publishes native owner carriage `5`, applies motion about `-8.58936 X`, and `ContraptionColliderClient#collideEntities` calls LocalPlayer `setPos`
-- after that same tick, Phase81 returns to saved/current carriage `7` with physical support false
-- Phase83 then calls `EntityDragger#reanchorEntityWithExternalFrame` from carriage `7`, moving LocalPlayer another about `-2.19505 X`
-- Phase83 reports `physical_support=false`, `on_ground=true`, `native_application_age=2`, `grounded_gap_bridge=false`, but `native_frame_eligible=true`
-- tick 36 repeats Create-native carriage `5` setPos followed by unsupported Phase83 carriage-7 external reanchor
-- direct conclusion: registered contact / bounded native-age alone can keep a stale baseline bridge alive after Create has handed native ownership to another carriage, producing duplicate moving-frame ownership
+### native-owner candidate `6a4d960e65d79a6f4a4c5973a83b2e6debd5aa2e`
+- Phase83 grounded exact-baseline lease must still match Phase170's most recent Create-native owner
+- no collision/input/gravity/velocity/train/world mutation
 
-### native-owner arbitration candidate `6a4d960e65d79a6f4a4c5973a83b2e6debd5aa2e`
-- changes only `scripts/prepare_vs2_26_2_m1_wall_fixture_window.py`
-- intended gameplay predicate: existing Phase83 grounded exact-baseline registered-contact/native-age lease additionally requires that baseline carriage id equals Phase170's most recent native Create owner id
-- does NOT alter Create collision solver, exact-shape policy, input windows, jump, gravity, velocity, train state, world state, or add new carry state
-- preserves the prior one-to-two-tick / registered-contact lease only while ownership identity still agrees
-- purpose: prevent stale carriage-7 VS2 reanchor after Create has already handed native ownership to carriage 5, while preserving prior bounded same-owner gap behavior
-
-### production-world-smoke #723 / run `34789741282`
-- classification: `prepare/composition`, not gameplay/runtime
-- all preparation before Java compilation succeeded
-- `:fabric:compileJava` failed in generated `GateEClientProbe.java`
-- exact compiler error: `cannot find symbol variable phase83ActiveNativeOwner` at the new grounded-baseline owner predicate
-- cause: the composition script inserted the owner local in a later Phase83 source region while the eligibility block referenced it earlier
-- therefore #723 provides zero runtime evidence for or against native-owner arbitration and does not authorize any physics/input/collision change
+### production-world #723 / run `34789741282`
+- invalid as runtime evidence: generated Java failed compilation because `phase83ActiveNativeOwner` was referenced before declaration
+- classification was `prepare/composition`
 
 ### composition recovery `881f1a737c92efdd39b7e5fcda13efb6908b475f`
-- changes only `scripts/prepare_vs2_26_2_m1_wall_fixture_window.py`
-- gameplay predicate is unchanged from `6a4d960e`
-- moves the existing `phase83ActiveNativeOwner = System.getProperty("vs2.phase170NativeContactApplicationCarriageId")` local declaration to the first Phase83 use, before `phase83GroundedNativeBaselineLease`
-- removes the later duplicate declaration and continues to reuse the same local for the current-supported-owner gap gate
-- no gameplay state, carry vector, collision behavior, input, gravity, train/world state, or verifier acceptance was changed
-- validation is in flight; compile/build proof is the immediate gate before interpreting any production runtime result
+- moved the existing native-owner local declaration to first use; gameplay predicate unchanged
+- `port-build #891` completed SUCCESS, closing the prepare/composition blocker
+- `production-carry-smoke #693` completed SUCCESS
+- `production-world-smoke #724` reached real runtime and completed FAILURE at the later jump gate
+
+### production-world #724 / run `34790108716`
+Frozen/protected locomotion remains available:
+- supported forward/sprint confirmed at LocalPlayer tick `19`
+- native backward requested/confirmed at tick `23`
+- native right-strafe dispatch still reached later
+
+Native-owner arbitration result:
+- Create establishes sibling carriage `5` as native owner at tick `34`
+- the former #722 stale-baseline Phase83 reanchor after that handoff does not recur
+- therefore the exact duplicate-owner seam targeted by `881f1a` is considered proven fixed/frozen; do not widen or retune it merely because M1 still fails
+
+Deeper collision boundary exposed on carriage `4` before the sibling handoff:
+- tick `20`: strict physical support is true; local floor top is `2.0`
+- tick `21`: inherited vanilla `Entity.move` requests about `Y=-0.03632`; actual move also consumes about `-0.03632 Y` because the moving Create floor is not vanilla world collision geometry
+- immediately afterward Create `ContinuousOBBCollider.collideMany` reports `surface=true`, upward collision normal about `+0.062 Y`, and `response=(0,0,0)`
+- Create's first observed `setPos` at the collision response site is a no-op in position
+- Phase170 then applies native carriage-4 contact motion; the observed Create collision allowance/contact carry is horizontal only
+- Create's later `setPos` moves X only, leaving Y at the sunk value
+- Phase131 then changes to `physical_support=false` while the player remains inside X/Z floor footprint
+- tick `22` support deteriorates further; the legacy Phase83 age-1 same-owner lease reanchor is downstream of the already-lost floor support and is not the root fix
+- shell eventually reports missing native jump/landing, but jump never had a healthy support boundary to start from
+
+Direct classification from #724: `collision — native Create LocalPlayer vertical response consumption`, not input, jump verifier, fixture, or prepare/composition.
+
+### read-only collision-consumption diagnostic `057d1b117960620f473eef1573821986f176ae76`
+- changes only `scripts/prepare_vs2_26_2_phase75.py`
+- retains existing horizontal requested-vs-allowed `ContraptionCollider.collide` trace
+- adds `GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT` for zero-vector LocalPlayer collide requests, including player tick, returned allowance, current delta movement, position, onGround, and thread
+- purpose: correlate Phase65 `ContinuousOBBCollider.collideMany` surface/up-normal/zero-response result with the first Create `ContraptionCollider.collide(totalResponse, entity)` consumption call and Phase76 `setPos`, before the later horizontal contact-point carry
+- strictly read-only: no position, velocity, onGround, collision, input, gravity, train/world, lease, replay, or reference-frame mutation
+- push automatically triggered the normal proof set; no duplicate manual workflow trigger is allowed while those runs are active
 
 ## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
-- `EXACT_SHAPES_LOCALPLAYER_0fa4aa`: forcing `ContraptionColliderClient` LocalPlayer to use exact per-block shapes. Run #720 regressed protected locomotion/reference-frame continuity. Do not reintroduce as-is.
-- generic accumulation of frame leases/replays/carry corrections
+- `EXACT_SHAPES_LOCALPLAYER_0fa4aa`
+- generic accumulation/extension of frame leases, replay, or carry corrections
 - synthetic carry velocity / fake inertia compensation
 - manual floor/wall clamps
-- harness mutation that manufactures gameplay success
-- treating missing jump marker as a jump-input bug; support/frame ownership is already broken before jump admission
-- treating right-strafe timing as the cause of support loss; #721/#722 lose physical support before the strafe request
-- broad unqualified sibling/global suppression as a substitute for owner identity; arbitration must be tied to direct Create-native ownership evidence
+- harness mutation that manufactures success
+- treating missing jump marker as a jump-input bug
+- treating right-strafe timing as cause of support loss
+- broad sibling/global suppression instead of direct native-owner identity
 
 ## Root-cause classification
-Immediate recovery blocker: `prepare/composition`.
-Underlying M1 blocker, once the candidate compiles: `native Create/VS2 integration — reference-frame ownership + collision boundary`.
+Current: `collision`.
 
-#723 is not a runtime regression. It proves only that the candidate's generated Java declaration order was invalid. The correct recovery is to repair composition scope without changing the gameplay predicate, then resume the already-defined native-owner proof.
+Prepare/composition is closed by successful `port-build #891`. The #722 reference-frame double-owner seam is closed at its exact target by #724. The first still-broken boundary is now the native Create LocalPlayer vertical collision-response consumption path after `ContinuousOBBCollider` reports a floor surface/upward normal but zero collision response.
 
 ## Anti-loop lock
 - Do not change sprint/reverse/strafe input windows.
+- Do not patch jump admission/acceptance.
 - Do not extend native contact leases.
-- Do not add another replay/recovery branch.
+- Do not add replay/recovery branches.
 - Do not re-enable exact-shape LocalPlayer redirect.
-- Do not patch jump acceptance.
-- Do not add synthetic carry, velocity, gravity, or manual collision clamps.
-- Do not mutate the native-owner gameplay predicate again until `881f1a` compiles and its real-train production proof completes.
-- If candidate regresses frozen-green, REVERT before any compensating workaround.
-- If candidate removes duplicate Phase83 ownership but floor/support still fails, classify the remaining vertical/collision boundary separately rather than extending the bridge again.
+- Do not add synthetic carry, velocity, fake gravity, or manual floor/wall clamps.
+- Do not retune the now-proven Phase83 native-owner predicate unless a direct regression reproduces that exact stale-owner seam.
+- First prove how Create consumes the zero collision response; then patch only that native collision boundary if evidence warrants it.
+- If a future collision patch regresses any frozen-green subsystem, REVERT before adding compensation.
 
 ## M1 acceptance — all required in one real moving-train proof
 - [ ] stable standing
@@ -142,6 +149,8 @@ Underlying M1 blocker, once the candidate compiles: `native Create/VS2 integrati
 - [ ] solid floor/walls/ceiling
 - [ ] no sink/throw/drift/lag-behind
 - [ ] stable through movement/turn/speed changes as fixture permits
+
+No box may be checked from separate runs; M1 requires one complete proof.
 
 ## Final artifact state
 - m1_complete: `false`
@@ -154,8 +163,9 @@ Underlying M1 blocker, once the candidate compiles: `native Create/VS2 integrati
 ## Fresh-chat protocol
 1. Read this file completely.
 2. Inspect actual GitHub HEAD.
-3. If `current_head` is `AUTO_RECONCILE_GIT_HEAD`, compare commits since `implementation_head`; state-only `[skip ci]` ledger commits do not count as gameplay changes.
+3. If `current_head=AUTO_RECONCILE_GIT_HEAD`, compare commits since `implementation_head`; state-only `[skip ci]` ledger commits are not gameplay changes.
 4. Inspect only latest relevant Actions needed for the active blocker.
-5. Respect protected/frozen green and failed-hypothesis locks.
+5. Respect Frozen Green, Failed Hypotheses, and Anti-loop locks.
 6. Continue only from `next_safe_action`.
-7. FINAL_READY is terminal and only the user may reopen development after it.
+7. If relevant run is queued/in_progress, HOLD; do not create a duplicate run.
+8. FINAL_READY is terminal and only the user may reopen development after it.

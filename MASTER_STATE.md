@@ -9,15 +9,15 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Architecture: Create owns train/carriage gameplay and collision geometry; VS2 supplies moving reference-space/transform foundation; this project is a thin adapter.
 
 ## Current state
-- project_state: `ACTIVE_BLOCKER — fixture/harness: live jump floor-support publisher remains false after grounded collision repair`
+- project_state: `ACTIVE_BLOCKER — #730 native jump arc leaves intended carriage before natural landing; Create ground/final-motion ordering diagnostic in flight`
 - current_head: `AUTO_RECONCILE_GIT_HEAD` (state-only `[skip ci]` ledger commits may advance Git HEAD; compare implementation files before treating that as gameplay change)
 - implementation_head: `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
-- previous_diagnostic_head: `a95cdf360313e84a4c154c2c0b4c7484bdfe4cdd`
+- previous_diagnostic_head: `c7da75df793502f3fe4f61d0dd093190e00a06fa`
 - candidate_gameplay_commit: `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
 - last_good_implementation_commit: `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e` (exact-shape regression removed; not M1 complete)
-- active_blocker: `#727 and #728 show the grounded-negative-Y repair preserving sustained standing/carry and supported sprint/walk instead of the former progressive sink. #728 additionally proves native backward and native right-strafe are confirmed before jump, but the final jump admission remains false because vs2.productionFixtureJumpFloorSupportNow stays false even while the observed LocalPlayer repeatedly returns onGround=true. This is now a fixture/harness predicate-observability blocker, not evidence authorizing another gameplay collision or jump patch.`
-- active_hypothesis: `the live jump floor-support publisher has an internal predicate mismatch among continuity cadence, same-carriage identity, local settled-step, broadphase, grounding, or carryBaselineCarriageId equality. Diagnostic a95cdf logs those exact read-only predicate components without changing input, jump admission, movement, collision, carry, gravity, train, or world state.`
-- next_safe_action: `production-world-smoke #729 / run 34797427793 is in progress for diagnostic a95cdf. Do not duplicate-trigger and do not change jump admission/input timing. When #729 completes, inspect GATE_E_M1_JUMP_FLOOR_TRACE first and identify the first false component. If the mismatch is verifier/fixture bookkeeping, repair only that bookkeeping and rerun the smallest production-world proof. If runtime physical support itself regresses, return classification to collision and REVERT/repair only with direct evidence.`
+- active_blocker: `#730 proves the #729 bookkeeping repair is valid and frozen locomotion remains green: production carry is physical_support_stable, walk/sprint passes, native backward/strafe remain confirmed, and the fixture issues a genuine native jump with positive vertical motion. The arc then fails natural landing on the intended baseline carriage: LocalPlayer remains reported onGround through most of the rising/falling arc, continuity later hands to a sibling carriage, becomes genuinely airborne for several ticks, and finally grounds on the sibling/lower frame rather than publishing GATE_E_M1_NATIVE_JUMP_LANDED for the intended carriage.`
+- active_hypothesis: `Create's setOnGround decision and its final native setDeltaMovement write may observe different vertical state during the same jump collision pass. Diagnostic c7da75df preserves the existing behavior exactly and logs requested/applied grounding plus delta-Y at the setOnGround seam and current/incoming/applied Y at the final-motion seam. This will distinguish stale vertical state at the ground decision from a later native caller reasserting ground.`
+- next_safe_action: `production-world-smoke #731 / run 34799207093 is in progress for c7da75df. Do not duplicate-trigger and do not patch jump admission/input, leases, replay, ownership, or collision while it runs. After compile/runtime validity is known, correlate GATE_E_CREATE_SET_ON_GROUND_SEAM with GATE_E_CREATE_FINAL_MOTION_SEAM during the jump ticks. If setOnGround sees non-rising/stale delta while final incoming motion is positive, inspect the native ordering boundary before any correction. If the redirect applies airborne=false correctly but observable state becomes grounded later, identify the later native ground writer. No gameplay mutation until that exact owner/order seam is proven.`
 
 ## Architecture contract
 Forbidden unless new direct evidence proves unavoidable:
@@ -45,152 +45,101 @@ Do not modify without direct regression evidence:
 - standing carry continuity
 - forward/sprint input and supported walking proof
 - native backward input/motion proof
-- native right-strafe input/motion dispatch proof
-- Phase83 stale-baseline sibling-owner arbitration at the exact #722 competing-owner seam: #724 hands Create native ownership to carriage `5` without the former unsupported Phase83 reanchor from stale carriage `4`
-- Create grounded-negative-Y consistency repair at `aea874`: #727/#728 retain grounded standing/carry and supported locomotion instead of the former progressive negative local-floor gap; do not broaden or replace it without direct regression evidence
+- native right-strafe input/motion proof
+- Phase83 stale-baseline sibling-owner arbitration fixed at the exact #722 competing-owner seam by #724
+- Create grounded-negative-Y consistency repair at `aea874`: #727/#728/#730 retain standing/carry and supported locomotion instead of the former progressive sink
+- #729 floor-support bookkeeping correction at `94b920480f545845134d2e262791704489bb95d7`: ordinary horizontal native locomotion no longer invalidates fixture floor support merely because total local XYZ step is non-zero
 
-Important: movement input dispatch is green. Missing jump proof is not permission to change jump/input timing or acceptance.
+Important: movement input dispatch and native jump request execution are green. Missing natural landing is not permission to change input timing or admission.
 
 ## Latest durable evidence
 ### exact-shape experiment `0fa4aa246021c6b7168b7212406d4f61fac59add`
 - forced LocalPlayer to exact per-block shapes
 - production-world #720 regressed protected locomotion/reference continuity
-- locked failed and reverted; DO NOT REINTRODUCE without genuinely new evidence
+- reverted and locked failed; DO NOT REINTRODUCE without genuinely new evidence
 
 ### revert `e58adf3e9ac2baa24ea476bfeaaaf707cf35dd4e`
-- removed exact-shape redirect
-- restored protected movement baseline
+- removed exact-shape redirect and restored protected movement baseline
 
-### production-world #721 / run `34769096716`
-- standing carry, supported forward/sprint, native backward, and native right-strafe dispatch returned
-- support/frame loss remained before jump proof
+### production-world #721
+- standing carry, forward/sprint, native backward, and right-strafe returned; support/frame loss remained
 
-### production-world #722 / run `34788419359`
-- read-only ownership proof isolated duplicate ownership
-- Create handed native LocalPlayer ownership to sibling carriage `5`
-- stale exact-baseline carriage `7` could still perform Phase83 `EntityDragger#reanchorEntityWithExternalFrame` afterward with physical support false
-- this justified owner-identity arbitration instead of another lease/replay workaround
+### production-world #722
+- proved duplicate ownership: Create handed native ownership to a sibling while stale baseline Phase83 could still reanchor
 
-### native-owner candidate `6a4d960e65d79a6f4a4c5973a83b2e6debd5aa2e`
-- Phase83 grounded exact-baseline lease must still match Phase170's most recent Create-native owner
-- no collision/input/gravity/velocity/train/world mutation
+### owner arbitration recovery `881f1a737c92efdd39b7e5fcda13efb6908b475f`
+- composition fixed; #724 proved the stale post-handoff Phase83 reanchor no longer recurs
+- this exact ownership seam is frozen green
 
-### production-world #723 / run `34789741282`
-- invalid as runtime evidence: generated Java failed compilation because `phase83ActiveNativeOwner` was referenced before declaration
-- classification was `prepare/composition`
+### production-world #724
+- frozen locomotion green
+- exposed deeper native Create vertical-response consumption: floor support could be lost while X/Z remained over the train floor
 
-### composition recovery `881f1a737c92efdd39b7e5fcda13efb6908b475f`
-- moved the existing native-owner local declaration to first use; gameplay predicate unchanged
-- `port-build #891` SUCCESS, closing prepare/composition blocker
-- `production-carry-smoke #693` SUCCESS
-- `production-world-smoke #724` reached runtime and failed later at jump gate
+### zero-response diagnostic `057d1b117960620f473eef1573821986f176ae76` / #725
+- proved zero `totalResponse` gives no vertical positional correction at the first Create response-site setPos
 
-### production-world #724 / run `34790108716`
-Frozen locomotion remained available:
-- supported forward/sprint confirmed
-- native backward confirmed
-- native right-strafe dispatch reached
-
-Native-owner arbitration result:
-- Create establishes sibling carriage `5` as native owner
-- the former #722 stale-baseline Phase83 reanchor after handoff does not recur
-- exact duplicate-owner seam targeted by `881f1a` is proven fixed/frozen
-
-Deeper collision boundary exposed:
-- strict physical support is initially true, floor top local Y `2.0`
-- vanilla `Entity.move` consumes downward Y because moving Create floor is not vanilla world collision geometry
-- Create `ContinuousOBBCollider.collideMany` can report surface/temporal contact while `collisionResponse=(0,0,0)`
-- first observed Create response-site `setPos` is a no-op for zero response
-- later Create contact carry is horizontal only
-- physical support is then lost while X/Z remain over the train floor
-- missing jump is downstream, not an input/verifier bug
-
-Direct classification from #724: `collision — native Create LocalPlayer vertical response consumption`.
-
-### read-only collision-consumption diagnostic `057d1b117960620f473eef1573821986f176ae76`
-- changed only `scripts/prepare_vs2_26_2_phase75.py`
-- added `GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT` for zero-vector LocalPlayer `ContraptionCollider.collide` requests
-- no position, velocity, onGround, collision, input, gravity, train/world, lease, replay, or reference-frame mutation
-- `port-build #892`, `client-smoke #809`, `production-carry-smoke #694`, and `runtime-smoke #851` completed SUCCESS
-- `world-smoke #812` and `production-world-smoke #725` completed FAILURE at later acceptance/runtime gates, giving real diagnostic evidence rather than compile failure
-
-### production-world #725 / run `34791239228`
-The zero-response path is directly proven:
-- vanilla movement can consume downward Y before Create collision handling
-- `GATE_E_CREATE_LOCALPLAYER_ZERO_COLLIDE_RESULT` logs `requested=0,0,0`, `allowed=0,0,0`; the first Create response-site `setPos` therefore performs no vertical correction
-- Phase170 then identifies native carriage owner and later Create contact motion is horizontal
-- this closed the question whether the zero `totalResponse` consumption call itself contributes vertical correction: it does not
-
-### OBB/LocalPlayer correlation diagnostic `4479e094848b5ce75b0d3f4dc7aed55c9ac9ef47`
-- changed only `scripts/prepare_vs2_26_2_phase65.py`
-- extended the read-only `ContinuousOBBCollider.collideMany` trace window to 128 calls
-- added current LocalPlayer tick, position, delta movement, and onGround state to each OBB result
-- no gameplay mutation
-- `port-build #893`, `client-smoke #810`, `production-carry-smoke #695`, and `runtime-smoke #852` completed SUCCESS
-- `production-world-smoke #726` / run `34793031275` completed FAILURE and produced the decisive grounding/motion correlation below
-
-### production-world #726 / run `34793031275`
-The correlation changes the root hypothesis from an unproven floor-response guess to a concrete native state mismatch:
-- while still healthy, repeated Create OBB results can be `surface=true`, temporal `<1`, zero discrete response, and Create keeps the LocalPlayer grounded
-- tick `24` remains physically supported at local floor top `2.0` with local vertical gap about `+0.0001001`
-- the same tick's temporal Create handling leaves final LocalPlayer Y delta about `-0.0529708647` while `onGround=true`
-- on tick `25`, LocalPlayer world Y has dropped by exactly that retained downward amount, and local physical support becomes false with vertical gap about `-0.0528707647`
-- later ticks retain the same pattern: Create surface/contact handling may keep `onGround=true` while a negative Y delta survives to the next vanilla movement, producing progressively deeper gaps (`-0.1569`, `-0.3019`, `-0.4747`, then no valid floor-top support)
-- the exact sink transition does not require a stale Phase83 owner and occurs after the #722 duplicate-owner seam is already fixed
-- some OBB temporal contacts at the transition are horizontal/side normals rather than an upward floor normal; therefore a floor-normal-only position correction would be the wrong patch
-
-Direct classification from #726 remains `collision`, specifically `Create grounded state versus final vertical motion consistency`.
+### OBB correlation diagnostic `4479e094848b5ce75b0d3f4dc7aed55c9ac9ef47` / #726
+- decisive invariant: Create could finish LocalPlayer surface/temporal handling with `onGround=true` while retaining negative Y delta
+- next vanilla tick consumed exactly that retained negative Y and progressively sank the player
+- transition could involve temporal side contact, so floor-normal-only correction is invalid
 
 ### grounded-motion candidate `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
-- changes only `scripts/prepare_vs2_26_2_phase64.py`
-- keeps the existing upward-jump/onGround protection
-- adds one redirect at Create's final `Entity.setDeltaMovement(Vec3)` call in `ContraptionColliderClient.collideEntities`
-- only for the actual LocalPlayer with `vs2.createCarryCompat=true`, and only after Create has already marked it `onGround`, a negative final Y component is clipped to zero
-- X/Z and positive/upward Y are untouched
-- no setPos/teleport/manual floor height/collision-shape change/reference-frame mutation/lease/replay/synthetic carriage velocity is introduced
-- marker `GATE_E_CREATE_GROUNDED_Y_CLIP` proves exactly when the native-grounding consistency repair fires
+- changes only the final native-motion seam in `scripts/prepare_vs2_26_2_phase64.py`
+- when Create itself finishes the actual LocalPlayer grounded, only negative final Y is clipped to zero
+- X/Z and positive/upward Y untouched
+- no setPos/teleport/manual floor height/shape change/lease/replay/synthetic carry
+- marker: `GATE_E_CREATE_GROUNDED_Y_CLIP`
 
-### production-world #727 / run `34794456616`
-The grounded-motion candidate closes the former immediate sink path without regressing the protected standing/walk baseline:
-- `port-build #894`, `client-smoke #811`, `runtime-smoke #853`, and `production-carry-smoke #696` completed SUCCESS
-- production proof reports `PRODUCTION_CARRY physical_support_stable carriage_id=10 ticks=24-29 samples=6 span=0.000000000`
-- supported sprint/walk confirms at player tick `30` with `on_ground=true`, `broadphase=true`, and `support_healthy=true`
-- the run then fails later because no native jump landing marker appears
-- this is positive evidence for the grounded-negative-Y repair, not a regression signal and not permission to stack another collision workaround
+### production-world #727
+- former immediate sink path no longer reproduces
+- `PRODUCTION_CARRY physical_support_stable`; supported walk/sprint passes
+- failure moved downstream to jump proof
 
-### jump-arm diagnostic `61cac5cebb119393d8adce581dfa0c5d1009ce67` + composition `2f0de46c8037835fbd06e7d6a39b917984d8daef`
-- adds `GATE_E_M1_JUMP_ARM_TRACE` at the final native jump admission boundary
-- telemetry only reads backward/strafe confirmation, onGround, jumpArmReady, live floor-support state/tick, native-contact tick, and delta Y
-- no player/train/world/input/collision/gravity mutation
+### production-world #728
+- carry remains stable; walk/sprint, native backward, native right-strafe all confirm
+- jump admission remains false because live fixture floor-support publisher is false
+- establishes that missing jump was not an input timing bug
 
-### production-world #728 / run `34796986066`
-The artifact resolves the post-#727 ambiguity without changing gameplay:
-- production carry remains stable (`carry_delta_plus_local_stable`, carriage `10`, ticks `29-31`, zero local span)
-- supported sprint/walk again confirms, this time at tick `35`
-- native backward is requested and confirmed at tick `39`
-- native right-strafe is requested and confirmed at tick `40`
-- `GATE_E_CREATE_GROUNDED_Y_CLIP` fires during the same grounded locomotion window and continuity returns `on_ground=true`
-- despite backward/strafe already confirmed, `GATE_E_M1_JUMP_ARM_TRACE` remains `jump_arm_ready=false`
-- the live floor publisher is already `floor_support_now=false` during the grounded locomotion window and remains false afterward; therefore missing jump is not evidence of missing reverse/strafe dispatch or a reason to change input timing
-- later trace shows the floor-support publication stops advancing at tick `140` and native-contact publication at tick `48`, but the floor-support predicate was false before those stale values, so the first false predicate component must be isolated before any acceptance change
+### floor-predicate diagnostic `a95cdf360313e84a4c154c2c0b4c7484bdfe4cdd` / #729
+- read-only predicate trace isolates the false component to the obsolete near-zero total local-step requirement
+- tick cadence, same carriage, broadphase, onGround, and baseline identity remain valid during native locomotion
+- ordinary backward/strafe correctly makes total local XYZ step non-zero
 
-### jump floor-predicate diagnostic `a95cdf360313e84a4c154c2c0b4c7484bdfe4cdd`
-- extends the existing final jump diagnostic with `GATE_E_M1_JUMP_FLOOR_TRACE`
-- logs continuity tick adjacency, same-carriage identity, local step squared / settled threshold, broadphase, onGround, carry-baseline identity, and final support predicate
-- read-only only; no jump/input/admission, player motion, collision, carry, gravity, train, world, lease, replay, or reference-frame mutation
-- `production-world-smoke #729` / run `34797427793` is in progress; do not duplicate-trigger while active
+### fixture bookkeeping repair `94b920480f545845134d2e262791704489bb95d7`
+- changes only M1 fixture support bookkeeping
+- replaces near-zero XYZ-step requirement with fixed fixture-floor local-Y alignment while preserving cadence/carriage/broadphase/onGround/baseline checks
+- no player/collision/train/world/input mutation
+- `port-build #897`, `client-smoke #814`, `runtime-smoke #856`, and `production-carry-smoke #699` pass
 
-## Native Create-Fly source finding locked for this candidate
+### production-world #730 / run `34798398059`
+- frozen baseline preserved: `PRODUCTION_CARRY physical_support_stable`; supported walk/sprint succeeds
+- native jump is genuinely requested at tick 53
+- native vertical arc is observed immediately with `delta_y=+0.3331999936`
+- no natural-landing marker follows
+- continuity remains `onGround=true` through much of the visible rising/falling arc despite physical support having left the original floor
+- later continuity changes from baseline carriage `4` to sibling carriage `5`
+- ticks around 63–65 are genuinely airborne on carriage 5; tick 66 becomes grounded around sibling local Y `-1.0` while baseline remains carriage 4
+- therefore the failure is not merely a missing verifier marker; the jump leaves the intended carriage/reference target before natural landing
+
+### ground/final-motion ordering diagnostic `c7da75df793502f3fe4f61d0dd093190e00a06fa`
+- modifies only `scripts/prepare_vs2_26_2_m1_jump_arm_trace.py`
+- Phase64 behavior is preserved; existing native `setOnGround` and final `setDeltaMovement` writes remain one-for-one
+- adds `GATE_E_CREATE_SET_ON_GROUND_SEAM`: requested ground flag, prior ground state, delta-Y observed at call, rising guard, applied ground flag
+- adds `GATE_E_CREATE_FINAL_MOTION_SEAM`: ground state before final write, current delta-Y, incoming motion Y, applied motion Y, grounded-clip flag
+- both traces are bounded to the relevant fixture jump window and read-only
+- `production-world-smoke #731` / run `34799207093` is in progress; do not duplicate-trigger
+
+## Native Create-Fly source finding locked
 Pinned Create Fly runtime is `26.2-rc-2-6.0.9-1`.
-In its native `ContraptionColliderClient.collideEntities`:
-- `entityMotion` is copied from the LocalPlayer delta movement
-- temporal collision computes `idealVerticalMotion` and may write that Y back into entity delta movement
-- zero `totalResponse` produces zero positional allowance at the first `ContraptionCollider.collide` call
-- a `surfaceCollision` later calls `entity.setOnGround(true)` for the walkable case
-- contact-point carry then applies only X/Z to position
-- at the end of the method Create writes the retained local `entityMotion` back with `entity.setDeltaMovement(entityMotion)`
+In native `ContraptionColliderClient.collideEntities`:
+- `entityMotion` starts from LocalPlayer delta movement
+- temporal collision can compute `idealVerticalMotion`
+- zero response can produce zero positional allowance
+- walkable surface collision can call `entity.setOnGround(true)`
+- contact carry applies X/Z position movement
+- method later writes retained `entityMotion` through final `entity.setDeltaMovement(entityMotion)`
 
-#726 proves that this final write can combine `onGround=true` with negative Y. Candidate `aea874` changes only that final inconsistency for LocalPlayer; it does not invent floor geometry or carriage motion. #727/#728 then show the candidate preventing the former immediate progressive sink through sustained standing/supported locomotion windows.
+#726 proves final grounded state and final vertical motion were inconsistent for downward motion; `aea874` repairs that exact invariant. #730 now exposes an airborne-side ordering/ownership boundary, not renewed evidence to broaden the grounded negative-Y repair.
 
 ## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
 - `EXACT_SHAPES_LOCALPLAYER_0fa4aa`
@@ -198,15 +147,16 @@ In its native `ContraptionColliderClient.collideEntities`:
 - synthetic carry velocity / fake inertia compensation
 - manual floor/wall clamps
 - harness mutation that manufactures success
-- treating missing jump marker as a jump-input bug
+- treating missing jump as a jump-input bug
 - treating right-strafe timing as cause of support loss
 - broad sibling/global suppression instead of direct native-owner identity
-- floor-normal-only correction as the explanation for #726 support loss; #726 shows the decisive transition can be a temporal side contact while grounded negative Y is retained
+- floor-normal-only correction for #726
+- near-zero total local XYZ movement as a prerequisite for supported locomotion; #729 disproved it for the fixture bookkeeping path
 
 ## Root-cause classification
-Current active blocker: `fixture/harness — live jump floor-support publisher predicate`.
+Current: `collision / airborne ground-state and reference-owner ordering`.
 
-The exact #722 reference-frame double-owner seam is closed/frozen by #724. The native grounded-negative-Y collision mismatch isolated by #726 is repaired by candidate `aea874` strongly enough for #727/#728 to retain sustained grounded standing and supported locomotion. The first unproven boundary is now the read-only fixture publisher feeding jump admission: #728 shows its final value false while native reverse/strafe and grounded continuity are already present. This classification does not authorize changing jump admission; #729 must identify the exact false component first.
+The #722 double-owner seam is closed/frozen. The #726 grounded-negative-Y mismatch is repaired/frozen strongly enough for #727/#728/#730. #729 repaired only fixture bookkeeping and #730 then proved a real native jump arc. The remaining first broken invariant is during that arc: grounding/reference ownership does not stay consistent with the intended baseline carriage through natural landing. #731 is measuring Create's exact ground-decision versus final-motion ordering before any new behavior is authorized.
 
 ## Anti-loop lock
 - Do not change sprint/reverse/strafe input windows.
@@ -214,12 +164,11 @@ The exact #722 reference-frame double-owner seam is closed/frozen by #724. The n
 - Do not extend native contact leases.
 - Do not add replay/recovery branches.
 - Do not re-enable exact-shape LocalPlayer redirect.
-- Do not add synthetic carry, fake gravity, or manual floor/wall clamps.
-- Do not retune the proven Phase83 native-owner predicate unless direct regression reproduces that exact seam.
-- Do not broaden or stack another vertical/collision workaround on top of `aea874` without direct renewed sink/regression evidence.
-- Do not reinterpret #728's missing jump as an input bug: native backward and right-strafe are already confirmed before the failed admission.
-- While #729 is active, do not duplicate-trigger or mutate the floor-support/jump predicate. Inspect `GATE_E_M1_JUMP_FLOOR_TRACE` first.
-- If `aea874` regresses any frozen-green subsystem, REVERT it before adding compensation.
+- Do not add synthetic carry, fake gravity, inertia compensation, or manual floor/wall clamps.
+- Do not retune Phase83 native-owner arbitration unless direct regression reproduces its exact closed seam.
+- Do not broaden `aea874` unless renewed direct sink/regression evidence requires it.
+- Do not treat #730 missing landing as verifier-only: artifact evidence shows real sibling-carriage handoff/lower grounding.
+- While #731 is active, do not duplicate-trigger or make gameplay changes. First classify the exact Create setOnGround/final-motion ordering from the new read-only markers.
 
 ## M1 acceptance — all required in one real moving-train proof
 - [ ] stable standing

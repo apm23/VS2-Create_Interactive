@@ -9,23 +9,37 @@ source = client_probe.read_text(encoding="utf-8")
 # Phase 85 proved the compatibility carry itself, but GateEClientProbe also contains
 # CI-only fixture normalization/repositioning used to make the archived smoke save
 # deterministic. Before exposing the carry path to a normal client, separate those
-# concerns: production may explicitly opt into carry compatibility while every
-# fixture reposition/gravity probe remains strictly CI-harness-only.
+# concerns: production compatibility is enabled by default, while every fixture
+# reposition/gravity probe remains strictly CI-harness-only. Users can still force
+# the compatibility path off explicitly with -Dvs2.createCarryCompat=false.
 old_enable = '''        boolean enabled = Boolean.getBoolean("vs2.gateD") || "true".equals(System.getenv("GITHUB_ACTIONS"));
         if (!enabled || installed) return;
         installed = true;
 '''
 new_enable = '''        boolean ciHarness = Boolean.getBoolean("vs2.gateD") || "true".equals(System.getenv("GITHUB_ACTIONS"));
+        if (System.getProperty("vs2.createCarryCompat") == null) {
+            System.setProperty("vs2.createCarryCompat", "true");
+        }
         boolean explicitCarryCompat = Boolean.getBoolean("vs2.createCarryCompat");
         boolean enabled = ciHarness || explicitCarryCompat;
         if (!enabled || installed) return;
         installed = true;
         LOGGER.info("VS2_CREATE_CARRY_COMPAT_MODE ci_harness={} explicit_opt_in={}", ciHarness, explicitCarryCompat);
 '''
-if "VS2_CREATE_CARRY_COMPAT_MODE" not in source:
-    if old_enable not in source:
+legacy_enable = '''        boolean ciHarness = Boolean.getBoolean("vs2.gateD") || "true".equals(System.getenv("GITHUB_ACTIONS"));
+        boolean explicitCarryCompat = Boolean.getBoolean("vs2.createCarryCompat");
+        boolean enabled = ciHarness || explicitCarryCompat;
+        if (!enabled || installed) return;
+        installed = true;
+        LOGGER.info("VS2_CREATE_CARRY_COMPAT_MODE ci_harness={} explicit_opt_in={}", ciHarness, explicitCarryCompat);
+'''
+if 'System.getProperty("vs2.createCarryCompat") == null' not in source:
+    if legacy_enable in source:
+        source = source.replace(legacy_enable, new_enable, 1)
+    elif old_enable in source:
+        source = source.replace(old_enable, new_enable, 1)
+    else:
         raise SystemExit("Phase 86 could not find static Gate E install guard")
-    source = source.replace(old_enable, new_enable, 1)
 
 # Phase 61: archived-save LocalPlayer block-top normalization.
 old_fixture_block = '''            if (!fixtureClientNormalized && !carriageCandidates.isEmpty()) {'''
@@ -92,13 +106,15 @@ required = [
     "carryReplayPlayerTick",
     "vs2.phase83SupportedBaselineCarriageId",
     "phase83NativeApplicationAge <= 1",
+    'System.getProperty("vs2.createCarryCompat") == null',
+    'System.setProperty("vs2.createCarryCompat", "true")',
 ]
 missing = [token for token in required if token not in source]
 if missing:
     raise SystemExit("Phase 86 lost required carry safety anchors: " + ", ".join(missing))
 
 client_probe.write_text(source, encoding="utf-8")
-print("Phase 86: leases airborne reference frame from latest physically-supported native Create carriage; fixture isolation preserved")
+print("Phase 86: enables proven production carry compatibility by default while retaining explicit false kill-switch and fixture isolation")
 
 # Keep the world-smoke preparation chain moving into the production-mode isolation
 # check. Phase 87 is still non-destructive: it only changes how the harness flag is

@@ -9,22 +9,23 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Architecture: Create owns train/carriage gameplay and collision geometry; VS2 supplies moving reference-space/transform foundation; this project is a thin adapter.
 
 ## Current state
-- project_state: `FINAL_READY — M1 is frozen green; final build and direct final-artifact verification both succeeded.`
+- project_state: `FINAL_READY — M1 remains frozen green; bootstrap packaging regression fixed; runtime-fixed final artifact directly verified.`
 - current_head: `AUTO_RECONCILE_GIT_HEAD` (ledger/finalization-only commits may advance Git HEAD; compare implementation files before treating that as gameplay change)
 - implementation_head: `c7da75df793502f3fe4f61d0dd093190e00a06fa`
 - candidate_gameplay_commit: `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
 - last_good_implementation_commit: `c7da75df793502f3fe4f61d0dd093190e00a06fa`
-- final_build_workflow_commit: `c33eaf48c1083716c5a5a0c4a7e7207286ae4890`
-- final_build_run: `34816785467` (`final-build #3`, success)
-- final_verify_workflow_commit: `9de5e000058e5ab0abacd98825e9fe340b4c4348`
-- final_verify_run: `34817198302` (`final-verify #1`, success)
-- final_artifact: `VS2-Create-Interactive-M1-final` (artifact id `10337040684`)
-- final_artifact_archive_digest: `sha256:8d882a6d0b78067010cb36d9a0700e57f738ecbee0dec0b61819b3e9c6793f5a`
+- runtime_packaging_fix_commit: `f3d1335c9fc89283d936af039eba34aa9778bd05`
+- runtime_final_verify_workflow_commit: `7aeb188099560ad16136df0f335b361b9f519449`
+- runtime_final_build_run: `34823149030` (`final-build #4`, success)
+- runtime_final_verify_run: `34823564539` (`final-verify #2`, success)
+- final_artifact: `VS2-Create-Interactive-M1-final` (artifact id `10339118155`)
+- final_artifact_archive_digest: `sha256:88a16cf784710847fc486219de500187cae67ec414fbad6e79ebb2398521678f`
 - final_jar: `valkyrienskies-26-2-2.4.205+0bc19eac8f.jar`
-- final_jar_sha256: `3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4`
+- final_jar_sha256: `7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51`
+- bootstrap_packaging: `Fabric Language Kotlin 1.13.13+kotlin.2.4.10 embedded as nested mod, including kotlin-stdlib, jdk7, jdk8, and kotlin-reflect runtime jars.`
 - active_blocker: `NONE.`
-- active_hypothesis: `CLOSED. The final uploaded artifact is the frozen-green M1 composition and passed direct identity/integrity/compiled-seam verification.`
-- next_safe_action: `NONE. FINAL_READY is terminal. Automation must not reopen development; only an explicit user request may start a new milestone or reopen M1.`
+- active_hypothesis: `CLOSED. The user-reproduced Bootstrap NoClassDefFoundError kotlin/jvm/internal/Intrinsics was caused by missing Kotlin runtime packaging in the previous final artifact; final-build #4 embeds and verifies the intended Fabric Language Kotlin runtime chain without modifying gameplay implementation.`
+- next_safe_action: `USER RUNTIME TEST of the runtime-fixed final JAR. FINAL_READY is terminal unless direct runtime regression evidence is supplied or the user explicitly starts a new milestone.`
 
 ## Architecture contract
 Forbidden unless a future explicitly reopened milestone has new direct evidence proving unavoidable:
@@ -41,7 +42,7 @@ Preferred order: native Create/Minecraft collision -> authoritative VS2/Create t
 
 ## Frozen / protected green
 Do not modify without direct regression evidence in an explicitly reopened development cycle:
-- boot/no-crash baseline
+- boot/no-crash gameplay baseline once dependencies are present
 - Create train + VS2 baseline coexistence
 - Steam 'n' Rails and Copycats preservation
 - standing carry continuity
@@ -55,7 +56,7 @@ Do not modify without direct regression evidence in an explicitly reopened devel
 - grounded-negative-Y repair at `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
 - fixture floor-support bookkeeping repair at `94b920480f545845134d2e262791704489bb95d7`
 
-M1 GREEN is a stop signal. No gameplay tuning after this point.
+M1 GREEN is a stop signal. No gameplay tuning after this point without direct runtime regression evidence.
 
 ## Complete M1 proof
 Acceptance source: `production-world-smoke #731 / run 34799207093` — success.
@@ -72,23 +73,54 @@ One real moving-train run proved:
 - replay-free/recovery-free accepted jump
 - post-land stability
 
-## Final-build evidence
-- #1 / run `34816479606`: failed only because final-build verifier searched grounded-Y marker in wrong generated file; CI/verifier-only.
+## Original finalization evidence
+- final-build #1 / run `34816479606`: failed only because verifier searched grounded-Y marker in wrong generated file; CI/verifier-only.
 - repair `0d7ac30555d908ead66a972cc671d5e8d441b71a`: corrected grounded-Y marker path only.
-- #2 / run `34816587156`: failed only because final-build verifier searched `GATE_E_M1_NATIVE_JUMP_LANDED` in `GateEClientProbe.java`; CI/verifier-only.
-- repair `c33eaf48c1083716c5a5a0c4a7e7207286ae4890`: corrected landing-marker path to `MixinLocalPlayerFixtureInput.java`; workflow-only.
-- #3 / run `34816785467`: SUCCESS. Reconstruction, Fabric build, staging/checksum, and artifact upload all completed.
-- downloaded artifact contents verified locally: `SHA256SUMS.txt` matches actual JAR SHA-256; `BUILD_INFO.txt` records `source_commit=c33eaf48...` and `proven_m1_run=34799207093`.
-- compare `c7da75d...c33eaf48`: only `.github/workflows/final-build.yml` and `MASTER_STATE.md` changed; no implementation/script/gameplay files changed.
+- final-build #2 / run `34816587156`: failed only because verifier searched native landing marker in wrong generated file; CI/verifier-only.
+- repair `c33eaf48c1083716c5a5a0c4a7e7207286ae4890`: corrected landing-marker path only.
+- final-build #3 / run `34816785467`: SUCCESS.
+- final-verify #1 / run `34817198302`: SUCCESS for identity/integrity/frozen-green compiled seams.
+- previous final JAR SHA-256: `3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4`.
 
-## Final-verify evidence
-- workflow commit `9de5e000058e5ab0abacd98825e9fe340b4c4348` adds only `.github/workflows/final-verify.yml`.
-- final-verify #1 / run `34817198302`: SUCCESS.
-- verification directly downloaded artifact from successful final-build run `34816785467`.
-- verified `BUILD_INFO.txt` source commit and proven M1 run identity.
-- verified exact JAR SHA-256 `3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4` and JAR archive integrity.
-- required frozen-green compiled classes/markers were present for Create carry compatibility, supported walk proof, grounded-Y clip, and native natural landing.
-- no gameplay implementation change was introduced by finalization.
+## Runtime bootstrap regression and repair
+User runtime crash report on Minecraft 26.2 showed:
+- `java.lang.NoClassDefFoundError: kotlin/jvm/internal/Intrinsics`
+- first VS2 frame: `org.valkyrienskies.core.util.RateLimiter.<init>(RateLimiter.kt)`
+- cause: `ClassNotFoundException: kotlin.jvm.internal.Intrinsics`
+- loaded mod list contained VS2 but no Fabric Language Kotlin runtime.
+
+Direct inspection of the previous final JAR confirmed:
+- no `META-INF/jars/` runtime payload existed;
+- `fabric.mod.json` did not expose a Kotlin runtime dependency;
+- therefore this was a packaging/bootstrap regression, not M1 movement/collision evidence.
+
+Repair commit `f3d1335c9fc89283d936af039eba34aa9778bd05` changed only `.github/workflows/final-build.yml` and:
+- leaves the exact frozen-green M1 reconstruction unchanged;
+- after `:fabric:build`, locates the exact resolved `fabric-language-kotlin` version from Gradle cache;
+- verifies that nested mod is actually `fabric-language-kotlin` and itself contains `kotlin-stdlib`;
+- embeds it into the final VS2 JAR under `META-INF/jars/`;
+- adds the proper outer `fabric.mod.json` `jars` entry;
+- verifies the embedded runtime before staging/upload;
+- records `bootstrap_packaging=kotlin-runtime-embedded` in `BUILD_INFO.txt`.
+
+Runtime-fixed final-build #4 / run `34823149030`: SUCCESS.
+Artifact `10339118155` was downloaded and independently inspected:
+- artifact archive digest `sha256:88a16cf784710847fc486219de500187cae67ec414fbad6e79ebb2398521678f`;
+- JAR SHA-256 `7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51` matches `SHA256SUMS.txt`;
+- `BUILD_INFO.txt` pins source commit `f3d1335c...`, M1 proof run `34799207093`, and `bootstrap_packaging=kotlin-runtime-embedded`;
+- outer JAR contains `META-INF/jars/fabric-language-kotlin-1.13.13+kotlin.2.4.10.jar`;
+- nested mod id/version is `fabric-language-kotlin 1.13.13+kotlin.2.4.10`;
+- nested runtime includes `kotlin-stdlib-2.4.10.jar`, `kotlin-stdlib-jdk7-2.4.10.jar`, `kotlin-stdlib-jdk8-2.4.10.jar`, and `kotlin-reflect-2.4.10.jar`.
+
+Runtime final-verify commit `7aeb188099560ad16136df0f335b361b9f519449` changes only `.github/workflows/final-verify.yml` and directly verifies the runtime-fixed artifact.
+Runtime final-verify #2 / run `34823564539`: SUCCESS.
+It verifies:
+- no implementation/gameplay files changed since complete M1 proof;
+- exact runtime-fixed BUILD_INFO identity;
+- exact JAR SHA-256 and archive integrity;
+- frozen-green compiled classes/markers remain present;
+- exactly one embedded Fabric Language Kotlin nested mod is present;
+- Kotlin stdlib, jdk7, jdk8, and reflect nested runtime jars are present.
 
 ## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
 - `EXACT_SHAPES_LOCALPLAYER_0fa4aa`
@@ -111,7 +143,8 @@ One real moving-train run proved:
 - Do not add synthetic carry, fake gravity, inertia compensation, or manual floor/wall clamps.
 - Do not retune Phase83 without direct regression evidence.
 - Do not broaden `aea874` without renewed direct sink/regression evidence.
-- FINAL_READY is terminal and automation may not reopen development.
+- Bootstrap/dependency failures do not authorize gameplay changes.
+- FINAL_READY is terminal unless user runtime evidence directly reopens it or the user explicitly starts a new milestone.
 
 ## M1 acceptance
 - [x] stable standing
@@ -126,24 +159,27 @@ One real moving-train run proved:
 - m1_complete: `true`
 - m1_proof_run: `34799207093`
 - final_build_started: `true`
-- final_build_commit: `c33eaf48c1083716c5a5a0c4a7e7207286ae4890`
-- final_build_run: `34816785467`
-- final_commit: `c33eaf48c1083716c5a5a0c4a7e7207286ae4890`
+- final_build_commit: `f3d1335c9fc89283d936af039eba34aa9778bd05`
+- final_build_run: `34823149030`
+- final_verify_commit: `7aeb188099560ad16136df0f335b361b9f519449`
+- final_verify_run: `34823564539`
 - final_jar: `valkyrienskies-26-2-2.4.205+0bc19eac8f.jar`
-- final_jar_sha256: `3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4`
-- final_verification: `SUCCESS — run 34817198302`
+- final_jar_sha256: `7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51`
+- final_verification: `SUCCESS — runtime final-verify #2 / run 34823564539`
+- bootstrap_runtime_fix: `SUCCESS`
 - final_ready: `true`
 
 ## Finalization sequence
 1. `M1_COMPLETE` — reached by #731; locked.
-2. `FINAL_BUILD` — completed by final-build #3.
-3. `FINAL_VERIFY` — completed by final-verify #1.
-4. `FINAL_READY` — reached and terminal.
+2. `FINAL_BUILD` — runtime-fixed artifact completed by final-build #4.
+3. `FINAL_VERIFY` — runtime-fixed artifact completed by final-verify #2.
+4. `FINAL_READY` — reached again after bootstrap packaging repair; terminal pending user runtime test.
 
 ## Fresh-chat protocol
 1. Read this file completely.
 2. Inspect actual GitHub HEAD.
 3. Reconcile AUTO_RECONCILE_GIT_HEAD; ledger/finalization-only commits are not gameplay changes.
 4. Respect Frozen Green, Failed Hypotheses, and Anti-loop locks.
-5. If `final_ready=true`, stop. Automation may not reopen development.
-6. Only an explicit user request may start a new milestone or reopen M1.
+5. If user reports Bootstrap `kotlin/jvm/internal/Intrinsics`, ensure they are testing JAR SHA-256 `7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51`, not the superseded JAR SHA-256 `3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4`.
+6. If `final_ready=true` and no new runtime regression evidence exists, stop. Automation may not reopen gameplay development.
+7. Only direct runtime regression evidence or an explicit user request may start a new development cycle or milestone.

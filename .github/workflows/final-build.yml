@@ -35,7 +35,7 @@ jobs:
           python3 scripts/prepare_vs2_26_2_phase98.py
           grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           grep -q 'GATE_E_CREATE_GROUNDED_Y_CLIP' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.java
-          grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java
 
       - name: Build final Fabric distributable
         working-directory: upstream

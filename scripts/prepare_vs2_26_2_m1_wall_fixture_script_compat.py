@@ -7,7 +7,7 @@ source = script.read_text(encoding="utf-8")
 marker = "M1_CURRENT_COORDINATE_AGNOSTIC_WALL_FIXTURE_COMPOSER"
 if marker not in source:
     start = source.index("replacements = [")
-    end = source.index("\nfor old, new in replacements:", start)
+    end = source.index("\nfixture_input.write_text", start)
     new_block = '''# M1_CURRENT_COORDINATE_AGNOSTIC_WALL_FIXTURE_COMPOSER
 replacements = [
     (

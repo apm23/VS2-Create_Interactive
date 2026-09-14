@@ -135,15 +135,22 @@ if plateau is None:
     raise SystemExit(f"M1 carriage side stable collision plateau missing: local_z_samples={wall_z}")
 impact_z=[s[4] for s in plateau]
 
-# Existing Phase66/73 telemetry already distinguishes a native ceiling stop: vanilla takeoff asks
-# for +0.42 Y, the next airborne SELF move is vertically zero while finite overhead geometry is
-# present, then ordinary negative-Y gravity resumes. This verifier is read-only.
+# Existing Phase66/73 telemetry distinguishes two native ceiling-stop shapes. The common shape has
+# an airborne zero-Y apex followed by ordinary negative-Y descent. Create can also resolve a very
+# low ceiling by publishing grounded on the zero-Y stop frame immediately after a positive airborne
+# rise; in that case there is intentionally no intermediate negative-Y SELF move. Both forms remain
+# read-only proofs and still require finite carriage overhead geometry below.
 move_pattern=re.compile(r"GATE_E_LOCALPLAYER_ENTITY_MOVE_HEAD[^\n]*player_tick=(\d+)[^\n]*mover=SELF[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)[^\n]*on_ground=(true|false)")
 moves=[(int(m.group(1)),float(m.group(2)),float(m.group(3)),float(m.group(4)),m.group(5)=="true") for m in move_pattern.finditer(text) if request_tick<=int(m.group(1))<=landed_tick]
 takeoff=next((m for m in moves if m[0]==request_tick and m[2]>=0.40 and m[4]),None)
-apex=next((m for m in moves if request_tick<m[0]<landed_tick and not m[4] and abs(m[2])<=1e-6),None)
-descent=next((m for m in moves if apex is not None and apex[0]<m[0]<landed_tick and not m[4] and m[2]<=-0.05),None)
-if takeoff is None or apex is None or descent is None: raise SystemExit(f"M1 ceiling collision signature missing: moves={moves}")
+positive_airborne=next((m for m in moves if request_tick<m[0]<landed_tick and not m[4] and m[2]>0.05),None)
+airborne_apex=next((m for m in moves if request_tick<m[0]<landed_tick and not m[4] and abs(m[2])<=1e-6),None)
+descent=next((m for m in moves if airborne_apex is not None and airborne_apex[0]<m[0]<landed_tick and not m[4] and m[2]<=-0.05),None)
+grounded_stop=next((m for m in moves if positive_airborne is not None and positive_airborne[0]<m[0]<=landed_tick and m[4] and abs(m[2])<=1e-6 and m[0]-positive_airborne[0]<=2),None)
+classic_ceiling_stop = airborne_apex is not None and descent is not None
+ceiling_stop = airborne_apex if classic_ceiling_stop else grounded_stop
+if takeoff is None or positive_airborne is None or ceiling_stop is None:
+    raise SystemExit(f"M1 ceiling collision signature missing: moves={moves}")
 continuity_tick=None; overhead=[]
 for line in text.splitlines():
     cm=re.search(r"GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)", line)
@@ -168,4 +175,4 @@ for sample in post_land:
 if len(best_streak)<5: raise SystemExit("M1 post-landing carriage stability missing")
 
 speed_prev,speed_now,speed_before,speed_after,speed_local_step=speed_change_proof
-print("M1_NATIVE_LOCOMOTION_PROOF "+f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} strafe_speed_sq={strafe_speed_sq} floor_solid=true floor_samples={len(best_floor)} floor_y_span={floor_y_span:.9f} wall_solid=true wall_local_z_boundary={impact_z[-1]:.6f} wall_impact_ticks={plateau[0][0]}-{plateau[-1][0]} wall_impact_span={max(impact_z)-min(impact_z):.9f} ceiling_solid=true ceiling_stop_tick={apex[0]} ceiling_overhead_tick={overhead[0][0]} ceiling_gap={overhead[0][2]:.6f} speed_change_stable=true speed_change_ticks={speed_prev[0]}-{speed_now[0]} frame_speed={speed_before:.6f}->{speed_after:.6f} speed_change_local_step={speed_local_step:.9f} jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} duration={duration} delta_y={delta_y} natural_fall=true replay_free=true recovery_free=true post_land_stable_samples={len(best_streak)}")
+print("M1_NATIVE_LOCOMOTION_PROOF "+f"walk={walk_tick} reverse_request={backward_request_tick} reverse_confirmed={backward_tick} reverse_speed_sq={backward_speed_sq} strafe_request={strafe_request_tick} strafe_confirmed={strafe_tick} strafe_speed_sq={strafe_speed_sq} floor_solid=true floor_samples={len(best_floor)} floor_y_span={floor_y_span:.9f} wall_solid=true wall_local_z_boundary={impact_z[-1]:.6f} wall_impact_ticks={plateau[0][0]}-{plateau[-1][0]} wall_impact_span={max(impact_z)-min(impact_z):.9f} ceiling_solid=true ceiling_stop_tick={ceiling_stop[0]} ceiling_overhead_tick={overhead[0][0]} ceiling_gap={overhead[0][2]:.6f} speed_change_stable=true speed_change_ticks={speed_prev[0]}-{speed_now[0]} frame_speed={speed_before:.6f}->{speed_after:.6f} speed_change_local_step={speed_local_step:.9f} jump_request={request_tick} airborne={airborne_tick} landed={landed_tick} duration={duration} delta_y={delta_y} natural_fall=true replay_free=true recovery_free=true post_land_stable_samples={len(best_streak)}")

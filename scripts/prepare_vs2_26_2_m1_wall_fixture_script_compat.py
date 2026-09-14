@@ -40,7 +40,32 @@ for old, new in replacements:
             "M1 wall fixture lost both legacy and target verifier boundaries: " + old[:80]
         )'''
     source = source[:start] + new_block + source[end:]
-    script.write_text(source, encoding="utf-8")
     print("M1 wall fixture source compatibility: made coordinate-agnostic window/direction composition idempotent")
 else:
     print("M1 wall fixture source compatibility already applied")
+
+# Phase205 is intentionally composed before this wall-fixture pass executes. It adds a
+# same-tick pre-collision reanchor guard to Phase83's grounded support gap so the old
+# END_CLIENT_TICK bridge cannot repeat the frame transform that already ran before Create OBB.
+# Keep the Phase83 owner/lease hardening below intact, but teach its source matcher the exact
+# Phase205-composed shape. This changes only composer expectations; it does not remove either
+# Phase205 de-duplication or Phase83 sibling-owner arbitration.
+phase205_marker = "M1_PHASE205_COMPOSITION_AWARE_WALL_FIXTURE"
+if phase205_marker not in source:
+    old_gap_old = """phase83_gap_old = '''            boolean phase83GroundedSupportGap = player.onGround()\n                && phase81PhysicalSupport\n                && phase83CurrentEnvelopeEligible\n                && !phase83NativeAppliedThisTick;\n            boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick\n                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);\n            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick\n                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''"""
+    composed_gap_old = """# M1_PHASE205_COMPOSITION_AWARE_WALL_FIXTURE\nphase83_gap_old = '''            boolean phase205PreCollisionReanchoredThisTick = Integer.toString(player.tickCount).equals(\n                System.getProperty(\"vs2.phase205PreCollisionReanchorTick.\" + carriage.getId()));\n            boolean phase83GroundedSupportGap = player.onGround()\n                && phase81PhysicalSupport\n                && phase83CurrentEnvelopeEligible\n                && !phase83NativeAppliedThisTick\n                && !phase205PreCollisionReanchoredThisTick;\n            boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick\n                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);\n            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick\n                && (phase83GroundedSupportGap || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''"""
+    if source.count(old_gap_old) != 1:
+        raise SystemExit("M1 wall fixture Phase205 compatibility expected one legacy Phase83 old matcher")
+    source = source.replace(old_gap_old, composed_gap_old, 1)
+
+    old_gap_new = """phase83_gap_new = '''            String phase83ActiveNativeOwner = System.getProperty(\n                \"vs2.phase170NativeContactApplicationCarriageId\");\n            boolean phase83GroundedSupportGap = player.onGround()\n                && phase81PhysicalSupport\n                && phase83CurrentEnvelopeEligible\n                && !phase83NativeAppliedThisTick;\n            boolean phase83GroundedNativeBaselineLease = player.onGround()\n                && phase83ExactBaselineCarriage\n                && Integer.toString(carriage.getId()).equals(phase83ActiveNativeOwner)\n                && (createRegisteredContact || (phase83NativeApplicationAge >= 1 && phase83NativeApplicationAge <= 2))\n                && phase83CurrentEnvelopeEligible\n                && !phase83NativeAppliedThisTick;\n            boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick\n                && (phase83GroundedSupportGap || phase83GroundedNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);\n            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick\n                && (phase83GroundedSupportGap || phase83GroundedNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''"""
+    composed_gap_new = """phase83_gap_new = '''            boolean phase205PreCollisionReanchoredThisTick = Integer.toString(player.tickCount).equals(\n                System.getProperty(\"vs2.phase205PreCollisionReanchorTick.\" + carriage.getId()));\n            String phase83ActiveNativeOwner = System.getProperty(\n                \"vs2.phase170NativeContactApplicationCarriageId\");\n            boolean phase83GroundedSupportGap = player.onGround()\n                && phase81PhysicalSupport\n                && phase83CurrentEnvelopeEligible\n                && !phase83NativeAppliedThisTick\n                && !phase205PreCollisionReanchoredThisTick;\n            boolean phase83GroundedNativeBaselineLease = player.onGround()\n                && phase83ExactBaselineCarriage\n                && Integer.toString(carriage.getId()).equals(phase83ActiveNativeOwner)\n                && (createRegisteredContact || (phase83NativeApplicationAge >= 1 && phase83NativeApplicationAge <= 2))\n                && phase83CurrentEnvelopeEligible\n                && !phase83NativeAppliedThisTick\n                && !phase205PreCollisionReanchoredThisTick;\n            boolean phase83NativeFrameEligible = !phase83NativeAppliedThisTick\n                && (phase83GroundedSupportGap || phase83GroundedNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);\n            boolean phase83ExternalFrameLease = !phase83NativeAppliedThisTick\n                && (phase83GroundedSupportGap || phase83GroundedNativeBaselineLease || phase83AirborneNativeLease || phase83AirborneSupportedBaselineLease);'''"""
+    if source.count(old_gap_new) != 1:
+        raise SystemExit("M1 wall fixture Phase205 compatibility expected one legacy Phase83 replacement")
+    source = source.replace(old_gap_new, composed_gap_new, 1)
+    script.write_text(source, encoding="utf-8")
+    print("M1 wall fixture source compatibility: retained Phase205 pre-collision de-dup across Phase83 owner/lease composition")
+elif "!phase205PreCollisionReanchoredThisTick" not in source:
+    raise SystemExit("M1 wall fixture Phase205 compatibility marker exists without de-dup predicate")
+else:
+    print("M1 wall fixture Phase205 source compatibility already applied")

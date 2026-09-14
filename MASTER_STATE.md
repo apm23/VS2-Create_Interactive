@@ -11,9 +11,10 @@ GitHub code is the implementation source of truth. This file is the durable proj
 ## Current state
 - project_state: `RUNTIME_REGRESSION — FINAL_READY REVOKED. Direct user runtime test of the runtime-fixed final JAR shows the player sinking through the Create carriage floor.`
 - current_head: `AUTO_RECONCILE_GIT_HEAD`
-- implementation_head_under_test: `c7da75df793502f3fe4f61d0dd093190e00a06fa`
+- implementation_head_under_test: `74fd7288f754875b2301dcd7f8fc55330c374f70`
 - candidate_gameplay_commit: `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
 - previous_automated_m1_proof_run: `34799207093` (`production-world-smoke #731`, automated GREEN but now insufficient for real-user acceptance)
+- latest_runtime_diagnostic_run: `34892811793` (`production-world-smoke #742`, prepare/composition fixed; runtime reached real train; standing/carry+sprint proof passed before later native-jump proof failure)
 - runtime_packaging_fix_commit: `f3d1335c9fc89283d936af039eba34aa9778bd05`
 - runtime_final_verify_workflow_commit: `7aeb188099560ad16136df0f335b361b9f519449`
 - runtime_final_build_run: `34823149030` (`final-build #4`, success)
@@ -23,8 +24,8 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - user_runtime_validation: `FAILED`
 - final_ready: `false`
 - active_blocker: `G. collision — direct real-user runtime evidence shows carriage floor/support is not solid for the player; player visibly sinks into/below the moving carriage despite automated harness GREEN.`
-- active_hypothesis: `The automated production-world fixture/proof does not faithfully reproduce the real user's carriage-floor collision/support boundary, so its floor/carry GREEN was a false positive for final acceptance.`
-- next_safe_action: `Reproduce the real-user sinking condition with the exact runtime artifact/environment and add the smallest read-only instrumentation at the native Create/VS2 floor-support/collision boundary. Do not retune unrelated movement inputs or re-finalize from CI alone.`
+- active_hypothesis: `Native Create collision ownership/order is wrong at the floor-support boundary: runtime #742 shows vanilla Entity.move consumes a full downward gravity step while LocalPlayer is still onGround before Create's later client contraption collision pass clips downward velocity. The post-pass velocity clip cannot undo the already-applied downward position, and the same tick loses floor alignment/support.`
+- next_safe_action: `Inspect/trace the native Create LocalPlayer collision ordering and response-consumption boundary around Entity.move vs ContraptionColliderClient. Prefer removing/reordering duplicate ownership so Create geometry resolves downward floor motion before position penetration. Do not add floor clamps, synthetic carry/gravity, lease/replay extensions, or tune movement inputs.`
 
 ## Direct user runtime regression — 2026-09-14
 The user tested the runtime-fixed final JAR in actual Minecraft 26.2 and supplied a screenshot showing the player sunk into/below the assembled Create carriage floor. This is direct runtime evidence and overrides automated GREEN for the affected M1 criteria.
@@ -37,6 +38,24 @@ Consequences:
 - automated run #731 remains useful harness evidence but is NOT final acceptance evidence;
 - bootstrap/Kotlin packaging repair remains valid and should not be reverted;
 - do not claim M1_COMPLETE/FINAL_READY again until the exact final candidate passes a fresh real-user runtime test.
+
+## Native floor-support ordering evidence — production-world #742
+`production-world-smoke #742 / run 34892811793` is the first run after repairing the wall-fixture composer chain. Prepare/composition completed and Minecraft reached the real moving-train runtime.
+
+The run proves a concrete native ordering seam relevant to the user's sinking report:
+- ticks 20-22: carriage-local standing is stable at local Y=2.0 and Create native contact is present;
+- tick 25: supported sprint/walk is confirmed with `on_ground=true`, `broadphase=true`, `support_healthy=true`;
+- tick 26: Create's collision telemetry sees the LocalPlayer onGround with downward motion about `-0.0784`;
+- tick 27: vanilla `Entity.move(SELF, ..., -0.0784000015, ...)` returns with the entire downward Y applied, moving player Y from `-57.0` to `-57.0784000015` while `on_ground=true`;
+- after that positional drop, Create's OBB/narrowphase pass runs; Phase64 clips the retained negative delta movement back to Y=0, but position is already lower;
+- the same tick `GATE_E_M1_JUMP_FLOOR_TRACE` reports local Y `1.921599998...`, `floor_aligned=false`, `support_now=false`;
+- therefore the current Phase64 post-collision downward-velocity clip does not solve the actual position-penetration ordering problem.
+
+Interpretation lock:
+- this is direct runtime evidence of an ordering/authority problem, not evidence to extend contact leases/replay;
+- it does not justify a manual floor clamp or teleport/setPos correction;
+- it does not justify tuning sprint/reverse/strafe/jump input windows;
+- the later #742 jump-proof failure must not distract from the already-observed floor-support penetration seam.
 
 ## Architecture contract
 Forbidden unless direct evidence proves unavoidable:

@@ -54,3 +54,7 @@ runpy.run_path(
     str(Path(__file__).resolve().with_name("prepare_vs2_26_2_m1_wall_fixture_script_compat.py")),
     run_name="__main__",
 )
+runpy.run_path(
+    str(Path(__file__).resolve().with_name("prepare_vs2_26_2_phase204.py")),
+    run_name="__main__",
+)

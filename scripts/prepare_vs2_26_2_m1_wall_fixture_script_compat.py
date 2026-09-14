@@ -26,9 +26,21 @@ replacements = [
         'if stable_plateau and (start_z-min(candidate_z)>=0.015 or strafe_requested_toward_wall):',
         'if stable_plateau and (max(candidate_z)-start_z>=0.015 or strafe_requested_toward_wall):',
     ),
-]'''
+]
+for old, new in replacements:
+    old_count = verifier_source.count(old)
+    new_count = verifier_source.count(new)
+    if old_count == 1 and new_count == 0:
+        verifier_source = verifier_source.replace(old, new, 1)
+    elif old_count == 0 and new_count == 1:
+        # An earlier composer already produced the exact target boundary. Preserve it.
+        pass
+    else:
+        raise SystemExit(
+            "M1 wall fixture lost both legacy and target verifier boundaries: " + old[:80]
+        )'''
     source = source[:start] + new_block + source[end:]
     script.write_text(source, encoding="utf-8")
-    print("M1 wall fixture source compatibility: removed stale fixed wall-cell/penetration assumptions while preserving window/direction composition")
+    print("M1 wall fixture source compatibility: made coordinate-agnostic window/direction composition idempotent")
 else:
     print("M1 wall fixture source compatibility already applied")

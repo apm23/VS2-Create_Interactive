@@ -12,6 +12,7 @@ java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
@@ -22,17 +23,25 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Adapter around the actual Create Fly client collision path. Create remains authoritative for
- * carriage contact and horizontal carry. When vanilla LocalPlayer has a real upward jump velocity,
- * however, a same-tick moving-contraption contact must not rewrite that airborne state back to
- * grounded; doing so suppresses vanilla gravity on the following ticks and pins the player at the
- * jump apex. Preserve vanilla airborne semantics only for a rising LocalPlayer while the explicit
- * VS2/Create carry compatibility mode is enabled. No position, velocity, gravity, collision vector,
- * train state, or world state is synthesized here.
+ * carriage contact and collision geometry.
+ *
+ * Two narrow LocalPlayer semantics are repaired while the explicit VS2/Create carry mode is on:
+ * 1) a real upward jump must not be rewritten to grounded by same-tick Create contact; and
+ * 2) when Create itself finishes the collision pass with LocalPlayer grounded, its final native
+ *    motion write must not retain a downward Y component. #726 proved that the retained negative
+ *    Y is consumed by vanilla on the next tick and progressively sinks the player through the
+ *    moving floor even while Create keeps onGround=true.
+ *
+ * The second rule does not synthesize carry velocity or a floor height. It only makes Create's
+ * own final motion state consistent with Create's own grounded decision; X/Z and upward motion are
+ * untouched, and no position, gravity, collision shape/vector, train state, or world state is
+ * manufactured here.
  */
 @Mixin(targets = "com.zurrtum.create.client.content.contraptions.ContraptionColliderClient", remap = false)
 public abstract class MixinContraptionColliderClientTrace {
     private static final Logger LOGGER = LogManager.getLogger("VS2-GateE-ClientCollider");
     private static int calls;
+    private static int groundedVerticalClips;
 
     @Inject(method = "collideEntities", at = @At("HEAD"), remap = false, require = 0)
     private static void vs2$traceClientCollideEntities(CallbackInfo ci) {
@@ -52,6 +61,34 @@ public abstract class MixinContraptionColliderClientTrace {
             && "net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName())
             && entity.getDeltaMovement().y > 0.05;
         entity.setOnGround(onGround && !risingLocalPlayer);
+    }
+
+    @Redirect(
+        method = "collideEntities",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/world/entity/Entity;setDeltaMovement(Lnet/minecraft/world/phys/Vec3;)V",
+            ordinal = 2
+        ),
+        remap = false,
+        require = 0
+    )
+    private static void vs2$clipGroundedLocalPlayerDownwardMotion(Entity entity, Vec3 motion) {
+        boolean groundedLocalPlayer = Boolean.getBoolean("vs2.createCarryCompat")
+            && "net.minecraft.client.player.LocalPlayer".equals(entity.getClass().getName())
+            && entity.onGround();
+        Vec3 appliedMotion = motion;
+        if (groundedLocalPlayer && motion.y < 0.0) {
+            appliedMotion = new Vec3(motion.x, 0.0, motion.z);
+            int index = ++groundedVerticalClips;
+            if (index <= 64) {
+                LOGGER.info(
+                    "GATE_E_CREATE_GROUNDED_Y_CLIP index={} player_tick={} before_y={} after_y={} pos={},{},{} thread={}",
+                    index, entity.tickCount, motion.y, appliedMotion.y,
+                    entity.getX(), entity.getY(), entity.getZ(), Thread.currentThread().getName());
+            }
+        }
+        entity.setDeltaMovement(appliedMotion);
     }
 }
 ''', encoding="utf-8")
@@ -93,11 +130,13 @@ trace.write_text(source, encoding="utf-8")
 
 inserted = java.read_text(encoding="utf-8")
 for forbidden in [
-    "setPos(", "setDeltaMovement(", ".move(", ".teleport(", "setVelocity(",
+    "setPos(", ".move(", ".teleport(", "setVelocity(",
     "setBlock(", "syncCarriage(",
 ]:
     if forbidden in inserted:
-        raise SystemExit("Phase 64 airborne adapter introduced forbidden gameplay mutation: " + forbidden)
+        raise SystemExit("Phase 64 collision adapter introduced forbidden gameplay mutation: " + forbidden)
+if inserted.count("entity.setDeltaMovement(appliedMotion)") != 1:
+    raise SystemExit("Phase 64 must contain exactly one final native-motion redirect write")
 
-print("Phase 64: keeps Create carry authoritative while preserving vanilla LocalPlayer airborne state on upward jump")
+print("Phase 64: preserves upward LocalPlayer airborne semantics and clips only retained downward Y after Create itself marks the LocalPlayer grounded")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase65.py")), run_name="__main__")

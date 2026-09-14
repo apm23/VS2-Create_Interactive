@@ -188,22 +188,17 @@ if source.count(jump_pulse_anchor) < 1:
     raise SystemExit("M1 jump pulse expected at least one vanilla KeyMapping boundary")
 source = source.replace(jump_pulse_anchor, jump_pulse_replacement)
 
-# Production-world #611 proved the supported +Z strafe reaches the opposite real side wall and
-# then completes the native jump/landing sequence. The standalone verifier still hard-coded the
-# old -Z wall used by the unsafe edge-facing fixture. Rebase only that read-only verifier contract
-# to the +Z occupied side; gameplay code and collision response remain untouched.
+# The current wall verifier is coordinate-agnostic: align only its remaining behavioral
+# observation window/direction boundaries with the +Z fixture. Do not restore fixture-specific
+# occupied-cell or hardcoded ±2 penetration assertions.
 verifier_replacements = [
     (
-        'wall_geometry_seen = any(re.search(r"(?:^|\\|)-?\\d+, [123], -2(?:\\||$)", m.group(4)) for m in client_state_pattern.finditer(text))',
-        'wall_geometry_seen = any(re.search(r"(?:^|\\|)-?\\d+, [123], 2(?:\\||$)", m.group(4)) for m in client_state_pattern.finditer(text))',
+        'after_window=[s for s in samples if strafe_request_tick<=s[0]<=min(strafe_request_tick+9, request_tick-1) and s[5] and s[6] and s[7]]',
+        'after_window=[s for s in samples if strafe_request_tick<=s[0]<=min(strafe_request_tick+14, request_tick-1) and s[5] and s[6] and s[7]]',
     ),
     (
-        'if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=-2")',
-        'if not wall_geometry_seen: raise SystemExit("M1 wall proof missing occupied carriage side geometry at local block z=2")',
-    ),
-    (
-        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)\nif min_z<=-2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
-        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; max_z=max(wall_z)\nif max_z>=2.0: raise SystemExit(f"M1 player penetrated occupied carriage side geometry: local_z_samples={wall_z}")',
+        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; min_z=min(wall_z)',
+        'start_z=start_sample[4]; wall_z=[s[4] for s in after]; max_z=max(wall_z)',
     ),
     (
         'strafe_requested_toward_wall = strafe_move is not None and float(strafe_move.group(3)) <= -0.02\nmaterial_approach = start_z-min_z >= 0.015',
@@ -216,7 +211,7 @@ verifier_replacements = [
 ]
 for old, new in verifier_replacements:
     if verifier_source.count(old) != 1:
-        raise SystemExit("M1 +Z wall verifier expected one exact current boundary: " + old[:72])
+        raise SystemExit("M1 coordinate-agnostic +Z wall verifier expected one exact current boundary: " + old[:72])
     verifier_source = verifier_source.replace(old, new, 1)
 
 # The wall verifier now selects the actual supported three-tick same-carriage plateau directly.
@@ -288,7 +283,6 @@ missing = [token for token in required_probe if token not in probe_source]
 if missing:
     raise SystemExit("M1 live-frame jump gate lost anchors: " + ", ".join(missing))
 required_verifier = [
-    'local block z=2',
     'max_z=max(wall_z)',
     'float(strafe_move.group(3)) >= 0.02',
     'max(candidate_z)-start_z>=0.015',

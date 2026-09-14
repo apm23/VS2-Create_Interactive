@@ -9,14 +9,16 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Architecture: Create owns train/carriage gameplay and collision geometry; VS2 supplies moving reference-space/transform foundation; this project is a thin adapter.
 
 ## Current state
-- project_state: `M1_COMPLETE — production-world-smoke #731 proves the complete M1 contract in one real moving-train run`
+- project_state: `FINAL_BUILD — M1 is frozen green; final distributable build retry #2 is queued after verifier-only path correction`
 - current_head: `AUTO_RECONCILE_GIT_HEAD` (state-only `[skip ci]` ledger commits may advance Git HEAD; compare implementation files before treating that as gameplay change)
 - implementation_head: `c7da75df793502f3fe4f61d0dd093190e00a06fa` (latest composed source used by the complete M1 proof; the added ground/final-motion telemetry is read-only)
 - candidate_gameplay_commit: `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
 - last_good_implementation_commit: `c7da75df793502f3fe4f61d0dd093190e00a06fa`
-- active_blocker: `NONE — M1 acceptance is complete.`
-- active_hypothesis: `NONE — GREEN is a stop signal for M1 movement/collision.`
-- next_safe_action: `FINAL_BUILD. Freeze M1 gameplay/collision behavior and produce the final distributable from the exact proven composition. Do not reopen collision, jump, input, ownership, carry, lease, replay, or fixture tuning unless final build/verification shows a direct regression.`
+- final_build_workflow_commit: `0d7ac30555d908ead66a972cc671d5e8d441b71a`
+- final_build_run: `34816587156` (`final-build #2`, queued at last observation)
+- active_blocker: `NONE in gameplay. final-build #1 failed only because its verifier searched GATE_E_CREATE_GROUNDED_Y_CLIP in GateEClientProbe.java although Phase64 generates that marker in MixinContraptionColliderClientTrace.java.`
+- active_hypothesis: `final-build #2 should reconstruct the exact proven #731 composition and reach compilation/artifact staging now that the marker assertion points at its actual generated file.`
+- next_safe_action: `HOLD while final-build #2 / run 34816587156 is queued or in_progress. When it completes: if failure is CI/build/staging, repair only that finalization boundary; do not touch M1 gameplay. If success, record exact artifact names and SHA-256 values, then advance to FINAL_VERIFY using the smallest frozen-green verification against the final composition/artifact.`
 
 ## Architecture contract
 Forbidden unless new direct evidence proves unavoidable:
@@ -104,6 +106,19 @@ The same real moving-train production-isolation run proves all required M1 behav
 
 This satisfies the project rule that all M1 boxes must be proven in one real moving-train run. #731 is the M1 acceptance proof and supersedes the transient #730 landing failure for milestone state.
 
+### final-build #1 / run `34816479606`
+- conclusion: `failure`
+- composition scripts completed through the same cumulative Phase98 path used by #731
+- build did not start because a final-build-only grep assertion searched `GATE_E_CREATE_GROUNDED_Y_CLIP` in the wrong generated Java file
+- Phase64 source proves that marker is generated in `fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.java`
+- classification: `CI/verifier`, not gameplay and not compile
+
+### final-build verifier repair `0d7ac30555d908ead66a972cc671d5e8d441b71a`
+- modifies only `.github/workflows/final-build.yml`
+- points the grounded-Y marker assertion at the actual generated Phase64 mixin file
+- no scripts/gameplay/collision/input/ownership/carry code changed
+- automatically triggered `final-build #2 / run 34816587156`
+
 ## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
 - `EXACT_SHAPES_LOCALPLAYER_0fa4aa`
 - generic accumulation/extension of frame leases, replay, or carry corrections
@@ -127,6 +142,7 @@ This satisfies the project rule that all M1 boxes must be proven in one real mov
 - Do not retune Phase83 native-owner arbitration without direct regression of its exact closed seam.
 - Do not broaden `aea874` without renewed direct sink/regression evidence.
 - Finalization may remove disposable/read-only diagnostics only if removal itself is proven behavior-neutral; otherwise leave them in place until after final verification.
+- Final-build/verify failures are not permission to modify frozen M1 gameplay unless the final artifact directly reproduces a frozen-green regression.
 
 ## M1 acceptance — all required in one real moving-train proof
 - [x] stable standing
@@ -142,23 +158,26 @@ Acceptance source: `production-world-smoke #731 / run 34799207093`.
 ## Final artifact state
 - m1_complete: `true`
 - m1_proof_run: `34799207093`
-- final_build_started: `false`
-- final_commit: `NONE`
-- final_jar: `NONE`
+- final_build_started: `true`
+- final_build_commit: `0d7ac30555d908ead66a972cc671d5e8d441b71a`
+- final_build_run: `34816587156`
+- final_commit: `NONE` until build success is recorded
+- final_jar: `NONE` until artifact success is recorded
 - final_verification: `NOT_STARTED`
 - final_ready: `false`
 
 ## Finalization sequence
 1. `M1_COMPLETE` — reached by #731 and locked in this ledger.
-2. `FINAL_BUILD` — build the distributable from the exact proven composition without gameplay changes.
-3. `FINAL_VERIFY` — verify artifact identity/integrity and rerun the smallest relevant frozen-green gates against the final artifact/composition.
+2. `FINAL_BUILD` — active via final-build #2; build the distributable from the exact proven composition without gameplay changes.
+3. `FINAL_VERIFY` — after successful build, verify artifact identity/integrity and rerun the smallest relevant frozen-green gates against the final artifact/composition.
 4. `FINAL_READY` — terminal; automation may not reopen development afterward.
 
 ## Fresh-chat protocol
 1. Read this file completely.
 2. Inspect actual GitHub HEAD.
-3. If `current_head=AUTO_RECONCILE_GIT_HEAD`, compare commits since `implementation_head`; state-only `[skip ci]` ledger commits are not gameplay changes.
+3. If `current_head=AUTO_RECONCILE_GIT_HEAD`, compare commits since `implementation_head`; workflow/ledger-only finalization commits are not gameplay changes.
 4. Respect Frozen Green, Failed Hypotheses, and Anti-loop locks.
 5. If `m1_complete=true`, do not return to gameplay patching; continue the finalization sequence only.
 6. If a relevant finalization workflow is queued/in_progress, HOLD; do not duplicate-trigger.
-7. FINAL_READY is terminal and only the user may reopen development after it.
+7. If final-build succeeds, record artifact/checksum and advance to FINAL_VERIFY.
+8. FINAL_READY is terminal and only the user may reopen development after it.

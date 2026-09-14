@@ -32,11 +32,22 @@ public abstract class MixinContinuousOBBColliderTrace {
         String thread = Thread.currentThread().getName();
         if (!(thread.contains("Render") || thread.contains("Client"))) return;
         int index = ++renderCalls;
-        if (index > 64) return;
+        // #725 reached the LocalPlayer zero-response consumption seam just after
+        // the old 64-call trace cap. Extend the read-only window only far enough
+        // to correlate the OBB return with the same LocalPlayer tick/position.
+        if (index > 128) return;
+
+        net.minecraft.client.player.LocalPlayer player = net.minecraft.client.Minecraft.getInstance().player;
+        int playerTick = player == null ? -1 : player.tickCount;
+        String playerPos = player == null ? "none" : String.valueOf(player.position());
+        String playerMotion = player == null ? "none" : String.valueOf(player.getDeltaMovement());
+        boolean playerOnGround = player != null && player.onGround();
 
         Object response = cir.getReturnValue();
         if (response == null) {
-            LOGGER.info("GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} response=null", index, thread);
+            LOGGER.info(
+                "GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} response=null player_tick={} player_pos={} player_motion={} player_on_ground={}",
+                index, thread, playerTick, playerPos, playerMotion, playerOnGround);
             return;
         }
 
@@ -51,14 +62,16 @@ public abstract class MixinContinuousOBBColliderTrace {
             Object normal = normalField.get(response);
             Object location = locationField.get(response);
             LOGGER.info(
-                "GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} surface={} temporal={} response={} normal={} location={}",
+                "GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} surface={} temporal={} response={} normal={} location={} player_tick={} player_pos={} player_motion={} player_on_ground={}",
                 index, thread,
                 surfaceField.getBoolean(response), temporalField.getDouble(response),
-                String.valueOf(collisionResponse), String.valueOf(normal), String.valueOf(location));
+                String.valueOf(collisionResponse), String.valueOf(normal), String.valueOf(location),
+                playerTick, playerPos, playerMotion, playerOnGround);
         } catch (ReflectiveOperationException | RuntimeException exception) {
             LOGGER.info(
-                "GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} reflection_error={} response_type={}",
-                index, thread, exception.getClass().getSimpleName(), response.getClass().getName());
+                "GATE_E_CREATE_COLLIDE_MANY_RESULT index={} thread={} reflection_error={} response_type={} player_tick={} player_pos={} player_motion={} player_on_ground={}",
+                index, thread, exception.getClass().getSimpleName(), response.getClass().getName(),
+                playerTick, playerPos, playerMotion, playerOnGround);
         }
     }
 }
@@ -70,5 +83,5 @@ if "MixinContinuousOBBColliderTrace" not in client:
     client.append("MixinContinuousOBBColliderTrace")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("Phase 65: traced ContinuousOBBCollider.collideMany return fields via runtime reflection so the diagnostic compiles without Create on VS2's source classpath; read-only only")
+print("Phase 65: correlated ContinuousOBBCollider.collideMany returns with LocalPlayer tick/position across the #725 zero-response seam; read-only telemetry only")
 runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase66.py")), run_name="__main__")

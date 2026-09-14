@@ -9,23 +9,25 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Architecture: Create owns train/carriage gameplay and collision geometry; VS2 supplies moving reference-space/transform foundation; this project is a thin adapter.
 
 ## Current state
-- project_state: `FINAL_VERIFY — M1 is frozen green; final distributable build #3 succeeded and artifact identity/integrity verification is next`
+- project_state: `FINAL_READY — M1 is frozen green; final build and direct final-artifact verification both succeeded.`
 - current_head: `AUTO_RECONCILE_GIT_HEAD` (ledger/finalization-only commits may advance Git HEAD; compare implementation files before treating that as gameplay change)
 - implementation_head: `c7da75df793502f3fe4f61d0dd093190e00a06fa`
 - candidate_gameplay_commit: `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
 - last_good_implementation_commit: `c7da75df793502f3fe4f61d0dd093190e00a06fa`
 - final_build_workflow_commit: `c33eaf48c1083716c5a5a0c4a7e7207286ae4890`
 - final_build_run: `34816785467` (`final-build #3`, success)
+- final_verify_workflow_commit: `9de5e000058e5ab0abacd98825e9fe340b4c4348`
+- final_verify_run: `34817198302` (`final-verify #1`, success)
 - final_artifact: `VS2-Create-Interactive-M1-final` (artifact id `10337040684`)
 - final_artifact_archive_digest: `sha256:8d882a6d0b78067010cb36d9a0700e57f738ecbee0dec0b61819b3e9c6793f5a`
 - final_jar: `valkyrienskies-26-2-2.4.205+0bc19eac8f.jar`
 - final_jar_sha256: `3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4`
-- active_blocker: `NONE in gameplay; FINAL_BUILD completed successfully.`
-- active_hypothesis: `The uploaded final artifact is the exact frozen-green composition because BUILD_INFO pins source_commit c33eaf48... and proven_m1_run 34799207093, while c7da75d..c33eaf48 changes only MASTER_STATE.md and .github/workflows/final-build.yml.`
-- next_safe_action: `Run the smallest FINAL_VERIFY proof directly against artifact 10337040684: verify archive/JAR checksums and BUILD_INFO, require JAR integrity plus the frozen-green compiled marker classes/strings, and confirm no implementation files changed since c7da75d. If green, record verification and advance to FINAL_READY. Do not rerun gameplay tuning.`
+- active_blocker: `NONE.`
+- active_hypothesis: `CLOSED. The final uploaded artifact is the frozen-green M1 composition and passed direct identity/integrity/compiled-seam verification.`
+- next_safe_action: `NONE. FINAL_READY is terminal. Automation must not reopen development; only an explicit user request may start a new milestone or reopen M1.`
 
 ## Architecture contract
-Forbidden unless new direct evidence proves unavoidable:
+Forbidden unless a future explicitly reopened milestone has new direct evidence proving unavoidable:
 - fake gravity
 - synthetic carry velocity
 - inertia compensation
@@ -38,7 +40,7 @@ Forbidden unless new direct evidence proves unavoidable:
 Preferred order: native Create/Minecraft collision -> authoritative VS2/Create transform -> simplify duplicate ownership -> thin adapter.
 
 ## Frozen / protected green
-Do not modify without direct regression evidence:
+Do not modify without direct regression evidence in an explicitly reopened development cycle:
 - boot/no-crash baseline
 - Create train + VS2 baseline coexistence
 - Steam 'n' Rails and Copycats preservation
@@ -79,6 +81,15 @@ One real moving-train run proved:
 - downloaded artifact contents verified locally: `SHA256SUMS.txt` matches actual JAR SHA-256; `BUILD_INFO.txt` records `source_commit=c33eaf48...` and `proven_m1_run=34799207093`.
 - compare `c7da75d...c33eaf48`: only `.github/workflows/final-build.yml` and `MASTER_STATE.md` changed; no implementation/script/gameplay files changed.
 
+## Final-verify evidence
+- workflow commit `9de5e000058e5ab0abacd98825e9fe340b4c4348` adds only `.github/workflows/final-verify.yml`.
+- final-verify #1 / run `34817198302`: SUCCESS.
+- verification directly downloaded artifact from successful final-build run `34816785467`.
+- verified `BUILD_INFO.txt` source commit and proven M1 run identity.
+- verified exact JAR SHA-256 `3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4` and JAR archive integrity.
+- required frozen-green compiled classes/markers were present for Create carry compatibility, supported walk proof, grounded-Y clip, and native natural landing.
+- no gameplay implementation change was introduced by finalization.
+
 ## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
 - `EXACT_SHAPES_LOCALPLAYER_0fa4aa`
 - generic accumulation/extension of frame leases, replay, or carry corrections
@@ -100,7 +111,7 @@ One real moving-train run proved:
 - Do not add synthetic carry, fake gravity, inertia compensation, or manual floor/wall clamps.
 - Do not retune Phase83 without direct regression evidence.
 - Do not broaden `aea874` without renewed direct sink/regression evidence.
-- Final-build/final-verify failures are not permission to modify gameplay unless the final artifact directly reproduces a frozen-green regression.
+- FINAL_READY is terminal and automation may not reopen development.
 
 ## M1 acceptance
 - [x] stable standing
@@ -120,20 +131,19 @@ One real moving-train run proved:
 - final_commit: `c33eaf48c1083716c5a5a0c4a7e7207286ae4890`
 - final_jar: `valkyrienskies-26-2-2.4.205+0bc19eac8f.jar`
 - final_jar_sha256: `3f4508b7a936467f158cc708217849c930298fa64abca8607849b19a6f10dba4`
-- final_verification: `ACTIVE`
-- final_ready: `false`
+- final_verification: `SUCCESS — run 34817198302`
+- final_ready: `true`
 
 ## Finalization sequence
 1. `M1_COMPLETE` — reached by #731; locked.
 2. `FINAL_BUILD` — completed by final-build #3.
-3. `FINAL_VERIFY` — active; verify the uploaded artifact directly and frozen-green composition identity.
-4. `FINAL_READY` — terminal; automation may not reopen development afterward.
+3. `FINAL_VERIFY` — completed by final-verify #1.
+4. `FINAL_READY` — reached and terminal.
 
 ## Fresh-chat protocol
 1. Read this file completely.
 2. Inspect actual GitHub HEAD.
 3. Reconcile AUTO_RECONCILE_GIT_HEAD; ledger/finalization-only commits are not gameplay changes.
 4. Respect Frozen Green, Failed Hypotheses, and Anti-loop locks.
-5. If a relevant finalization workflow is queued/in_progress, HOLD; do not duplicate-trigger.
-6. If FINAL_VERIFY succeeds, record evidence and advance to FINAL_READY.
-7. FINAL_READY is terminal and only the user may reopen development after it.
+5. If `final_ready=true`, stop. Automation may not reopen development.
+6. Only an explicit user request may start a new milestone or reopen M1.

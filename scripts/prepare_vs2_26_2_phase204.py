@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import runpy
 
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 contact_trace = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinAbstractContraptionEntityContactTrace.java"
@@ -62,3 +63,4 @@ for forbidden in [
 
 contact_trace.write_text(source, encoding="utf-8")
 print("Phase 204: traces zero/non-zero native Create support-boundary calls read-only; Phase170 ownership publication remains unchanged")
+runpy.run_path(str(Path(__file__).with_name("prepare_vs2_26_2_phase205.py")), run_name="__main__")

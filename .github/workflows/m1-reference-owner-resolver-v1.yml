@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
     paths:
+      - 'scripts/prepare_vs2_26_2_reference_owner_v1.py'
       - '.github/workflows/m1-reference-owner-resolver-v1.yml'
   workflow_dispatch:
 

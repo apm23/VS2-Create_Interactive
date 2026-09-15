@@ -37,7 +37,7 @@ jobs:
           renderer = (root / 'common/src/main/java/org/valkyrienskies/mod/mixin/client/renderer/MixinGameRenderer.java').read_text()
 
           evidence = {
-              'native_acquisition_ship_id': re.search(r'lastShipStoodOn\s*=\s*ship\.id', collision) is not None,
+              'native_acquisition_ship_id': 'draggingInformation.lastShipStoodOn = shipCollidingWith' in collision and 'standingOnShip.id == shipCollidingWith' in collision,
               'owner_state_is_ship_id': 'var lastShipStoodOn: ShipId? = null' in drag_info,
               'retention_is_ship_lifecycle': 'lastShipStoodOn != null' in drag_info and 'ticksSinceStoodOnShip < TICKS_TO_DRAG_ENTITIES' in drag_info,
               'drag_resolves_registered_ship': re.search(r'shipObjectWorld\.allShips\.getById\(shipDraggingEntity\)', dragger) is not None,

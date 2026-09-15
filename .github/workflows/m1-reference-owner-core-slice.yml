@@ -1,0 +1,119 @@
+name: m1-reference-owner-core-slice
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-core-slice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-slice:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: pinned-vs2
+
+      - name: Prove standing-player reference-owner core slice
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('pinned-vs2')
+          paths = {
+              'state': root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDraggingInformation.kt',
+              'drag': root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt',
+              'local_packet': root / 'common/src/main/java/org/valkyrienskies/mod/mixin/feature/entity_movement_packets/MixinLocalPlayer.java',
+              'network': root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/networking/VSGamePackets.kt',
+              'render': root / 'common/src/main/java/org/valkyrienskies/mod/mixin/client/renderer/MixinGameRenderer.java',
+              'yaw': root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityLerper.kt',
+              'native_acquisition': root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityShipCollisionUtils.kt',
+              'edge_collision': root / 'common/src/main/java/org/valkyrienskies/mod/mixin/feature/entity_collision/MixinPlayer.java',
+          }
+          src = {k: p.read_text(errors='replace') for k, p in paths.items()}
+
+          evidence = {
+              'central_owner_state': (
+                  'var lastShipStoodOn: ShipId? = null' in src['state']
+                  and 'ticksSinceStoodOnShip' in src['state']
+                  and 'isEntityBeingDraggedByAShip' in src['state']
+              ),
+              'body_drag_uses_owner_and_prev_current_transform': (
+                  'val shipDraggingEntity = entityDraggingInformation.lastShipStoodOn' in src['drag']
+                  and 'shipObjectWorld.allShips.getById(shipDraggingEntity)' in src['drag']
+                  and 'shipData.prevTickTransform.worldToShip.transformPosition' in src['drag']
+                  and 'referenceTransform.shipToWorld.transformPosition' in src['drag']
+              ),
+              'localplayer_relative_packet_uses_same_owner': (
+                  'getDraggingInformation().isEntityBeingDraggedByAShip()' in src['local_packet']
+                  and 'getAllShips().getById(getDraggingInformation().getLastShipStoodOn())' in src['local_packet']
+                  and 'PacketPlayerShipMotion packet' in src['local_packet']
+              ),
+              'server_relative_packet_resolves_owner_transform': (
+                  'PacketPlayerShipMotion::class.registerServerHandler' in src['network']
+                  and 'shipObjectWorld.allShips.getById(motion.shipID)' in src['network']
+                  and 'ship.shipToWorld.transformPosition(Vector3d(motion.x, motion.y, motion.z)' in src['network']
+              ),
+              'standing_render_uses_same_owner_prev_current_render_transform': (
+                  'final Long lastShipStoodOn = entityDraggingInformation.getLastShipStoodOn();' in src['render']
+                  and 'entityDraggingInformation.isEntityBeingDraggedByAShip()' in src['render']
+                  and 'getLoadedShips().getById(lastShipStoodOn)' in src['render']
+                  and 'getPrevTickShipTransform().getWorldToShipMatrix()' in src['render']
+                  and 'getRenderTransform().getShipToWorldMatrix()' in src['render']
+              ),
+              'yaw_conversion_is_transform_only': (
+                  'fun yawToWorld(ship: Ship, yaw: Double)' in src['yaw']
+                  and 'transformDirectionNoScalingFromShipToWorld' in src['yaw']
+                  and 'fun yawToShip(ship: Ship, yaw: Double)' in src['yaw']
+                  and 'transformDirectionNoScalingFromWorldToShip' in src['yaw']
+              ),
+              'native_acquisition_is_separate_collision_stamp': (
+                  'draggingInformation.lastShipStoodOn = shipCollidingWith' in src['native_acquisition']
+                  and 'standingOnShip.id == shipCollidingWith' in src['native_acquisition']
+              ),
+              'edge_backoff_is_collision_specific_not_owner_core': (
+                  'maybeBackOffFromEdge' in src['edge_collision']
+                  and 'backOff(vec3, ship, player, level)' in src['edge_collision']
+              ),
+          }
+
+          drag_render_idx = src['render'].find('final Long lastShipStoodOn = entityDraggingInformation.getLastShipStoodOn();')
+          mount_camera_idx = src['render'].find('// Mount the player\'s camera to the ship they are mounted on.')
+          standing_render_before_mount_camera = drag_render_idx >= 0 and mount_camera_idx >= 0 and drag_render_idx < mount_camera_idx
+          mount_camera_requires_vehicle = 'if (localPlayer.getVehicle() == null)' in src['render']
+          evidence['standing_render_is_distinct_from_ship_mount_camera'] = standing_render_before_mount_camera and mount_camera_requires_vehicle
+
+          for key, value in evidence.items():
+              print(f'M1_REFERENCE_OWNER_CORE {key}={str(value).lower()}')
+
+          missing = [key for key, value in evidence.items() if not value]
+          if missing:
+              raise SystemExit('M1 core-slice anchor changed; inspect before redesign: ' + ','.join(missing))
+
+          core_files = [
+              str(paths['state'].relative_to(root)),
+              str(paths['drag'].relative_to(root)),
+              str(paths['local_packet'].relative_to(root)),
+              str(paths['network'].relative_to(root)),
+              str(paths['render'].relative_to(root)),
+              str(paths['yaw'].relative_to(root)),
+          ]
+          print('M1_REFERENCE_OWNER_CORE core_file_count=' + str(len(core_files)))
+          for p in core_files:
+              print('M1_REFERENCE_OWNER_CORE core_file=' + p)
+          print('M1_REFERENCE_OWNER_CORE native_acquisition_file=' + str(paths['native_acquisition'].relative_to(root)))
+          print('M1_REFERENCE_OWNER_CORE create_collision_geometry_mutation_required=false')
+          print('M1_REFERENCE_OWNER_CORE ship_mount_camera_required=false')
+          print('M1_REFERENCE_OWNER_CORE fake_vs2_ship_required=false_if_owner_state_and_transform_resolution_are_generalized')
+          print('M1_REFERENCE_OWNER_CORE conclusion=standing_player_reference_owner_surface_is_bounded_read_only=true gameplay_mutation=false')
+          print('M1_REFERENCE_OWNER_CORE next_step=design_smallest_vs2_owned_reference_owner_state_plus_transform_resolver_that_replaces_ship_lookup_for_this_slice_only')

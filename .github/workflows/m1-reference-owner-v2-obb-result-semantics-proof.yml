@@ -1,0 +1,126 @@
+name: m1-reference-owner-v2-obb-result-semantics-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-obb-result-semantics-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  obb-result-semantics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Compose exact production source and resolve Create dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+          cd upstream
+          chmod +x gradlew
+          ./gradlew --no-daemon :fabric:compileJava >/tmp/obb-semantics-compile.log 2>&1 || {
+            tail -200 /tmp/obb-semantics-compile.log
+            exit 1
+          }
+
+      - name: Inspect exact OBB result semantics read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRACE='upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContinuousOBBColliderTrace.java'
+          test -f "$TRACE"
+          echo '=== TRACE ACCESSORS ==='
+          grep -nE 'surface|temporal|response|normal|location|collideMany' "$TRACE" || true
+
+          rm -rf /tmp/obb-proof && mkdir -p /tmp/obb-proof/src /tmp/obb-proof/javap
+          FOUND=0
+          while IFS= read -r -d '' jar; do
+            matches="$(jar tf "$jar" 2>/dev/null | grep -E '(^|/)(ContinuousOBBCollider|ContinuousSeparationManifold|SeparationManifold|ContraptionColliderClient)(\$[^/]*)?\.class$' || true)"
+            if [ -z "$matches" ]; then continue; fi
+            FOUND=1
+            echo "JAR=$jar"
+            echo "$matches"
+            while IFS= read -r cls; do
+              [ -n "$cls" ] || continue
+              fqcn="${cls%.class}"
+              fqcn="${fqcn//\//.}"
+              safe="${fqcn//./_}"
+              javap -classpath "$jar" -p -c -constants "$fqcn" > "/tmp/obb-proof/javap/${safe}.txt" 2>&1 || true
+            done <<< "$matches"
+          done < <(find "$HOME/.gradle/caches" -type f -name '*.jar' -print0)
+          test "$FOUND" -eq 1
+
+          while IFS= read -r -d '' srcjar; do
+            if jar tf "$srcjar" 2>/dev/null | grep -qE '(^|/)(ContinuousOBBCollider|ContinuousSeparationManifold|SeparationManifold|ContraptionColliderClient)\.java$'; then
+              (cd /tmp/obb-proof/src && jar xf "$srcjar") || true
+            fi
+          done < <(find "$HOME/.gradle/caches" -type f \( -name '*sources*.jar' -o -name '*source*.jar' \) -print0)
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          trace = Path('upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContinuousOBBColliderTrace.java').read_text(errors='replace')
+          accessor_tokens = {k: (k in trace) for k in ['surfaceCollision', 'temporalResponse', 'response', 'normal', 'location']}
+          javap_text = '\n'.join(p.read_text(errors='replace') for p in Path('/tmp/obb-proof/javap').glob('*.txt'))
+          sources = list(Path('/tmp/obb-proof/src').rglob('*.java'))
+          source_text = '\n'.join(p.read_text(errors='replace') for p in sources)
+          combined = source_text if source_text.strip() else javap_text
+
+          epsilon_hits = re.findall(r'(?<![0-9])(?:0\.0002|2\.0E-4|2e-4|2\.0e-4)(?![0-9])', combined, flags=re.I)
+          normalize_hits = len(re.findall(r'normalize\(|\.normalize|lengthSquared|length\(\)', combined))
+          response_hits = len(re.findall(r'response|temporalResponse|surfaceCollision|normal|location', combined, flags=re.I))
+          src_available = bool(source_text.strip())
+
+          if src_available and epsilon_hits:
+              cls='CREATE_OBB_SEMANTICS_SOURCE_EXPOSES_0_0002_EPSILON'
+          elif epsilon_hits:
+              cls='CREATE_OBB_SEMANTICS_BYTECODE_EXPOSES_0_0002_EPSILON'
+          elif src_available:
+              cls='CREATE_OBB_SEMANTICS_SOURCE_FOUND_NO_EXACT_EPSILON'
+          else:
+              cls='CREATE_OBB_SEMANTICS_BYTECODE_ONLY_NO_EXACT_EPSILON'
+
+          print('REFERENCE_OWNER_V2_OBB_RESULT_SEMANTICS_PROOF '
+                f'classification={cls} source_available={str(src_available).lower()} '
+                f'epsilon_0_0002_hits={len(epsilon_hits)} normalize_hits={normalize_hits} '
+                f'response_semantic_hits={response_hits} trace_accessors={accessor_tokens} '
+                'read_only=true gameplay_mutation=false final_ready=false')
+
+          for p in sources[:8]:
+              text=p.read_text(errors='replace')
+              if any(x in text for x in ['ContinuousOBBCollider','SeparationManifold','ContraptionColliderClient']):
+                  print(f'REFERENCE_OWNER_V2_OBB_SOURCE_FILE {p}')
+                  for i,line in enumerate(text.splitlines(),1):
+                      if re.search(r'0\.0002|2\.0E-4|response|temporal|normal|surface|location|collideMany', line, re.I):
+                          print(f'{p.name}:{i}:{line.strip()}')
+          PY
+
+          echo '=== JAVAP SEMANTIC EXCERPTS ==='
+          grep -RniE '0\.0002|2\.0E-4|response|temporal|normal|surface|location|collideMany' /tmp/obb-proof/javap | head -250 || true

@@ -1,0 +1,108 @@
+name: m1-reference-owner-v2-look-frame-boundary-diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-look-frame-boundary-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  look-frame-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Compose exact production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+
+      - name: Classify external-owner look and camera coupling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('upstream')
+          local_player = (root / 'common/src/main/java/org/valkyrienskies/mod/mixin/feature/entity_movement_packets/MixinLocalPlayer.java').read_text(encoding='utf-8')
+          network = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/networking/VSGamePackets.kt').read_text(encoding='utf-8')
+          render = (root / 'common/src/main/java/org/valkyrienskies/mod/mixin/client/renderer/MixinGameRenderer.java').read_text(encoding='utf-8')
+          camera = (root / 'common/src/main/java/org/valkyrienskies/mod/mixin/client/MixinCamera.java').read_text(encoding='utf-8')
+          dragger = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt').read_text(encoding='utf-8')
+
+          external_packet_yaw = all(x in local_player for x in [
+              'PacketPlayerReferenceMotion', 'yawToExternalReference', 'getViewYRot(1f)'
+          ])
+          external_server_yaw_resolve = all(x in network for x in [
+              'PacketPlayerReferenceMotion::class.registerServerHandler',
+              'serverResolvedExternalYaw', 'yawFromExternalReference'
+          ])
+          resolved_yaw_use_count = network.count('serverResolvedExternalYaw')
+
+          render_external = 'isEntityBeingDraggedByExternalReference()' in render
+          render_external_pos = render_external and 'previousWorldToLocal' in render and 'currentLocalToWorld' in render
+          render_external_rotation_tokens = any(tok in render for tok in [
+              'serverResolvedExternalYaw', 'yawToExternalReference', 'yawFromExternalReference'
+          ])
+
+          camera_external_owner = any(tok in camera for tok in [
+              'getExternalReferenceOwnerEntityId',
+              'isEntityBeingDraggedByExternalReference',
+              'ExternalReferenceFrameResolver'
+          ])
+          camera_ship_mount_only = all(tok in camera for tok in [
+              'ShipMountedToData', 'getShipMountedToData', 'localPlayer.getVehicle()'
+          ])
+
+          dragger_external = 'isEntityBeingDraggedByExternalReference' in dragger
+          dragger_direct_camera_tokens = any(tok in dragger for tok in [
+              'Camera', 'setupWithShipMounted', 'ShipMountPerspective'
+          ])
+
+          if camera_external_owner:
+              classification = 'EXTERNAL_OWNER_DIRECT_CAMERA_COUPLING_PRESENT'
+          elif render_external_pos and not render_external_rotation_tokens and camera_ship_mount_only and not dragger_direct_camera_tokens:
+              classification = 'EXTERNAL_OWNER_CAMERA_SPATIAL_FOLLOWS_PLAYER_LOOK_REMAINS_UNCOUPLED'
+          else:
+              classification = 'EXTERNAL_OWNER_LOOK_FRAME_BOUNDARY_UNRESOLVED'
+
+          print(
+              'REFERENCE_OWNER_V2_LOOK_FRAME_PROOF '
+              f'classification={classification} '
+              f'external_packet_yaw={str(external_packet_yaw).lower()} '
+              f'external_server_yaw_resolve={str(external_server_yaw_resolve).lower()} '
+              f'server_resolved_yaw_token_count={resolved_yaw_use_count} '
+              f'standing_render_external_owner={str(render_external).lower()} '
+              f'standing_render_external_position_transform={str(render_external_pos).lower()} '
+              f'standing_render_external_rotation_tokens={str(render_external_rotation_tokens).lower()} '
+              f'camera_external_owner={str(camera_external_owner).lower()} '
+              f'camera_ship_mount_only={str(camera_ship_mount_only).lower()} '
+              f'dragger_external_owner={str(dragger_external).lower()} '
+              f'dragger_direct_camera_tokens={str(dragger_direct_camera_tokens).lower()} '
+              'read_only=true final_ready=false'
+          )
+
+          if classification == 'EXTERNAL_OWNER_DIRECT_CAMERA_COUPLING_PRESENT':
+              raise SystemExit('unexpected direct external-owner camera coupling; inspect before any gameplay patch')
+          PY

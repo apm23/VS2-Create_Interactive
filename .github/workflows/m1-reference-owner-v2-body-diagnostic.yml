@@ -49,10 +49,11 @@ jobs:
           from pathlib import Path
           p = Path('upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt')
           s = p.read_text(encoding='utf-8')
-          anchor = '''                        addedMovement = currentWorld.sub(entityReferencePos, Vector3d())
-                        // v1 deliberately leaves look/yaw untouched.'''
-          insert = '''                        addedMovement = currentWorld.sub(entityReferencePos, Vector3d())
-                        if (entity is LocalPlayer && entity.tickCount >= 15 && entity.tickCount <= 60) {
+          needle = 'addedMovement = currentWorld.sub(entityReferencePos, Vector3d())'
+          if s.count(needle) != 1:
+              raise SystemExit(f'body diagnostic expected one V2 addedMovement token, found {s.count(needle)}')
+          insert = '''addedMovement = currentWorld.sub(entityReferencePos, Vector3d())
+                        if (entity.level().isClientSide && entity.javaClass.simpleName == "LocalPlayer" && entity.tickCount >= 15 && entity.tickCount <= 60) {
                             val ownerEntity = ExternalReferenceFrameResolver.resolveOwner(entity.level(), externalReferenceOwnerEntityId)
                             val currentLocal = ExternalReferenceFrameResolver.currentWorldToLocal(
                                 entity.level(), externalReferenceOwnerEntityId, entityReferencePos
@@ -66,17 +67,15 @@ jobs:
                                 "REFERENCE_OWNER_V2_BODY_TRACE player_tick=${entity.tickCount} pre_tick=$preTick " +
                                 "owner=$externalReferenceOwnerEntityId age=${entityDraggingInformation.ticksSinceExternalReferenceOwner} " +
                                 "on_ground=${entity.onGround()} pos=${entity.position()} old=(${entity.xo},${entity.yo},${entity.zo}) " +
-                                "reference=$entityReferencePos prev_local=$localPosition current_world=$currentWorld added=$addedMovement " +
+                                "reference=$entityReferencePos prev_local=$localPosition current_world=$currentWorld " +
+                                "added_x=${addedMovement.x()} added_y=${addedMovement.y()} added_z=${addedMovement.z()} " +
                                 "current_local=$currentLocal current_roundtrip=$currentRoundTrip " +
                                 "owner_pos=${ownerEntity?.position()} owner_old=(${ownerEntity?.xo},${ownerEntity?.yo},${ownerEntity?.zo})"
                             )
-                        }
-                        // v1 deliberately leaves look/yaw untouched.'''
-          if anchor not in s:
-              raise SystemExit('body diagnostic lost V2 addedMovement anchor')
-          s = s.replace(anchor, insert, 1)
+                        }'''
+          s = s.replace(needle, insert, 1)
           p.write_text(s, encoding='utf-8')
-          print('BODY_DIAGNOSTIC instrumentation=read_only owner_transform_mutation=false')
+          print('BODY_DIAGNOSTIC instrumentation=read_only owner_transform_mutation=false robust_token_anchor=true')
           PY
           grep -q 'REFERENCE_OWNER_V2_BODY_TRACE' upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt
 
@@ -162,16 +161,29 @@ jobs:
           python3 - "$LOG" <<'PY'
           import math, re, sys
           text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
-          body = [line for line in text.splitlines() if 'REFERENCE_OWNER_V2_BODY_TRACE' in line]
-          if not body:
-              raise SystemExit('missing body-frame telemetry')
           airborne = re.search(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)', text)
           landed = re.search(r'GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)', text)
           if not airborne or not landed:
               raise SystemExit('missing jump interval')
           a, l = int(airborne.group(1)), int(landed.group(1))
+          body = [line for line in text.splitlines() if 'REFERENCE_OWNER_V2_BODY_TRACE' in line]
+          create_carry = [
+              line for line in text.splitlines()
+              if 'GATE_E_LOCALPLAYER_SET_POS' in line and 'ContraptionColliderClient#collideEntities' in line
+          ]
+          acquire = [line for line in text.splitlines() if 'REFERENCE_OWNER_V2_ACQUIRE' in line]
+          print(
+              f'BODY_DIAGNOSTIC jump_interval={a}-{l} body_trace_count={len(body)} '
+              f'create_collide_setpos_count={len(create_carry)} acquire_count={len(acquire)}'
+          )
+          if not body:
+              print('BODY_DIAGNOSTIC external_owner_body_branch_invoked=false')
+              print('BODY_DIAGNOSTIC conclusion=external_owner_state_acquired_but_entitydragger_body_branch_not_observed read_only=true gameplay_mutation=false')
+              sys.exit(0)
+
           trace_re = re.compile(
-              r'REFERENCE_OWNER_V2_BODY_TRACE player_tick=(\d+) pre_tick=(true|false).*?added=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
+              r'REFERENCE_OWNER_V2_BODY_TRACE player_tick=(\d+) pre_tick=(true|false).*?'
+              r'added_x=([-+0-9.eE]+) added_y=([-+0-9.eE]+) added_z=([-+0-9.eE]+)'
           )
           rows = []
           for m in trace_re.finditer(text):
@@ -179,18 +191,23 @@ jobs:
               if a - 3 <= tick <= l + 1:
                   rows.append((tick, m.group(2), *(float(m.group(i)) for i in range(3, 6))))
           if not rows:
-              raise SystemExit('no body-frame rows around jump')
+              print('BODY_DIAGNOSTIC external_owner_body_branch_invoked=true rows_near_jump=false')
+              print('BODY_DIAGNOSTIC conclusion=body_branch_timing_does_not_cover_jump_interval read_only=true gameplay_mutation=false')
+              sys.exit(0)
           pre = [r for r in rows if r[1] == 'true']
           post = [r for r in rows if r[1] == 'false']
           max_pre = max((math.sqrt(x*x+y*y+z*z) for _,_,x,y,z in pre), default=0.0)
           max_post = max((math.sqrt(x*x+y*y+z*z) for _,_,x,y,z in post), default=0.0)
-          print(f'BODY_DIAGNOSTIC jump_interval={a}-{l} rows={len(rows)} pre_rows={len(pre)} post_rows={len(post)} max_pre_added={max_pre:.6f} max_post_added={max_post:.6f}')
+          print(
+              f'BODY_DIAGNOSTIC external_owner_body_branch_invoked=true rows={len(rows)} '
+              f'pre_rows={len(pre)} post_rows={len(post)} max_pre_added={max_pre:.6f} max_post_added={max_post:.6f}'
+          )
           for row in rows:
               print('BODY_DIAGNOSTIC_ROW', row)
-          print('BODY_DIAGNOSTIC conclusion=trace_complete read_only=true gameplay_mutation=false')
+          print('BODY_DIAGNOSTIC conclusion=body_branch_timing_trace_complete read_only=true gameplay_mutation=false')
           PY
 
-          grep -E 'REFERENCE_OWNER_V2_BODY_TRACE|REFERENCE_OWNER_V2_ACQUIRE|GATE_E_M1_NATIVE_JUMP_(REQUESTED|AIRBORNE|LANDED)|GATE_E_CARRIAGE_LOCAL_CONTINUITY' "$LOG" | tail -260 || true
+          grep -E 'REFERENCE_OWNER_V2_BODY_TRACE|REFERENCE_OWNER_V2_ACQUIRE|GATE_E_M1_NATIVE_JUMP_(REQUESTED|AIRBORNE|LANDED)|GATE_E_LOCALPLAYER_SET_POS|GATE_E_CARRIAGE_LOCAL_CONTINUITY' "$LOG" | tail -320 || true
 
       - name: Upload body diagnostic
         if: always()

@@ -1,0 +1,352 @@
+name: m1-reference-owner-v2-owner-obb-support-diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-owner-obb-support-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-obb-support:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Compose exact authority-fixed V2 production path
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+
+      - name: Add read-only owner OBB context telemetry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('upstream')
+          obb = root / 'fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContinuousOBBColliderTrace.java'
+          source = obb.read_text(encoding='utf-8')
+          old = '        if (index > 128) return;'
+          new = '        if (index > 512) return;'
+          if old not in source:
+              raise SystemExit('owner-obb diagnostic lost existing ContinuousOBB trace cap anchor')
+          source = source.replace(old, new, 1)
+          obb.write_text(source, encoding='utf-8')
+
+          java = root / 'fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinReferenceOwnerObbCallbackProbe.java'
+          java.parent.mkdir(parents=True, exist_ok=True)
+          java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
+
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.player.LocalPlayer;
+          import net.minecraft.world.entity.Entity;
+          import org.apache.logging.log4j.LogManager;
+          import org.apache.logging.log4j.Logger;
+          import org.joml.Vector3d;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Coerce;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+          import org.valkyrienskies.mod.common.util.ExternalReferenceFrameResolver;
+          import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
+
+          @Mixin(targets = "com.zurrtum.create.client.content.contraptions.ContraptionColliderClient", remap = false)
+          public abstract class MixinReferenceOwnerObbCallbackProbe {
+              private static final Logger LOGGER = LogManager.getLogger("VS2-ReferenceOwner-OwnerOBB");
+
+              private static void vs2$mark(String phase, Object carriage) {
+                  LocalPlayer player = Minecraft.getInstance().player;
+                  if (player == null || !(carriage instanceof Entity carriageEntity)) return;
+                  if (!(player instanceof IEntityDraggingInformationProvider provider)) return;
+                  var dragging = provider.getDraggingInformation();
+                  Integer ownerId = dragging.getExternalReferenceOwnerEntityId();
+                  if (ownerId == null || !dragging.isEntityBeingDraggedByExternalReference()) return;
+                  Vector3d local = ExternalReferenceFrameResolver.currentWorldToLocal(
+                      player.level(), ownerId, new Vector3d(player.getX(), player.getY(), player.getZ())
+                  );
+                  LOGGER.info(
+                      "REFERENCE_OWNER_V2_OWNER_OBB_CALLBACK phase={} player_tick={} owner_id={} carriage_id={} owner_match={} " +
+                          "local=({},{},{}) on_ground={} delta=({},{},{}) read_only=true",
+                      phase, player.tickCount, ownerId, carriageEntity.getId(), ownerId == carriageEntity.getId(),
+                      local == null ? Double.NaN : local.x(),
+                      local == null ? Double.NaN : local.y(),
+                      local == null ? Double.NaN : local.z(),
+                      player.onGround(), player.getDeltaMovement().x, player.getDeltaMovement().y, player.getDeltaMovement().z
+                  );
+              }
+
+              @Inject(method = "collideEntities", at = @At("HEAD"), remap = false, require = 1)
+              private static void vs2$head(@Coerce Object carriage, CallbackInfo ci) {
+                  vs2$mark("HEAD", carriage);
+              }
+
+              @Inject(method = "collideEntities", at = @At("RETURN"), remap = false, require = 1)
+              private static void vs2$return(@Coerce Object carriage, CallbackInfo ci) {
+                  vs2$mark("RETURN", carriage);
+              }
+          }
+          ''', encoding='utf-8')
+
+          mixin_json = root / 'fabric/src/main/resources/vs2-create-compat.mixins.json'
+          metadata = json.loads(mixin_json.read_text(encoding='utf-8'))
+          client = metadata.setdefault('client', [])
+          entry = 'MixinReferenceOwnerObbCallbackProbe'
+          if entry not in client:
+              client.append(entry)
+          mixin_json.write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
+
+          inserted = java.read_text(encoding='utf-8')
+          for forbidden in [
+              'setPos(', 'setDeltaMovement(', '.move(', 'teleport', 'setOnGround(',
+              'setNoGravity(', 'getContactPointMotion(', 'cir.setReturnValue(', 'setBlock('
+          ]:
+              if forbidden in inserted:
+                  raise SystemExit('owner-obb diagnostic introduced forbidden mutation token: ' + forbidden)
+          print('REFERENCE_OWNER_V2_OWNER_OBB_INSTRUMENTATION read_only=true obb_cap=512')
+          PY
+
+      - name: Compile exact diagnostic composition
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:compileJava; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 15))
+          done
+
+      - name: Reconstruct verified r0v3 train save
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED='e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556'
+          mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v3.part-*' -print | sort -V)
+          test "${#parts[@]}" -eq 17
+          cat "${parts[@]}" > train-world-state-r0v3.b64
+          base64 -d train-world-state-r0v3.b64 > train-world-state-r0v3.zip
+          test "$(sha256sum train-world-state-r0v3.zip | awk '{print $1}')" = "$EXPECTED"
+          unzip -tq train-world-state-r0v3.zip
+          rm -rf world-fixture
+          mkdir world-fixture
+          unzip -q train-world-state-r0v3.zip -d world-fixture
+          mkdir -p upstream/fabric/run/saves
+          rm -rf upstream/fabric/run/saves/train-v2-owner-obb-support
+          mv 'world-fixture/train build 1' upstream/fabric/run/saves/train-v2-owner-obb-support
+
+      - name: Prefetch client assets
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:downloadAssets; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+
+      - name: Classify owner OBB at first support loss
+        working-directory: upstream
+        timeout-minutes: 10
+        env:
+          JAVA_TOOL_OPTIONS: -Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
+          ALSOFT_DRIVERS: 'null'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=../reference-owner-v2-owner-obb-support.log
+          XVFB_LOG=../reference-owner-v2-owner-obb-support-xvfb.log
+          rm -f "$LOG" "$XVFB_LOG"
+          rm -rf fabric/run/crash-reports
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > "$XVFB_LOG" 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+          ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v2-owner-obb-support' > "$LOG" 2>&1 &
+          CLIENT_PID=$!
+
+          cleanup() {
+            kill "$CLIENT_PID" 2>/dev/null || true
+            kill "$XVFB_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          READY=0
+          for i in $(seq 1 360); do
+            if grep -q 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED' "$LOG" \
+              && grep -Eq 'GATE_E_PHASE131_SUPPORT_SOURCE .*physical_support=false' "$LOG" \
+              && grep -q 'REFERENCE_OWNER_V2_OWNER_OBB_CALLBACK phase=HEAD' "$LOG"; then
+              READY=1
+              break
+            fi
+            if grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' "$LOG"; then
+              tail -320 "$LOG"
+              exit 1
+            fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then
+              wait "$CLIENT_PID" || true
+              tail -320 "$LOG"
+              exit 1
+            fi
+            sleep 1
+          done
+          test "$READY" -eq 1
+          sleep 4
+
+          python3 - "$LOG" <<'PY'
+          import re, sys
+          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+          text = re.sub(r'\x1b\[[0-9;]*m', '', text)
+          lines = text.splitlines()
+
+          support_re = re.compile(
+              r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=(\d+) '
+              r'physical_support=(true|false)'
+          )
+          callback_re = re.compile(
+              r'REFERENCE_OWNER_V2_OWNER_OBB_CALLBACK phase=(HEAD|RETURN) player_tick=(\d+) '
+              r'owner_id=(\d+) carriage_id=(\d+) owner_match=(true|false)'
+          )
+          obb_re = re.compile(
+              r'GATE_E_CREATE_COLLIDE_MANY_RESULT index=(\d+) .*?surface=(true|false) '
+              r'temporal=([-+0-9.eE]+) response=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\).*?player_tick=(\d+)'
+          )
+
+          supports=[]
+          for line in lines:
+              m=support_re.search(line)
+              if m:
+                  supports.append((int(m.group(1)), int(m.group(2)), m.group(3)=='true'))
+          if not supports:
+              raise SystemExit('owner-obb diagnostic captured no support-source rows')
+
+          loss=None
+          by_carriage={}
+          for tick,carriage,physical in supports:
+              prev=by_carriage.get(carriage)
+              if not physical and prev is True:
+                  loss=(tick,carriage)
+                  break
+              by_carriage[carriage]=physical
+          if loss is None:
+              seen_true=set(c for _,c,p in supports if p)
+              for tick,carriage,physical in supports:
+                  if not physical and carriage in seen_true:
+                      loss=(tick,carriage)
+                      break
+          if loss is None:
+              raise SystemExit('owner-obb diagnostic did not observe true->false physical support transition')
+          loss_tick, loss_carriage = loss
+
+          current=None
+          callbacks=[]
+          obbs=[]
+          setpos=[]
+          for line_no,line in enumerate(lines):
+              cm=callback_re.search(line)
+              if cm:
+                  phase,tick,owner,carriage,match=cm.groups()
+                  row={'phase':phase,'tick':int(tick),'owner':int(owner),'carriage':int(carriage),'match':match=='true','line':line_no}
+                  callbacks.append(row)
+                  if phase=='HEAD':
+                      current=row
+                  elif current is not None and current['carriage']==row['carriage']:
+                      current=None
+                  continue
+              om=obb_re.search(line)
+              if om and current is not None:
+                  idx,surface,temporal,rx,ry,rz,tick=om.groups()
+                  obbs.append({
+                      'idx':int(idx),'surface':surface=='true','temporal':float(temporal),
+                      'rx':float(rx),'ry':float(ry),'rz':float(rz),'tick':int(tick),
+                      'carriage':current['carriage'],'owner':current['owner'],'match':current['match'],
+                      'line':line_no
+                  })
+              if 'GATE_E_LOCALPLAYER_SET_POS ' in line and current is not None:
+                  mt=re.search(r'player_tick=(\d+)', line)
+                  if mt:
+                      setpos.append({'tick':int(mt.group(1)),'carriage':current['carriage'],'owner':current['owner'],'match':current['match']})
+
+          owner_callbacks=[r for r in callbacks if r['phase']=='HEAD' and r['tick']==loss_tick and r['carriage']==loss_carriage and r['match']]
+          owner_obbs=[r for r in obbs if r['tick']==loss_tick and r['carriage']==loss_carriage and r['match']]
+          owner_setpos=[r for r in setpos if r['tick']==loss_tick and r['carriage']==loss_carriage and r['match']]
+          previous_owner_obbs=[r for r in obbs if r['tick']==loss_tick-1 and r['carriage']==loss_carriage and r['match']]
+
+          if not owner_callbacks:
+              classification='OWNER_COLLISION_CALLBACK_MISSING_AT_SUPPORT_LOSS'
+          elif not owner_obbs:
+              classification='OWNER_OBB_NOT_INVOKED_AT_SUPPORT_LOSS'
+          else:
+              surfaces=[r for r in owner_obbs if r['surface']]
+              nonzero=[r for r in surfaces if r['rx']*r['rx']+r['ry']*r['ry']+r['rz']*r['rz'] > 1.0e-12]
+              vertical=[r for r in surfaces if abs(r['ry']) > 1.0e-8]
+              if not surfaces:
+                  classification='OWNER_OBB_NO_SURFACE_RESPONSE_AT_SUPPORT_LOSS'
+              elif not nonzero:
+                  classification='OWNER_OBB_SURFACE_ZERO_RESPONSE_AT_SUPPORT_LOSS'
+              elif not vertical:
+                  classification='OWNER_OBB_HORIZONTAL_ONLY_RESPONSE_AT_SUPPORT_LOSS'
+              else:
+                  classification='OWNER_OBB_VERTICAL_COLLISION_PRESENT_AT_SUPPORT_LOSS'
+
+          surface_count=sum(r['surface'] for r in owner_obbs)
+          nonzero_count=sum(
+              1 for r in owner_obbs if r['surface'] and r['rx']*r['rx']+r['ry']*r['ry']+r['rz']*r['rz'] > 1.0e-12
+          )
+          vertical_count=sum(1 for r in owner_obbs if r['surface'] and abs(r['ry']) > 1.0e-8)
+          print(
+              'REFERENCE_OWNER_V2_OWNER_OBB_SUPPORT_PROOF '
+              f'classification={classification} loss_tick={loss_tick} owner_carriage={loss_carriage} '
+              f'owner_callbacks={len(owner_callbacks)} previous_owner_obb_rows={len(previous_owner_obbs)} '
+              f'owner_obb_rows={len(owner_obbs)} surface_rows={surface_count} nonzero_rows={nonzero_count} '
+              f'vertical_response_rows={vertical_count} localplayer_setpos_writes={len(owner_setpos)} '
+              'read_only=true final_ready=false'
+          )
+          PY
+
+          grep -E 'REFERENCE_OWNER_V2_OWNER_OBB_SUPPORT_PROOF|REFERENCE_OWNER_V2_OWNER_OBB_CALLBACK|GATE_E_CREATE_COLLIDE_MANY_RESULT|GATE_E_PHASE131_SUPPORT_SOURCE|GATE_E_LOCALPLAYER_SET_POS' "$LOG" | tail -360 || true
+
+      - name: Upload owner OBB diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-owner-v2-owner-obb-support-log
+          path: |
+            reference-owner-v2-owner-obb-support.log
+            reference-owner-v2-owner-obb-support-xvfb.log
+          if-no-files-found: warn

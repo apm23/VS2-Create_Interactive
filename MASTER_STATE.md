@@ -8,11 +8,14 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - HARD architecture: Create owns train/carriage gameplay and collision geometry. VS2 must be the actual continuous moving reference-space/transform foundation for player body/camera. Compatibility remains a thin adapter; merely calling an EntityDragger helper after Create movement is not sufficient.
 
 ## Current reconciled state — 2026-09-15
-- project_state: `ROOT_REDESIGN — CURRENT ADAPTER PROVEN CONTACT/LEASE REANCHOR, NOT CONTINUOUS VS2 REFERENCE OWNERSHIP`
-- ledger_basis_head: `6e079d62d0d30e8508ad825ef80791088fa28e5c`
+- project_state: `ROOT_REDESIGN — PINNED VS2 NATIVE OWNER REQUIRES REGISTERED SHIP; NO NON-SHIP OWNER API FOUND`
+- ledger_basis_head: `c364910f3c9419a5b37b41a3c59fa77124a10b02`
 - architecture_diagnostic_commit: `6e079d62d0d30e8508ad825ef80791088fa28e5c` (`Add VS2 reference-frame ownership diagnostic`)
 - architecture_diagnostic_run: `34963733838` — SUCCESS
 - architecture_diagnostic_result: `current_adapter_is_contact/lease_reanchor_not_continuous_vs2_reference_space`
+- native_owner_seam_diagnostic_commit: `c364910f3c9419a5b37b41a3c59fa77124a10b02` (`Fix native owner acquisition diagnostic anchor`)
+- native_owner_seam_diagnostic_run: `34969572212` — SUCCESS
+- native_owner_seam_result: `native_owner_requires_registered_vs2_ship; external_nonship_reference_owner_seam=false`
 - gameplay_fix_commit: `fb9520946e1041c1dc0a75a82fcae0a260cceec8` (`Bind Phase205 reanchor to selected carriage owner`)
 - automated_m1_proof: `34943410005` — historical automated GREEN, overridden by direct runtime failure
 - owner_diagnostic_run: `34943783606` — grounded owner binding GREEN (22 supported ticks, 0 mismatches)
@@ -44,10 +47,16 @@ Read-only workflow `34963733838` proved all of the following are present in the 
 
 Conclusion: current compatibility is a contact/lease-based Create transform sampling + external reanchor system. It is not proof, and is now proven insufficient, as a continuous VS2 governing reference frame.
 
-## Native VS2 root-boundary inspection
-Pinned upstream VS2 source (`0bc19eac8f23258bbe03bdccb929c24d13e93838`) shows native `EntityDragger.dragEntitiesWithShips` is keyed by persistent VS2 ship identity/lifecycle (`lastShipStoodOn`, `ticksSinceStoodOnShip`, lookup in `shipObjectWorld.allShips`, current + previous ShipTransform). Native carry therefore has a ship-owner lifecycle that the current Create adapter does not establish; the adapter instead samples Create carriage transforms and invokes an external helper.
+## Native VS2 root-boundary proof
+Pinned upstream VS2 source (`0bc19eac8f23258bbe03bdccb929c24d13e93838`) and read-only workflow `34969572212` prove:
+- native acquisition writes a colliding registered VS2 `ShipId` into `draggingInformation.lastShipStoodOn`;
+- owner state is `ShipId?` and retention is tied to `ticksSinceStoodOnShip`;
+- native dragging resolves that id through `shipObjectWorld.allShips.getById(...)` and uses previous/current `ShipTransform`;
+- render interpolation resolves `lastShipStoodOn` through client `getLoadedShips().getById(...)`;
+- ship-mounted camera code also requires a real `ClientShip`;
+- conservative pinned-source scan found zero explicit external/non-Ship reference-owner APIs.
 
-This does NOT authorize manufacturing a fake/duplicate physics ship. Create must retain gameplay/collision geometry ownership. The redesign must identify a legitimate thin bridge into VS2 reference ownership/transform lifecycle without giving VS2 duplicate carriage geometry/gameplay authority.
+Conclusion: one authoritative Create carriage cannot participate in the existing pinned VS2 native owner lifecycle through a public non-Ship seam. Registering a fake/proxy VS2 ship merely to obtain `ShipId`/`ClientShip` would create duplicate physics/reference authority and is forbidden. Therefore the redesign target is the VS2 reference-owner abstraction boundary itself, not another Create carry lease/reanchor patch.
 
 ## FROZEN_GREEN / protected
 - Kotlin/bootstrap packaging repair `f3d1335c9fc89283d936af039eba34aa9778bd05`.
@@ -71,14 +80,13 @@ Do not reintroduce without new direct evidence:
 - sprint/reverse/strafe tuning as a reference-frame fix;
 - broad sibling/global suppression instead of exact owner identity;
 - duplicate Create/VS2 gameplay or collision authority;
+- fake/proxy VS2 ship registration solely to obtain native drag/camera lifecycle;
 - harness mutation used to manufacture green.
 
 ## next_safe_action
-Trace the exact native VS2 acquisition/retention ownership path that assigns and consumes `lastShipStoodOn` / ship identity and determines player/body/camera transform continuity. Add the smallest read-only instrumentation/proof answering this question:
+Map the smallest pinned-VS2 call-site set that couples continuous entity/body/render reference ownership specifically to `ShipId` / registered `Ship` lookup. Add a read-only redesign map that identifies the minimum state/acquisition/drag/render seams that would need a generalized `reference owner` abstraction accepting authoritative previous/current transforms from Create without registering geometry or a physics ship.
 
-`Can one authoritative Create carriage frame participate in VS2's continuous reference-owner lifecycle without creating a duplicate VS2 physics ship or transferring Create collision/gameplay geometry ownership?`
-
-Until that ownership seam is proven, do NOT make another gameplay carry/jump/wall/camera patch. If the seam cannot exist under current VS2 APIs without duplicate authority, perform a root redesign of the adapter boundary rather than stacking leases or corrections.
+Do not implement the abstraction until that map proves the boundary is narrow enough to keep Create collision/gameplay ownership intact. Do not patch jump/wall/camera symptoms in parallel.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 CI/automated proof may produce candidates but cannot restore FINAL_READY. FINAL_READY requires a new exact final JAR that passes real-user runtime for standing, movement, jump+airborne+natural landing, floor/walls/ceiling, turns, speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look, plus watchdog local runtime-gate SHA match.

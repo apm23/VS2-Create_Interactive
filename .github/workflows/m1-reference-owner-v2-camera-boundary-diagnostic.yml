@@ -1,0 +1,109 @@
+name: m1-reference-owner-v2-camera-boundary-diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-camera-boundary-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  camera-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Compose exact authority-fixed V2 production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+
+      - name: Classify player-render-camera reference-frame boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('upstream')
+          generator = Path('scripts/prepare_vs2_26_2_reference_owner_v2.py').read_text(encoding='utf-8')
+          state = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDraggingInformation.kt').read_text(encoding='utf-8')
+          dragger = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt').read_text(encoding='utf-8')
+          packet = (root / 'common/src/main/java/org/valkyrienskies/mod/mixin/feature/entity_movement_packets/MixinLocalPlayer.java').read_text(encoding='utf-8')
+          render_path = root / 'common/src/main/java/org/valkyrienskies/mod/mixin/client/renderer/MixinGameRenderer.java'
+          render = render_path.read_text(encoding='utf-8')
+          collider = (root / 'fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.java').read_text(encoding='utf-8')
+
+          required = {
+              'persistent_external_owner_state': 'externalReferenceOwnerEntityId' in state and 'ticksSinceExternalReferenceOwner' in state,
+              'vs2_dragger_external_owner_lifecycle': 'isEntityBeingDraggedByExternalReference' in dragger and 'clearExternalReferenceOwner' in dragger,
+              'localplayer_external_owner_packet': 'PacketPlayerReferenceMotion' in packet and 'getExternalReferenceOwnerEntityId' in packet,
+              'standing_render_external_owner': 'externalReferenceOwnerPresent' in render and 'isEntityBeingDraggedByExternalReference' in render,
+              'legacy_precollision_reanchor_removed': 'vs2$preCollisionExternalFrame' not in collider,
+          }
+          missing = [name for name, ok in required.items() if not ok]
+          if missing:
+              raise SystemExit('camera-boundary proof lost production anchors: ' + ','.join(missing))
+
+          owner_tokens = (
+              'getExternalReferenceOwnerEntityId',
+              'isEntityBeingDraggedByExternalReference',
+              'ExternalReferenceFrameResolver',
+          )
+          camera_files = []
+          camera_owner_files = []
+          source_roots = [root / 'common/src', root / 'fabric/src']
+          for source_root in source_roots:
+              for path in source_root.rglob('*'):
+                  if not path.is_file() or path.suffix not in {'.java', '.kt'}:
+                      continue
+                  rel = path.relative_to(root).as_posix()
+                  if 'camera' not in rel.lower():
+                      continue
+                  camera_files.append(rel)
+                  text = path.read_text(encoding='utf-8', errors='replace')
+                  if any(token in text for token in owner_tokens):
+                      camera_owner_files.append(rel)
+
+          generator_explicitly_omits_camera = 'mounted-camera code is not entered or modified' in generator
+          if camera_owner_files:
+              classification = 'EXTERNAL_OWNER_CAMERA_PATH_PRESENT'
+          elif generator_explicitly_omits_camera:
+              classification = 'PLAYER_OWNER_RENDER_WIRED_CAMERA_OWNER_UNWIRED'
+          else:
+              classification = 'CAMERA_OWNER_BOUNDARY_UNRESOLVED'
+
+          collision_frame_explicit = 'ExternalReferenceFrameResolver' in collider or 'currentWorldToLocal' in collider
+          print(
+              'REFERENCE_OWNER_V2_CAMERA_BOUNDARY_PROOF '
+              f'classification={classification} '
+              f'camera_candidates={len(camera_files)} camera_owner_files={len(camera_owner_files)} '
+              f'generator_explicitly_omits_camera={str(generator_explicitly_omits_camera).lower()} '
+              f'collision_frame_explicit_in_compat={str(collision_frame_explicit).lower()} '
+              'player_owner=true standing_render_owner=true legacy_precollision_reanchor=false '
+              'read_only=true final_ready=false'
+          )
+          if camera_owner_files:
+              print('REFERENCE_OWNER_V2_CAMERA_OWNER_FILES ' + ' '.join(camera_owner_files))
+          else:
+              print('REFERENCE_OWNER_V2_CAMERA_OWNER_FILES none')
+          PY

@@ -1,0 +1,94 @@
+name: m1-reference-owner-redesign-map
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-redesign-map.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  redesign-map:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: pinned-vs2
+
+      - name: Map native reference-owner coupling
+        shell: python
+        run: |
+          from pathlib import Path
+          from collections import defaultdict
+
+          root = Path('pinned-vs2')
+          source_roots = [root / 'common/src', root / 'fabric/src', root / 'forge/src']
+          files = []
+          for source_root in source_roots:
+              if source_root.exists():
+                  files.extend(p for p in source_root.rglob('*') if p.suffix in {'.kt', '.java'})
+
+          token_groups = {
+              'owner_state': ['lastShipStoodOn', 'ticksSinceStoodOnShip', 'isEntityBeingDraggedByAShip'],
+              'registered_ship_resolution': ['allShips.getById', 'getLoadedShips().getById'],
+              'native_transform_application': ['prevTickTransform', 'referenceTransform.shipToWorld', 'shipToWorld.transformPosition'],
+              'camera_render_binding': ['setupWithShipMounted', 'getShipMountedToData'],
+          }
+
+          hits = defaultdict(list)
+          for path in files:
+              text = path.read_text(errors='replace')
+              rel = str(path.relative_to(root))
+              for group, tokens in token_groups.items():
+                  for lineno, line in enumerate(text.splitlines(), 1):
+                      if any(token in line for token in tokens):
+                          hits[group].append((rel, lineno, line.strip()))
+
+          for group in token_groups:
+              paths = sorted({path for path, _, _ in hits[group]})
+              print(f'REDESIGN_MAP {group}_file_count={len(paths)}')
+              for path in paths:
+                  print(f'REDESIGN_MAP {group}_file={path}')
+              print(f'REDESIGN_MAP {group}_hit_count={len(hits[group])}')
+
+          required_core = {
+              'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDraggingInformation.kt',
+              'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt',
+              'common/src/main/java/org/valkyrienskies/mod/mixin/client/renderer/MixinGameRenderer.java',
+          }
+          observed = set()
+          for group in token_groups:
+              observed.update(path for path, _, _ in hits[group])
+
+          missing = sorted(required_core - observed)
+          if missing:
+              raise SystemExit('redesign map lost expected native owner core files: ' + ','.join(missing))
+
+          acquisition = root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityShipCollisionUtils.kt'
+          acquisition_text = acquisition.read_text(errors='replace')
+          acquisition_anchor = (
+              'draggingInformation.lastShipStoodOn = shipCollidingWith' in acquisition_text
+              and 'standingOnShip.id == shipCollidingWith' in acquisition_text
+          )
+          print(f'REDESIGN_MAP native_acquisition_collision_coupled={str(acquisition_anchor).lower()}')
+          if not acquisition_anchor:
+              raise SystemExit('native acquisition anchor changed; inspect before redesign')
+
+          owner_paths = sorted({path for path, _, _ in hits['owner_state']})
+          registered_paths = sorted({path for path, _, _ in hits['registered_ship_resolution']})
+          render_paths = sorted({path for path, _, _ in hits['camera_render_binding']})
+
+          print('REDESIGN_MAP conclusion=map_complete read_only=true gameplay_mutation=false')
+          print('REDESIGN_MAP next_question=can_owner_state_and_transform_resolution_be_generalized_without_touching_Create_collision_geometry_or_registering_a_VS2_ship')
+          print('REDESIGN_MAP owner_state_paths=' + ';'.join(owner_paths))
+          print('REDESIGN_MAP registered_ship_resolution_paths=' + ';'.join(registered_paths))
+          print('REDESIGN_MAP camera_render_paths=' + ';'.join(render_paths))

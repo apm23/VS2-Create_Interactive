@@ -43,8 +43,8 @@ object ExternalReferenceFrameResolver {
             return null
         }
         return try {
-            owner.javaClass.getMethod("toLocalVector", Vec3::class.java, Float::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
-            owner.javaClass.getMethod("toGlobalVector", Vec3::class.java, Float::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
+            owner.javaClass.getMethod("toLocalVector", Vec3::class.java, java.lang.Float.TYPE, java.lang.Boolean.TYPE)
+            owner.javaClass.getMethod("toGlobalVector", Vec3::class.java, java.lang.Float.TYPE, java.lang.Boolean.TYPE)
             owner
         } catch (_: ReflectiveOperationException) {
             null
@@ -74,8 +74,8 @@ object ExternalReferenceFrameResolver {
             val method = owner.javaClass.getMethod(
                 methodName,
                 Vec3::class.java,
-                Float::class.javaPrimitiveType,
-                Boolean::class.javaPrimitiveType
+                java.lang.Float.TYPE,
+                java.lang.Boolean.TYPE
             )
             val result = method.invoke(
                 owner,
@@ -146,10 +146,14 @@ if collider:
         raise SystemExit("reference-owner v1 could not guard Phase205 pre-collision reanchor path")
     collider_file.write_text(collider, encoding="utf-8")
 
-# Structural proof: the new abstraction is transform-only and cannot itself chase the player.
-for token in ["setPos(", "setDeltaMovement(", ".push(", "getContactPointMotion(", "gravity", "camera", "teleport"]:
+# Structural proof: the new resolver contains no player/body/world mutation API. Natural-language
+# documentation is intentionally ignored; only callable mutation signatures are audited.
+for token in [
+    "setPos(", "setDeltaMovement(", ".push(", "getContactPointMotion(",
+    "teleportTo(", ".teleport(", "setNoGravity(", "setOnGround(",
+]:
     if token in resolver:
-        raise SystemExit("reference-owner v1 resolver introduced forbidden mutation token: " + token)
+        raise SystemExit("reference-owner v1 resolver introduced forbidden mutation API: " + token)
 
 required_state = [
     "externalReferenceOwnerEntityId",

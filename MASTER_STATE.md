@@ -5,159 +5,99 @@ GitHub code is the implementation source of truth. This file is the durable proj
 ## Project
 - Repository: `apm23/VS2-Create_Interactive`
 - Milestone: `M1 — movement / collision`
-- Goal: a moving Create train should feel like a stationary house that is actually moving.
 - Architecture: Create owns train/carriage gameplay and collision geometry; VS2 supplies moving reference-space/transform foundation; compatibility stays a thin adapter.
 
-## Current state
-- project_state: `RUNTIME_REGRESSION — FINAL_READY REVOKED. Direct user runtime test of the runtime-fixed final JAR shows the player sinking through the Create carriage floor.`
-- current_head: `AUTO_RECONCILE_GIT_HEAD`
-- implementation_head_under_test: `74fd7288f754875b2301dcd7f8fc55330c374f70`
-- candidate_gameplay_commit: `aea87423ff9e1cd7943944822dbe6cbc21d327d5`
-- previous_automated_m1_proof_run: `34799207093` (`production-world-smoke #731`, automated GREEN but now insufficient for real-user acceptance)
-- latest_runtime_diagnostic_run: `34892811793` (`production-world-smoke #742`, prepare/composition fixed; runtime reached real train; standing/carry+sprint proof passed before later native-jump proof failure)
-- runtime_packaging_fix_commit: `f3d1335c9fc89283d936af039eba34aa9778bd05`
-- runtime_final_verify_workflow_commit: `7aeb188099560ad16136df0f335b361b9f519449`
-- runtime_final_build_run: `34823149030` (`final-build #4`, success)
-- runtime_final_verify_run: `34823564539` (`final-verify #2`, success)
-- tested_final_jar_sha256: `7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51`
-- bootstrap_runtime_fix: `SUCCESS — Kotlin packaging issue fixed; client now reaches Minecraft/world.`
-- user_runtime_validation: `FAILED`
+## Current reconciled state — 2026-09-15
+- project_state: `AUTOMATED_M1_GREEN_AFTER_SELECTED-OWNER FIX — FINAL_READY STILL REVOKED`
+- reconciled_head_before_ledger_update: `233e7bbf9cbef726942257f5a80f2e295bc5b7fc`
+- gameplay_fix_commit: `fb9520946e1041c1dc0a75a82fcae0a260cceec8` (`Bind Phase205 reanchor to selected carriage owner`)
+- proof_trigger_commit: `233e7bbf9cbef726942257f5a80f2e295bc5b7fc` (inert trigger only; no gameplay change)
+- latest_current-head_production_proof: `34943410005` (`production-world-smoke #752`, head `233e7bbf...`, SUCCESS)
+- owner_diagnostic_run: `34943783606` (`m1-floor-owner-diagnostic #5`, SUCCESS)
+- owner_diagnostic_result: `best_supported_streak=22, best_ticks=20-41, phase205_selection_mismatches=0, read_only=true`
+- owner_binding_state: `GREEN/FROZEN unless direct new evidence regresses it`
 - final_ready: `false`
-- active_blocker: `G. collision — direct real-user runtime evidence shows carriage floor/support is not solid for the player; player visibly sinks into/below the moving carriage despite automated harness GREEN.`
-- active_hypothesis: `Native Create collision ownership/order is wrong at the floor-support boundary: runtime #742 shows vanilla Entity.move consumes a full downward gravity step while LocalPlayer is still onGround before Create's later client contraption collision pass clips downward velocity. The post-pass velocity clip cannot undo the already-applied downward position, and the same tick loses floor alignment/support.`
-- next_safe_action: `Inspect/trace the native Create LocalPlayer collision ordering and response-consumption boundary around Entity.move vs ContraptionColliderClient. Prefer removing/reordering duplicate ownership so Create geometry resolves downward floor motion before position penetration. Do not add floor clamps, synthetic carry/gravity, lease/replay extensions, or tune movement inputs.`
+- user_runtime_validation: `FAILED on older final JAR SHA256 7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51; this predates the selected-owner fix and remains authoritative against that old candidate only.`
+- next_safe_action: `Build a fresh final candidate from the current selected-owner implementation, then integrity-verify it. Do not declare FINAL_READY until the user tests that exact new JAR and the local runtime gate is bound to its exact SHA-256.`
 
-## Direct user runtime regression — 2026-09-14
-The user tested the runtime-fixed final JAR in actual Minecraft 26.2 and supplied a screenshot showing the player sunk into/below the assembled Create carriage floor. This is direct runtime evidence and overrides automated GREEN for the affected M1 criteria.
+## Current automated M1 proof — production #752
+Run `34943410005` checked out exact head `233e7bbf9cbef726942257f5a80f2e295bc5b7fc` and completed successfully.
+Its M1 verifier reported:
+- carry continuity passed;
+- forward/supported sprinting passed;
+- reverse passed;
+- right strafe passed;
+- `floor_solid=true` with 16 floor samples and zero Y span;
+- `wall_solid=true` with a three-frame wall impact proof;
+- `ceiling_solid=true`;
+- `speed_change_stable=true`;
+- native jump requested -> airborne -> natural landing passed;
+- `natural_fall=true`, `replay_free=true`, `recovery_free=true`;
+- 9 post-land stable samples.
 
-Consequences:
-- previous `FINAL_READY` is invalid and revoked;
-- stable standing is REGRESSED/UNPROVEN in real user runtime;
-- solid floor is REGRESSED/UNPROVEN in real user runtime;
-- no-sink acceptance is REGRESSED/UNPROVEN in real user runtime;
-- automated run #731 remains useful harness evidence but is NOT final acceptance evidence;
-- bootstrap/Kotlin packaging repair remains valid and should not be reverted;
-- do not claim M1_COMPLETE/FINAL_READY again until the exact final candidate passes a fresh real-user runtime test.
+This is strong automated evidence for the current implementation but is NOT terminal real-user acceptance.
 
-## Native floor-support ordering evidence — production-world #742
-`production-world-smoke #742 / run 34892811793` is the first run after repairing the wall-fixture composer chain. Prepare/composition completed and Minecraft reached the real moving-train runtime.
+## Owner/root-boundary resolution
+Earlier read-only owner diagnostic found Phase205 reanchor could use a sibling carriage rather than the same-tick Gate E selected carriage. Commit `fb952094...` binds the existing pre-OBB external-frame reanchor to the same-tick selected Create carriage and rejects sibling ownership. It does not add floor clamps, fake gravity, synthetic carry velocity, teleport/setPos carry, or a second collision authority.
 
-The run proves a concrete native ordering seam relevant to the user's sinking report:
-- ticks 20-22: carriage-local standing is stable at local Y=2.0 and Create native contact is present;
-- tick 25: supported sprint/walk is confirmed with `on_ground=true`, `broadphase=true`, `support_healthy=true`;
-- tick 26: Create's collision telemetry sees the LocalPlayer onGround with downward motion about `-0.0784`;
-- tick 27: vanilla `Entity.move(SELF, ..., -0.0784000015, ...)` returns with the entire downward Y applied, moving player Y from `-57.0` to `-57.0784000015` while `on_ground=true`;
-- after that positional drop, Create's OBB/narrowphase pass runs; Phase64 clips the retained negative delta movement back to Y=0, but position is already lower;
-- the same tick `GATE_E_M1_JUMP_FLOOR_TRACE` reports local Y `1.921599998...`, `floor_aligned=false`, `support_now=false`;
-- therefore the current Phase64 post-collision downward-velocity clip does not solve the actual position-penetration ordering problem.
+The subsequent diagnostic `34943783606` reports 22 consecutive supported samples and zero Phase205/selected-carriage mismatches. Therefore the selected-owner seam is GREEN and must not be tuned further without direct regression evidence.
 
-Interpretation lock:
-- this is direct runtime evidence of an ordering/authority problem, not evidence to extend contact leases/replay;
-- it does not justify a manual floor clamp or teleport/setPos correction;
-- it does not justify tuning sprint/reverse/strafe/jump input windows;
-- the later #742 jump-proof failure must not distract from the already-observed floor-support penetration seam.
+Diagnostic #5 downloaded artifact from older production run `34943397932`; that source run itself failed a later verifier path, but its artifact still independently proved the owner-binding diagnostic criteria. More importantly, exact-current-head production run `34943410005` separately completed SUCCESS and proved the full automated M1 path. Do not confuse the older source-run conclusion with the current-head production result.
+
+## Direct user runtime regression — retained hard gate
+On 2026-09-14 the user tested the then-final runtime-fixed JAR and supplied direct runtime evidence showing the player sinking into/below the Create carriage floor. That revoked FINAL_READY for SHA256 `7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51`.
+
+The new selected-owner implementation has not yet been built, integrity-verified, and tested by the user as an exact final JAR. Therefore:
+- do not restore FINAL_READY from CI;
+- do not ask the user to retest the obsolete JAR;
+- build and verify a fresh candidate first;
+- after that, user runtime confirmation is mandatory.
+
+## Historical floor-order evidence
+Production #742 (`34892811793`) showed vanilla `Entity.move` applying a downward step before Create's later collision pass, after which support was lost. This was valid evidence at that revision. Later owner diagnostics isolated sibling/double-owner divergence at the reference-frame boundary, and the selected-owner fix now has current-head automated floor/locomotion/jump proof. Do not reintroduce speculative Entity.move floor patches unless the fresh exact candidate produces new direct evidence of penetration.
+
+## Protected / FROZEN_GREEN
+- Kotlin/bootstrap packaging repair `f3d1335c9fc89283d936af039eba34aa9778bd05`.
+- Create train + VS2 coexistence.
+- Steam 'n' Rails and Copycats preservation.
+- selected-carriage Phase205 ownership binding from `fb952094...`.
+- current automated forward/reverse/strafe/sprint/jump/floor/wall/ceiling paths unless direct evidence regresses them.
+
+## FAILED_HYPOTHESES / anti-loop — DO NOT REINTRODUCE WITHOUT NEW DIRECT EVIDENCE
+- `EXACT_SHAPES_LOCALPLAYER_0fa4aa`.
+- generic frame-lease/replay/carry extension.
+- synthetic carry velocity / fake inertia compensation.
+- fake gravity.
+- manual floor/wall clamps or floor-only collision workaround.
+- per-tick teleport/setPos carry.
+- harness mutation used to manufacture success.
+- jump-input tuning without jump-specific evidence.
+- sprint/reverse/strafe timing tuning as a floor-support fix.
+- broad sibling/global suppression instead of direct owner identity.
+- floor-normal-only correction.
+- near-zero total local XYZ movement as locomotion prerequisite.
+- duplicate Create/VS2 authority/state.
 
 ## Architecture contract
-Forbidden unless direct evidence proves unavoidable:
-- fake gravity
-- synthetic carry velocity
-- inertia compensation
-- manual wall clamp
-- floor-only collision workaround
-- per-tick teleport/setPos carry
-- duplicate authority/state
-- workaround chains hiding Create+VS2 double ownership
+Forbidden: fake gravity, synthetic carry velocity, inertia compensation, manual wall clamp, floor-only collision workaround, per-tick teleport/setPos carry, duplicate authority/state, and workaround chains hiding Create+VS2 double ownership.
 
-Preferred order: native Create/Minecraft collision -> authoritative VS2/Create transform -> simplify duplicate ownership -> thin adapter.
-
-## Still protected / frozen unless direct regression evidence exists
-- bootstrap/no-crash with embedded Kotlin runtime
-- Create train + VS2 coexistence
-- Steam 'n' Rails and Copycats preservation
-- backward/strafe/sprint/jump code paths unless direct runtime evidence shows they are independently broken
-- Phase83 sibling-owner arbitration seam unless direct evidence points there
-- packaging fix from `f3d1335c9fc89283d936af039eba34aa9778bd05`
-
-## Reopened / not frozen
-- stable standing on moving carriage
-- carriage floor solidity/support
-- no sink / no downward penetration
-- carry continuity insofar as it depends on the failed floor/support boundary
-
-## Previous automated proof — retained as non-terminal evidence
-`production-world-smoke #731 / run 34799207093` reported:
-- stable standing/carry
-- forward/sprint
-- reverse
-- right strafe
-- floor/wall/ceiling solidity
-- speed-change stability
-- jump/airborne/natural landing
-- post-land stability
-
-This proof is now classified as `HARNESS_GREEN_BUT_USER_RUNTIME_FALSE_POSITIVE` for final acceptance because direct user runtime contradicts standing/floor/no-sink behavior.
-
-## Bootstrap packaging regression and repair
-The first final artifact crashed with `NoClassDefFoundError: kotlin/jvm/internal/Intrinsics` because Kotlin runtime was missing. Repair `f3d1335c9fc89283d936af039eba34aa9778bd05` changed only final packaging and embedded Fabric Language Kotlin plus Kotlin stdlib/jdk7/jdk8/reflect. `final-build #4 / 34823149030` and `final-verify #2 / 34823564539` succeeded. The client now launches; this packaging fix is GREEN and unrelated to the sinking gameplay regression.
-
-## Failed hypotheses — DO NOT REPEAT WITHOUT NEW EVIDENCE
-- `EXACT_SHAPES_LOCALPLAYER_0fa4aa`
-- generic accumulation/extension of frame leases, replay, or carry corrections
-- synthetic carry velocity / fake inertia compensation
-- manual floor/wall clamps
-- harness mutation that manufactures success
-- treating missing jump as a jump-input bug
-- treating right-strafe timing as cause of support loss
-- broad sibling/global suppression instead of direct native-owner identity
-- floor-normal-only correction for #726
-- near-zero total local XYZ movement as prerequisite for supported locomotion
-
-## Anti-loop lock
-- Do not tune sprint/reverse/strafe windows merely because floor support fails.
-- Do not patch jump admission/acceptance without jump-specific evidence.
-- Do not extend native contact leases speculatively.
-- Do not add replay/recovery branches.
-- Do not re-enable exact-shape LocalPlayer redirect.
-- Do not add synthetic carry/fake gravity/inertia/manual clamps.
-- Do not treat CI/harness GREEN as real-user acceptance.
-- A verifier/build success never authorizes `FINAL_READY` by itself.
-
-## M1 acceptance — REAL USER RUNTIME is authoritative for terminal completion
-- [ ] stable standing — REOPENED, user runtime FAIL
-- [ ] forward/backward/strafe — must be rechecked after floor/support fix
-- [ ] sprint — must be rechecked after floor/support fix
-- [ ] jump + airborne + natural landing — must be rechecked after floor/support fix
-- [ ] solid floor/walls/ceiling — FLOOR FAIL; wall/ceiling need recheck on corrected candidate
-- [ ] no sink/throw/drift/lag-behind — SINK FAIL
-- [ ] stable through movement/turn/speed changes — recheck after support fix
-
-## Final artifact state
-- m1_complete: `false`
-- final_build_candidate_exists: `true`
-- tested_candidate_sha256: `7912822c8aeee0adb461d222cfa9a4aeaf083e8253478a1f4aaf1dd9fab8bc51`
-- artifact_integrity_verification: `SUCCESS`
-- bootstrap_runtime_fix: `SUCCESS`
-- user_runtime_validation: `FAILED`
-- final_ready: `false`
+Preferred order: native Create/Minecraft collision -> authoritative VS2/Create transform -> remove duplicate ownership -> thin adapter.
 
 ## Finalization policy — HARD USER RUNTIME GATE
-Automated proof can advance a candidate through build/integrity verification, but terminal completion requires a real user test of the exact final JAR.
-
-`FINAL_READY` is allowed only when ALL are true:
-1. final candidate built successfully;
+Automated proof can advance a candidate through build and integrity verification. `FINAL_READY` is allowed only when ALL are true:
+1. fresh final candidate built from the current implementation;
 2. artifact identity/integrity checks pass;
 3. no implementation regression is known;
-4. the user tests the exact candidate in real Minecraft and confirms all M1 criteria;
-5. watchdog local `USER_RUNTIME_GREEN.txt` is bound to the exact `final_jar_sha256` of that candidate.
+4. user tests that exact candidate in real Minecraft and confirms M1 behavior;
+5. watchdog local `USER_RUNTIME_GREEN.txt` is bound to that exact candidate's `final_jar_sha256`.
 
-If ChatGPT/CI says FINAL_READY without condition 4+5, watchdog must reject the terminal decision and HOLD for user runtime validation.
+If CI is green but 4+5 are absent, FINAL_READY is forbidden.
 
-## Fresh-chat protocol
-1. Read this file completely.
-2. Inspect actual GitHub HEAD.
-3. Treat the 2026-09-14 user screenshot as direct regression evidence: player sinks through carriage floor.
-4. Do NOT restore FINAL_READY from old run #731 or final-verify #2.
-5. Keep Kotlin/bootstrap packaging fix protected.
-6. Diagnose the collision/support boundary with smallest read-only proof first.
-7. Only re-freeze standing/floor/no-sink after a new exact-candidate real-user runtime pass.
-8. Never terminal-finalize from CI alone; require exact-JAR user runtime confirmation gate.
+## Fresh-chat/watchdog protocol
+1. Inspect actual HEAD.
+2. Read this file completely and reconcile its recorded head with actual HEAD.
+3. Inspect only latest relevant Actions evidence for the active next step.
+4. Respect FROZEN_GREEN and FAILED_HYPOTHESES.
+5. Execute `next_safe_action`; do not stop at narration.
+6. If a relevant workflow is queued/in_progress, HOLD.
+7. Never terminal-finalize from CI alone.

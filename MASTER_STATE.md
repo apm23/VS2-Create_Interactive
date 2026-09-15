@@ -12,16 +12,15 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only collision workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 gameplay/collision authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- project_state: `ROOT_REDESIGN — SAME-POINT REFERENCE TRANSFORM GREEN; COLLISION/REFERENCE-CARRY TEMPORAL ORDER MICRO-PROOF ACTIVE`
-- ledger_basis_head: `654b1e765c6b0b41137e80edccacee02eda4833d`
+- project_state: `ROOT_REDESIGN — CREATE-COLLISION-BEFORE-VS2-DRAG PROVEN; PRE-COLLISION EXTERNAL-OWNER SCHEDULER PATCH UNDER RUNTIME PROOF`
+- ledger_basis_head: `1e319794b8779795e9149348929aeb4224d34d01`
 - final_ready: `false`
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`
-- user_runtime_validation: historical candidate FAILED; no authority-fixed V2 candidate has been built/tested by the user.
-- current diagnostic workflow: `m1-reference-owner-v2-collision-order-microproof`
-- current diagnostic commit: `654b1e765c6b0b41137e80edccacee02eda4833d`
-- current diagnostic run: `35025200849`
-- current diagnostic job: `104570448090`
-- current diagnostic status when ledger written: `in_progress`, exact composition + read-only instrumentation prepared successfully; compile running.
+- user_runtime_validation: historical candidate FAILED; no pre-collision-scheduler V2 candidate has been built/tested by the user.
+- production scheduler patch: `0ce0dfd4f6f29685eb18b6e3a8c14ddc247bbb9b`
+- current proof workflow: `m1-reference-owner-v2-precollision-order-proof`
+- current proof commit: `1e319794b8779795e9149348929aeb4224d34d01`
+- current proof run: `35027838280` — queued when this ledger was written.
 
 ## Root architecture proofs
 - `6e079d62d0d30e8508ad825ef80791088fa28e5c`, run `34963733838` SUCCESS: old implementation was contact/lease reanchor, not continuous VS2 reference space.
@@ -52,11 +51,11 @@ Never ask user to retest this SHA.
 - body continuity failed catastrophically: ~`93.48251` blocks airborne owner-relative horizontal drift; ~`51.82845` max one-tick step.
 - artifact showed Create `ContraptionColliderClient.collideEntities` applying material contact carry while VS2 external owner was active.
 
-## Scheduler root and proof — FROZEN_GREEN
+## Scheduler lifecycle root — lifecycle FROZEN, old hook placement superseded by direct evidence
 - Runtime proved external owner could acquire while LocalPlayer body branch never executed because pinned VS2 `MixinMinecraft.postTick()` scheduled `EntityDragger` only when native VS2 ships existed.
-- scheduler fix `f81507dd...`: preserves native Ship scheduling and also schedules the drag sweep while LocalPlayer has an external reference owner; no collision/motion/camera algorithm added.
-- scheduler proof run `35008163064` SUCCESS: external owner reaches VS2 EntityDragger body lifecycle.
-- This exposed duplicate movement authority rather than transform absence.
+- original scheduler fix `f81507dd...` made the external owner enter the VS2 EntityDragger lifecycle without fake/proxy ship; run `35008163064` SUCCESS.
+- The lifecycle requirement remains FROZEN_GREEN: external owner must use VS2 EntityDragger/reference-owner body lifecycle.
+- The exact old `Minecraft.tick RETURN/postTick` placement is no longer protected: run `35025200849` directly proved it executes after Create collision and is the active temporal-order blocker.
 
 ## Active-owner contact-carry authority — FROZEN_GREEN
 - Runtime showed VS2 body movement and Create ordinal-1 contact-point carry could both move LocalPlayer in the same tick.
@@ -98,32 +97,26 @@ Workflow commit `c7a797d3ba89c43f33365d6d1ded9bad65f6d841`, run `35020203661`:
 - same runtime still shows LocalPlayer owner-local Y falling from about `2.0001` through `1.9217`, `1.766`, `1.5359`, `1.2316`, `0.855`, `0.4075`, `-0.109`, `-0.694`, to about `-1`, while external-owner carry remains live.
 - Therefore current blocker is not bilateral transform correctness; it is the collision/reference-carry lifecycle/order in which Create authoritative geometry is evaluated relative to VS2 reference carry.
 
-## Static scheduling/collision boundary
-Pinned Create-Fly source shows:
-- `MinecraftMixin.tickPost`, injected at `Minecraft.tick` TAIL, calls `ContraptionHandlerClient.tick(level)`.
-- that path executes `ContraptionColliderClient.collideEntities` and Create authoritative OBB/floor/wall/ceiling collision.
-Pinned VS2 source plus scheduler fix shows:
-- VS2 external-owner `EntityDragger` sweep is scheduled from `MixinMinecraft.postTick()` at `Minecraft.tick` RETURN.
-- Static TAIL/RETURN placement strongly suggests an order issue, but mixin runtime ordering must be measured rather than assumed.
-Create source also confirms `getAnchorVec() = position()`, `getPrevAnchorVec() = previous position`, and its contact-point transform semantics are consistent with the now-GREEN same-point proof.
+## Collision/reference-carry temporal-order proof — DIRECT RUNTIME EVIDENCE
+- diagnostic workflow first commit `56f451acacd923fe0d0dfe31f1e192fafea72e91` had invalid YAML; run `35024773928` had zero jobs and no gameplay evidence.
+- repaired diagnostic workflow commit `654b1e765c6b0b41137e80edccacee02eda4833d`.
+- run `35025200849`, job `104570448090`: composition PASS, compile PASS, verified r0v3 fixture PASS, assets PASS, runtime telemetry executed; workflow conclusion was FAILURE in the proof step, but its uploaded runtime artifact contains decisive ordering evidence.
+- artifact `reference-owner-v2-collision-order-log` contains `320` ordered telemetry rows spanning player ticks `16..35`.
+- `14` complete same-owner ticks were recoverable: `[16,17,18,19,20,21,22,26,27,28,30,31,33,34]`.
+- on every complete tick the order is strictly `CREATE_COLLISION_HEAD -> CREATE_COLLISION_RETURN -> VS2_DRAG_BEFORE -> VS2_DRAG_AFTER`.
+- observed counts: Create-before-VS2 `14`; VS2-before-Create `0`; interleaved `0`.
+- example tick 34 / owner 10: owner collision `seq=300 -> 301`, then VS2 drag `seq=302 -> 303`.
+- this proves the old external-owner scheduler applies the already-GREEN VS2 reference-body transform only after Create has finished evaluating authoritative collision geometry for that tick.
+- do not reinterpret the workflow FAILURE as absence of runtime evidence; the artifact telemetry is the direct proof.
 
-## Current collision/reference-carry temporal-order micro-proof
-- first workflow commit `56f451acacd923fe0d0dfe31f1e192fafea72e91` contained invalid YAML due embedded heredoc indentation; run `35024773928` failed instantly with zero jobs. This is harness-only failure and carries no gameplay evidence.
-- repaired workflow commit `654b1e765c6b0b41137e80edccacee02eda4833d`.
-- run `35025200849`, job `104570448090` is the active proof.
-- exact V2 composition is preserved: phase2..54 + phase98 + phase205 + V1 + V2 composefix + scheduler fix + FROZEN_GREEN authority fix.
-- new instrumentation is read-only and records monotonically ordered:
-  - `CREATE_COLLISION_HEAD`
-  - `CREATE_COLLISION_RETURN`
-  - `VS2_DRAG_BEFORE`
-  - `VS2_DRAG_AFTER`
-  with player tick, active external owner Entity id, callback carriage Entity id, owner age, world position/xo, owner-local coordinates, and onGround.
-- no movement, velocity, gravity, collision response, camera, owner acquisition, or Create geometry is mutated by this probe.
-- expected classifications:
-  - `CREATE_COLLISION_COMPLETES_BEFORE_VS2_REFERENCE_CARRY`
-  - `VS2_REFERENCE_CARRY_COMPLETES_BEFORE_CREATE_COLLISION`
-  - `MIXED_OR_INTERLEAVED_COLLISION_REFERENCE_ORDER`
-- only after this runtime ordering evidence may scheduling/ownership be changed.
+## Pre-collision scheduler patch — ONE HYPOTHESIS, UNDER PROOF
+- production commit `0ce0dfd4f6f29685eb18b6e3a8c14ddc247bbb9b` updates only `prepare_vs2_26_2_reference_owner_v2_schedule_fix.py`.
+- external-owner LocalPlayer VS2 EntityDragger application is moved to immediately after `ClientLevel.tick(...)`, before Create's `Minecraft.tick` TAIL / `ContraptionHandlerClient.tick(level)` collision pass.
+- native VS2 Ship postTick scheduling remains at its native location.
+- if native Ships coexist while LocalPlayer has an external owner, only that already-applied LocalPlayer is excluded from the native postTick sweep; other native Ship entities are unchanged.
+- no `setPos`, synthetic velocity, gravity, collision response, wall/floor clamp, camera forcing, fake ship, or Create geometry mutation is added.
+- proof workflow commit `1e319794b8779795e9149348929aeb4224d34d01` adds `m1-reference-owner-v2-precollision-order-proof` with read-only sequence telemetry.
+- proof run `35027838280` was queued when ledger written.
 
 ## FROZEN_GREEN / protected
 - bootstrap/Kotlin packaging repair `f3d1335c9fc89283d936af039eba34aa9778bd05`.
@@ -131,7 +124,7 @@ Create source also confirms `getAnchorVec() = position()`, `getPrevAnchorVec() =
 - Steam 'n' Rails + Copycats preservation.
 - V1 infrastructure run `34984299770`.
 - V2 structural/core run `34994353308` except old body-continuity assumptions disproved by runtime.
-- scheduler boundary run `35008163064`, unless later direct ordering evidence proves its hook placement must move while preserving its lifecycle semantics.
+- external-owner VS2 EntityDragger lifecycle semantics from run `35008163064`; exact old postTick placement is superseded by run `35025200849` evidence.
 - active-owner ordinal-1 contact-carry authority boundary `652667e...` / run `35017634522`.
 - same-point Create/V2 transform equivalence run `35023234306`.
 - historical user-proven floor solidity and grounded walking are protected behavioral criteria, not current completion proof.
@@ -156,12 +149,12 @@ Do not reintroduce without new direct evidence:
 Clarification: proven authority arbitration is not forbidden global suppression. It is LocalPlayer-only, active-reference-owner scoped, ordinal-1 contact-carry-only while Create collision response remains authoritative.
 
 ## next_safe_action
-1. Inspect run `35025200849` first.
-2. If queued/in_progress: HOLD; stack no physics/scheduling patch.
-3. If it fails before runtime due workflow/compile/instrumentation/verifier: repair harness only.
-4. If runtime proves `CREATE_COLLISION_COMPLETES_BEFORE_VS2_REFERENCE_CARRY`, inspect the smallest scheduler hook boundary that lets the already-proven VS2 reference transform be established before Create evaluates collision, while retaining VS2 as sole reference-body writer and Create as sole collision/geometry authority. Use a read-only hook-boundary proof before moving execution if more than one safe hook exists.
-5. If runtime proves `VS2_REFERENCE_CARRY_COMPLETES_BEFORE_CREATE_COLLISION` yet owner-local floor still sinks, instrument Create OBB/support geometry evaluation against the active owner frame; do not alter resolver/carry math.
-6. If mixed/interleaved, map exact mixin callback order and priorities read-only before any patch.
+1. Inspect run `35027838280` first.
+2. If queued/in_progress: HOLD; stack no additional gameplay/scheduling patch.
+3. If workflow/compile/instrumentation/verifier fails before useful runtime evidence: repair only the proof harness.
+4. If runtime proves `EXTERNAL_DRAG_PRECEDES_CREATE_COLLISION`, rerun the smallest real-train turn/local-floor continuity proof with the exact production composition; do not advance to jump until turn-local floor continuity is GREEN.
+5. If external drag still executes after or interleaves with Create collision, do not add another movement workaround; map/repair only the deterministic scheduler hook.
+6. If pre-collision order is correct but owner-local floor still sinks, instrument Create OBB/support evaluation at the active-owner collision call; do not change resolver, gravity, input, camera, or authority suppression.
 7. Only after turn-local floor continuity is GREEN may the real-train sequence advance again to jump/airborne/landing, then wall/ceiling, turns/speed changes, and free stable camera/look.
 
 ## Finalization policy — HARD USER RUNTIME GATE

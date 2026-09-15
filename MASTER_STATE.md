@@ -8,8 +8,8 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - HARD architecture: Create owns train/carriage gameplay and collision geometry. VS2 must be the actual continuous moving reference-space/transform foundation for player body/camera. Compatibility remains a thin adapter; merely calling an EntityDragger helper after Create movement is not sufficient.
 
 ## Current reconciled state — 2026-09-16
-- project_state: `ROOT_REDESIGN — REFERENCE-OWNER V2 CORE SLICE PROVEN/COMPILED; EXACT V2 REAL-TRAIN RUNTIME PROOF NEXT`
-- ledger_basis_head: `a3f37d8e8c896dc05eca1e4b74759a25100a34bc`
+- project_state: `ROOT_REDESIGN — V2 REAL-TRAIN BODY REFERENCE CONTINUITY FAILED; BODY/AUTHORITY SCHEDULING DIAGNOSTIC ACTIVE`
+- ledger_basis_head: `b06466a1a7e2a17009a79bd131bdea6366a0619c`
 - architecture_diagnostic_commit: `6e079d62d0d30e8508ad825ef80791088fa28e5c` (`Add VS2 reference-frame ownership diagnostic`)
 - architecture_diagnostic_run: `34963733838` — SUCCESS
 - architecture_diagnostic_result: `current_adapter_is_contact/lease_reanchor_not_continuous_vs2_reference_space`
@@ -37,7 +37,14 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - reference_owner_v2_composefix_commit: `ea546f83f3549736aa4ac0dfad23b82005a63cd0`
 - reference_owner_v2_proof_commit: `a3f37d8e8c896dc05eca1e4b74759a25100a34bc` (`Rerun V2 with robust Phase83 composition boundary`)
 - reference_owner_v2_run: `34994353308` — SUCCESS
-- reference_owner_v2_result: `single non-Ship external owner lifecycle proven across selected Create-owner acquisition, bounded lifetime, VS2 EntityDragger body continuity, dedicated LocalPlayer relative packet, server same-owner resolution, standing render interpolation, and transform-only yaw; old Phase83/205 reanchor authority removed; no fake VS2 ship; Fabric compile GREEN`
+- reference_owner_v2_result: `single non-Ship external owner lifecycle proven structurally across selected Create-owner acquisition, bounded lifetime, dedicated LocalPlayer relative packet, server same-owner resolution, standing render interpolation, and transform-only yaw; old Phase83/205 reanchor authority removed; no fake VS2 ship; Fabric compile GREEN; runtime body continuity later disproved`
+- reference_owner_v2_runtime_gate_commit: `b1464506b6e0f3635c4d50ecb7615913a87d5ba9` (`Add V2 real-train runtime gate`)
+- reference_owner_v2_runtime_run: `34997330399` — FAILURE
+- reference_owner_v2_runtime_result: `real carriage/train PASS; external owner acquisition PASS; grounded walk PASS; vanilla jump requested->airborne->natural landed PASS; legacy Phase83/205 reanchor markers absent; BODY REFERENCE CONTINUITY FAIL with about 93.48251 blocks total airborne horizontal carriage-local drift and about 51.82845 blocks maximum one-tick local step`
+- reference_owner_v2_runtime_authority_evidence: `during jump/airborne Create ContraptionColliderClient.collideEntities:330 repeatedly setPos/moved LocalPlayer by about -7.463 horizontal blocks per tick while external owner state was active; existing LocalPlayer setPos telemetry observed no EntityDragger caller string in that interval`
+- reference_owner_v2_runtime_gate_note: `the gate's WALK grep has an ERE escaping bug, but that verifier issue is not the root failure; independent artifact telemetry proves catastrophic body-frame drift`
+- reference_owner_v2_body_diagnostic_commit: `b06466a1a7e2a17009a79bd131bdea6366a0619c` (`Trace V2 body reference-frame timing`)
+- reference_owner_v2_body_diagnostic_run: `35001323376` — FAILURE before runtime because the read-only instrumentation matched an indentation-specific generated-source anchor; no gameplay/physics evidence and no runtime mutation from this failed diagnostic
 - gameplay_fix_commit: `fb9520946e1041c1dc0a75a82fcae0a260cceec8` (`Bind Phase205 reanchor to selected carriage owner`) — historical only; its reanchor authority is removed by V2 composition
 - automated_m1_proof: `34943410005` — historical automated GREEN, overridden by direct runtime failure
 - owner_diagnostic_run: `34943783606` — grounded owner binding GREEN (22 supported ticks, 0 mismatches)
@@ -57,6 +64,19 @@ The user tested exact SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083d
 - overall behavior does not feel like standing on a VS2 moving base; view/control is dragged by carriage motion instead of remaining freely controllable in a stable moving frame: FAIL.
 
 Direct runtime evidence overrides all previous automated M1 green. Do not ask the user to retest this SHA.
+
+## V2 exact-composition real-train runtime evidence
+Workflow `34997330399` ran the exact V2 composition on the verified `r0v3` moving-train save. This is the current active root evidence:
+- Create carriage present + train moving: PASS;
+- `REFERENCE_OWNER_V2_ACQUIRE` for carriage entity id 5: PASS across ticks 18–37;
+- grounded bounded walk: PASS (`GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED`, support healthy, on-ground/broadphase true);
+- vanilla jump mechanics: PASS — requested tick 43, airborne tick 43, natural landed tick 47;
+- historical Phase83/Phase205 reanchor markers: absent as intended;
+- body reference continuity: FAIL catastrophically. Carriage-local X/Z jumps from about `(19.44,-0.74)` at tick 43 to `(-32.33,1.80)` at tick 44 and continues to about `(-74.01,1.80)` at landing. Measured total airborne horizontal owner-relative drift is about `93.48251` blocks; max one-tick local step about `51.82845` blocks.
+
+The runtime artifact also shows Create `ContraptionColliderClient.collideEntities:330` repeatedly applying roughly `-7.463` horizontal player movement/setPos during the airborne interval while the external owner state is active. Existing LocalPlayer setPos telemetry did not identify an `EntityDragger` caller during that interval. This narrows the root blocker to body-reference application/scheduling and authority overlap; it does not authorize jump-input, wall, camera, gravity, velocity, clamp, or generic carry tuning.
+
+The V2 real-train workflow has a separate WALK grep escaping defect. That verifier defect must not be mistaken for the gameplay root because the independent carriage-local telemetry already proves the body-reference failure.
 
 ## Architecture diagnostic proof
 Read-only workflow `34963733838` proved the previous implementation is contact/lease-based Create transform sampling plus `EntityDragger.reanchorEntityWithExternalFrame`, not a continuous VS2 governing reference space. Phase83 uses a bounded airborne lease; Phase205 is grounded-only; the helper directly performs `entity.setPos(...)`. This architecture is proven insufficient and must not be extended.
@@ -95,8 +115,10 @@ Workflow `34977644889` used the exact Create dependency resolved by the real Gra
 
 V1 intentionally did not enable acquisition. That limitation is superseded by V2.
 
-## Reference-owner resolver v2 — proven architecture/compile, runtime not yet proven
-V2 (`5f687aca...` + composefix `ea546f83...`) promotes the Create carriage Entity id into one VS2-owned non-Ship reference-owner lifecycle. Workflow `34994353308` proved all of the following and compiled successfully:
+## Reference-owner resolver v2 — architecture/compile proven, runtime body continuity failed
+V2 (`5f687aca...` + composefix `ea546f83...`) promotes the Create carriage Entity id into one VS2-owned non-Ship reference-owner lifecycle. Workflow `34994353308` proved the structure and compiled successfully, but exact-composition real-train workflow `34997330399` disproved the body-continuity assumption.
+
+Still proven structurally:
 - bounded external owner lifetime/state exists;
 - the already-selected Create carriage with grounded physical support + recent native Create contact acquires/refreshes the owner;
 - historical Phase83 lease/reanchor is removed from the V2 composition;
@@ -106,7 +128,10 @@ V2 (`5f687aca...` + composefix `ea546f83...`) promotes the Create carriage Entit
 - transform/yaw paths are transform-only; no synthetic velocity, fake gravity, Create collision takeover, or camera forcing is introduced;
 - `:fabric:compileJava` completed `BUILD SUCCESSFUL`.
 
-This GREEN is architecture + compile proof only. It does not prove real moving-train standing/jump/airborne/walls/turn behavior, and it does not satisfy the user runtime gate.
+No longer considered proven at runtime:
+- that external owner state is actually applied through the intended VS2 body-drag lifecycle for LocalPlayer at the required tick boundary;
+- that Create native carriage carry and VS2 external-owner body movement have non-overlapping authority;
+- continuous carriage-relative body stability while airborne.
 
 ## FROZEN_GREEN / protected
 - Kotlin/bootstrap packaging repair `f3d1335c9fc89283d936af039eba34aa9778bd05`.
@@ -114,7 +139,7 @@ This GREEN is architecture + compile proof only. It does not prove real moving-t
 - Steam 'n' Rails and Copycats preservation.
 - exact-JAR grounded floor solidity and grounded walking behavior are protected behavioral criteria.
 - Phase205 selected-owner evidence remains useful for owner selection, but its historical reanchor mechanism is not protected architecture and is removed in V2.
-- V2 core-slice architecture proof from `34994353308` is frozen unless direct runtime evidence disproves a specific boundary.
+- V2 structural compile proof from `34994353308` remains useful, but its body-continuity claim is explicitly overridden by runtime `34997330399`.
 
 ## FAILED_HYPOTHESES / anti-loop
 Do not reintroduce without new direct evidence:
@@ -133,23 +158,16 @@ Do not reintroduce without new direct evidence:
 - harness mutation used to manufacture green.
 
 ## next_safe_action
-Run the smallest real-train runtime proof on the exact V2 composition, using the existing verified `r0v3` moving-train fixture without weakening historical acceptance criteria or manufacturing success. Prepare exactly the normal current M1 composition and then apply:
-- `prepare_vs2_26_2_phase205.py` as required by the current cumulative composition boundary;
-- `prepare_vs2_26_2_reference_owner_v1.py`;
-- `prepare_vs2_26_2_reference_owner_v2_composefix.py`.
+Prove the exact LocalPlayer body-reference application/scheduling boundary before any gameplay patch. Fix and rerun the existing read-only V2 body diagnostic without changing gameplay/physics. The diagnostic must determine around grounded -> jump -> airborne -> landing:
+- whether `EntityDragger`'s external-owner branch is invoked for the LocalPlayer at all;
+- its `preTick` phase and owner age/lifetime;
+- the resolver's previous-world -> local -> current-world transform and computed added movement;
+- whether that body application overlaps the large Create `ContraptionColliderClient.collideEntities` player movement observed during airborne;
+- whether the failure is missing VS2 body application, bad transform sampling, or double movement authority.
 
-The dedicated V2 runtime gate should establish at minimum:
-- real Create carriage present and train moving;
-- `REFERENCE_OWNER_V2_ACQUIRE` occurs for the selected carriage;
-- old Phase83/Phase205 reanchor markers do not execute;
-- grounded movement fixture still reaches its existing native confirmation;
-- a vanilla jump reaches requested -> airborne -> natural landed;
-- during that airborne interval, carriage-relative horizontal position does not exhibit the previous multi-carriage backward drift;
-- no crash/mixin/linkage failure.
+The first body diagnostic attempt (`b06466a1...`, run `35001323376`) failed only because its source-instrumentation anchor encoded generated indentation. Replace that with a unique token/structural match; do not change the runtime hypothesis or gameplay.
 
-If this runtime gate fails, classify whether the failure is fixture/verifier, acquisition, packet/server identity, body reference continuity, render/yaw, or Create collision authority before changing gameplay. Do not patch jump/walls/camera independently.
-
-If this runtime gate is GREEN, do not declare FINAL_READY. Advance toward the smallest exact V2 test artifact only after broader M1 collision/turn criteria are still demonstrated, and retain the hard real-user exact-JAR gate.
+After this diagnostic, patch only the proven authority/scheduling boundary. Do not independently alter jump input, wall collision, camera, gravity, velocity, support leases, or generic carry.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 CI/automated proof may produce candidates but cannot restore FINAL_READY. FINAL_READY requires a new exact final JAR that passes real-user runtime for standing, movement, jump+airborne+natural landing, floor/walls/ceiling, turns, speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look, plus watchdog local runtime-gate SHA match.

@@ -51,36 +51,29 @@ jobs:
           from pathlib import Path
           p = Path('upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinExternalReferenceOwnerCreateCarry.java')
           s = p.read_text(encoding='utf-8')
-          needle = '''        if (!exactExternalOwner) {
-                      entity.setPos(x, y, z);
-                      return;
-                  }'''
-          if needle not in s:
-              # Generated indentation is normally 8 spaces; keep a structural fallback independent of indentation.
-              needle = '''        if (!exactExternalOwner) {
-            entity.setPos(x, y, z);
-            return;
-        }'''
+          needle = "        if (!exactExternalOwner) {\n            entity.setPos(x, y, z);\n            return;\n        }"
           if s.count(needle) != 1:
               raise SystemExit(f'sibling diagnostic expected one !exactExternalOwner pass-through block, found {s.count(needle)}')
-          replacement = '''        if (!exactExternalOwner) {
-            double vs2$dx = x - entity.getX();
-            double vs2$dy = y - entity.getY();
-            double vs2$dz = z - entity.getZ();
-            if (ownerEntityId != null && Math.hypot(vs2$dx, vs2$dz) > 1.0e-8) {
-                VS2_REFERENCE_OWNER_AUTHORITY.info(
-                    "REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_PASSTHROUGH player_tick={} carriage_id={} owner_id={} requested_delta={},{},{} material_horizontal=true diagnostic_only=true",
-                    player.tickCount,
-                    carriageEntity.getId(),
-                    ownerEntityId,
-                    vs2$dx,
-                    vs2$dy,
-                    vs2$dz
-                );
-            }
-            entity.setPos(x, y, z);
-            return;
-        }'''
+          replacement = (
+              "        if (!exactExternalOwner) {\n"
+              "            double vs2$dx = x - entity.getX();\n"
+              "            double vs2$dy = y - entity.getY();\n"
+              "            double vs2$dz = z - entity.getZ();\n"
+              "            if (ownerEntityId != null && Math.hypot(vs2$dx, vs2$dz) > 1.0e-8) {\n"
+              "                VS2_REFERENCE_OWNER_AUTHORITY.info(\n"
+              "                    \"REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_PASSTHROUGH player_tick={} carriage_id={} owner_id={} requested_delta={},{},{} material_horizontal=true diagnostic_only=true\",\n"
+              "                    player.tickCount,\n"
+              "                    carriageEntity.getId(),\n"
+              "                    ownerEntityId,\n"
+              "                    vs2$dx,\n"
+              "                    vs2$dy,\n"
+              "                    vs2$dz\n"
+              "                );\n"
+              "            }\n"
+              "            entity.setPos(x, y, z);\n"
+              "            return;\n"
+              "        }"
+          )
           s = s.replace(needle, replacement, 1)
           p.write_text(s, encoding='utf-8')
           print('SIBLING_AUTHORITY_DIAGNOSTIC instrumentation=read_only movement_semantics_unchanged=true')
@@ -97,12 +90,15 @@ jobs:
           needle = 'addedMovement = currentWorld.sub(entityReferencePos, Vector3d())'
           if s.count(needle) != 1:
               raise SystemExit(f'sibling diagnostic expected one external-owner addedMovement token, found {s.count(needle)}')
-          insert = '''addedMovement = currentWorld.sub(entityReferencePos, Vector3d())
-                        if (entity.level().isClientSide && entity.javaClass.simpleName == "LocalPlayer") {
-                            println("REFERENCE_OWNER_V2_SIBLING_BODY player_tick=${entity.tickCount} pre_tick=$preTick owner=$externalReferenceOwnerEntityId age=${entityDraggingInformation.ticksSinceExternalReferenceOwner} added_x=${addedMovement.x()} added_y=${addedMovement.y()} added_z=${addedMovement.z()}")
-                        }'''
+          insert = (
+              needle
+              + '\n                        if (entity.level().isClientSide && entity.javaClass.simpleName == "LocalPlayer") {'
+              + '\n                            println("REFERENCE_OWNER_V2_SIBLING_BODY player_tick=${entity.tickCount} pre_tick=$preTick owner=$externalReferenceOwnerEntityId age=${entityDraggingInformation.ticksSinceExternalReferenceOwner} added_x=${addedMovement.x()} added_y=${addedMovement.y()} added_z=${addedMovement.z()}")'
+              + '\n                        }'
+          )
           s = s.replace(needle, insert, 1)
           p.write_text(s, encoding='utf-8')
+          print('SIBLING_AUTHORITY_DIAGNOSTIC body_telemetry=read_only')
           PY
 
       - name: Compile diagnostic composition

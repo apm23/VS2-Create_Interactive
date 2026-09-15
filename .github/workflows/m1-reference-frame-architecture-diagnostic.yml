@@ -1,0 +1,52 @@
+name: m1-reference-frame-architecture-diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-frame-architecture-diagnostic.yml'
+      - 'scripts/prepare_vs2_26_2_phase83.py'
+      - 'scripts/prepare_vs2_26_2_phase205.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership-diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prove current reference-frame lifecycle boundary
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p83 = Path('scripts/prepare_vs2_26_2_phase83.py').read_text()
+          p205 = Path('scripts/prepare_vs2_26_2_phase205.py').read_text()
+
+          evidence = {
+              'phase83_external_reanchor_call': 'EntityDragger.reanchorEntityWithExternalFrame' in p83,
+              'phase83_helper_direct_setpos': 'entity.setPos(' in p83,
+              'phase83_bounded_airborne_lease': 'phase83AirborneNativeLease' in p83 and 'phase83NativeApplicationAge <= 20' in p83,
+              'phase205_grounded_only_precollision': 'player == null || !player.onGround()' in p205,
+              'phase205_external_reanchor_call': 'EntityDragger.reanchorEntityWithExternalFrame' in p205,
+              'phase205_create_transform_sampling': 'toLocalVector' in p205 and 'toGlobalVector' in p205,
+          }
+          for key, value in evidence.items():
+              print(f'REFERENCE_FRAME_DIAGNOSTIC {key}={str(value).lower()}')
+
+          required = [
+              'phase83_external_reanchor_call',
+              'phase83_helper_direct_setpos',
+              'phase83_bounded_airborne_lease',
+              'phase205_grounded_only_precollision',
+              'phase205_external_reanchor_call',
+              'phase205_create_transform_sampling',
+          ]
+          missing = [key for key in required if not evidence[key]]
+          if missing:
+              raise SystemExit('diagnostic anchors changed; inspect before interpreting: ' + ','.join(missing))
+
+          print('REFERENCE_FRAME_DIAGNOSTIC conclusion=current_adapter_is_contact/lease_reanchor_not_continuous_vs2_reference_space read_only=true')
+          print('REFERENCE_FRAME_DIAGNOSTIC gameplay_mutation=false')

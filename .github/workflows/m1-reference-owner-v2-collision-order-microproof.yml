@@ -1,0 +1,344 @@
+name: m1-reference-owner-v2-collision-order-microproof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-collision-order-microproof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collision-order:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Compose exact authority-fixed V2
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+
+      - name: Add read-only collision-order telemetry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path('upstream')
+          helper = root / 'common/src/main/java/org/valkyrienskies/mod/common/util/ReferenceOwnerCollisionOrderProbe.java'
+          helper.parent.mkdir(parents=True, exist_ok=True)
+          helper.write_text(r'''package org.valkyrienskies.mod.common.util;
+
+import java.util.concurrent.atomic.AtomicLong;
+import net.minecraft.world.entity.Entity;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.joml.Vector3d;
+
+/** Read-only ordering telemetry for the external reference owner. */
+public final class ReferenceOwnerCollisionOrderProbe {
+    private static final Logger LOGGER = LogManager.getLogger("VS2-ReferenceOwner-CollisionOrder");
+    private static final AtomicLong SEQUENCE = new AtomicLong();
+
+    private ReferenceOwnerCollisionOrderProbe() {}
+
+    public static void mark(String phase, Entity player, Entity carriage) {
+        if (!(player instanceof IEntityDraggingInformationProvider provider)) return;
+        var dragging = provider.getDraggingInformation();
+        Integer ownerId = dragging.getExternalReferenceOwnerEntityId();
+        if (ownerId == null || !dragging.isEntityBeingDraggedByExternalReference()) return;
+        Vector3d local = ExternalReferenceFrameResolver.currentWorldToLocal(
+            player.level(), ownerId, new Vector3d(player.getX(), player.getY(), player.getZ())
+        );
+        long seq = SEQUENCE.incrementAndGet();
+        LOGGER.info(
+            "REFERENCE_OWNER_V2_COLLISION_ORDER seq={} player_tick={} phase={} owner_id={} carriage_id={} owner_age={} " +
+                "pos=({},{},{}) xo=({},{},{}) local=({},{},{}) on_ground={} read_only=true",
+            seq,
+            player.tickCount,
+            phase,
+            ownerId,
+            carriage == null ? -1 : carriage.getId(),
+            dragging.getTicksSinceExternalReferenceOwner(),
+            player.getX(), player.getY(), player.getZ(),
+            player.xo, player.yo, player.zo,
+            local == null ? Double.NaN : local.x(),
+            local == null ? Double.NaN : local.y(),
+            local == null ? Double.NaN : local.z(),
+            player.onGround()
+        );
+    }
+}
+''', encoding='utf-8')
+
+          mixin = root / 'common/src/main/java/org/valkyrienskies/mod/mixin/client/MixinMinecraft.java'
+          source = mixin.read_text(encoding='utf-8')
+          anchor = '                EntityDragger.INSTANCE.dragEntitiesWithShips(level.entitiesForRendering(), false);'
+          if source.count(anchor) != 1:
+              raise SystemExit(f'collision-order proof expected one drag-sweep anchor, found {source.count(anchor)}')
+          replacement = r'''                final LocalPlayer vs2$collisionOrderPlayer = Minecraft.getInstance().player;
+                if (vs2$collisionOrderPlayer != null) {
+                    org.valkyrienskies.mod.common.util.ReferenceOwnerCollisionOrderProbe.mark(
+                        "VS2_DRAG_BEFORE", vs2$collisionOrderPlayer, null
+                    );
+                }
+                EntityDragger.INSTANCE.dragEntitiesWithShips(level.entitiesForRendering(), false);
+                if (vs2$collisionOrderPlayer != null) {
+                    org.valkyrienskies.mod.common.util.ReferenceOwnerCollisionOrderProbe.mark(
+                        "VS2_DRAG_AFTER", vs2$collisionOrderPlayer, null
+                    );
+                }'''
+          source = source.replace(anchor, replacement, 1)
+          mixin.write_text(source, encoding='utf-8')
+
+          java = root / 'fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinReferenceOwnerCollisionOrderProbe.java'
+          java.parent.mkdir(parents=True, exist_ok=True)
+          java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
+import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Coerce;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.valkyrienskies.mod.common.util.ReferenceOwnerCollisionOrderProbe;
+
+@Mixin(targets = "com.zurrtum.create.client.content.contraptions.ContraptionColliderClient", remap = false)
+public abstract class MixinReferenceOwnerCollisionOrderProbe {
+    @Inject(method = "collideEntities", at = @At("HEAD"), remap = false, require = 1)
+    private static void vs2$collisionHead(@Coerce Object carriage, CallbackInfo ci) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null && carriage instanceof Entity carriageEntity) {
+            ReferenceOwnerCollisionOrderProbe.mark("CREATE_COLLISION_HEAD", player, carriageEntity);
+        }
+    }
+
+    @Inject(method = "collideEntities", at = @At("RETURN"), remap = false, require = 1)
+    private static void vs2$collisionReturn(@Coerce Object carriage, CallbackInfo ci) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null && carriage instanceof Entity carriageEntity) {
+            ReferenceOwnerCollisionOrderProbe.mark("CREATE_COLLISION_RETURN", player, carriageEntity);
+        }
+    }
+}
+''', encoding='utf-8')
+
+          mixin_json = root / 'fabric/src/main/resources/vs2-create-compat.mixins.json'
+          metadata = json.loads(mixin_json.read_text(encoding='utf-8'))
+          client = metadata.setdefault('client', [])
+          entry = 'MixinReferenceOwnerCollisionOrderProbe'
+          if entry not in client:
+              client.append(entry)
+          mixin_json.write_text(json.dumps(metadata, indent=2) + '\n', encoding='utf-8')
+
+          combined = helper.read_text(encoding='utf-8') + java.read_text(encoding='utf-8') + replacement
+          for forbidden in [
+              'setPos(', 'setDeltaMovement(', 'teleport', 'setOnGround(', 'setNoGravity(',
+              'getContactPointMotion(', 'reanchorEntityWithExternalFrame(',
+          ]:
+              if forbidden in combined:
+                  raise SystemExit('collision-order proof introduced forbidden mutation token: ' + forbidden)
+          print('REFERENCE_OWNER_V2_COLLISION_ORDER_INSTRUMENTATION read_only=true')
+          PY
+
+      - name: Compile exact diagnostic composition
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:compileJava; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 15))
+          done
+
+      - name: Reconstruct verified r0v3 train save
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED='e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556'
+          mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v3.part-*' -print | sort -V)
+          test "${#parts[@]}" -eq 17
+          cat "${parts[@]}" > train-world-state-r0v3.b64
+          base64 -d train-world-state-r0v3.b64 > train-world-state-r0v3.zip
+          test "$(sha256sum train-world-state-r0v3.zip | awk '{print $1}')" = "$EXPECTED"
+          unzip -tq train-world-state-r0v3.zip
+          rm -rf world-fixture
+          mkdir world-fixture
+          unzip -q train-world-state-r0v3.zip -d world-fixture
+          mkdir -p upstream/fabric/run/saves
+          rm -rf upstream/fabric/run/saves/train-v2-collision-order-proof
+          mv 'world-fixture/train build 1' upstream/fabric/run/saves/train-v2-collision-order-proof
+
+      - name: Prefetch client assets
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:downloadAssets; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+
+      - name: Prove collision and reference-carry temporal order
+        working-directory: upstream
+        timeout-minutes: 10
+        env:
+          JAVA_TOOL_OPTIONS: -Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
+          ALSOFT_DRIVERS: 'null'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=../reference-owner-v2-collision-order.log
+          XVFB_LOG=../reference-owner-v2-collision-order-xvfb.log
+          rm -f "$LOG" "$XVFB_LOG"
+          rm -rf fabric/run/crash-reports
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > "$XVFB_LOG" 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+          ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v2-collision-order-proof' > "$LOG" 2>&1 &
+          CLIENT_PID=$!
+
+          cleanup() {
+            if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
+            if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+
+          fatal_state() {
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' "$LOG" \
+              || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
+              || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
+              || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
+          }
+
+          READY=0
+          for i in $(seq 1 360); do
+            if grep -q 'GATE_D_TRAIN_MOVED' "$LOG" \
+              && grep -q 'REFERENCE_OWNER_V2_ACQUIRE' "$LOG" \
+              && grep -q 'phase=CREATE_COLLISION_HEAD' "$LOG" \
+              && grep -q 'phase=VS2_DRAG_AFTER' "$LOG"; then
+              READY=1
+              break
+            fi
+            if fatal_state; then tail -320 "$LOG"; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -320 "$LOG"; exit 1; fi
+            sleep 1
+          done
+          test "$READY" -eq 1
+          sleep 10
+
+          python3 - "$LOG" <<'PY'
+          import collections, math, re, sys
+          text = open(sys.argv[1], encoding='utf-8', errors='replace').read()
+          pat = re.compile(
+              r'REFERENCE_OWNER_V2_COLLISION_ORDER seq=(\d+) player_tick=(\d+) phase=([A-Z0-9_]+) '
+              r'owner_id=(\d+) carriage_id=(-?\d+) owner_age=(\d+) '
+              r'pos=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\) '
+              r'xo=\(([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)\) '
+              r'local=\(([-+0-9.eENa]+),([-+0-9.eENa]+),([-+0-9.eENa]+)\) on_ground=(true|false)'
+          )
+          rows=[]
+          for m in pat.finditer(text):
+              g=m.groups()
+              rows.append({
+                  'seq':int(g[0]), 'tick':int(g[1]), 'phase':g[2], 'owner':int(g[3]),
+                  'carriage':int(g[4]), 'age':int(g[5]), 'x':float(g[6]), 'y':float(g[7]), 'z':float(g[8]),
+                  'lx':float(g[12]), 'ly':float(g[13]), 'lz':float(g[14]), 'ground':g[15]=='true'
+              })
+          if len(rows) < 12:
+              raise SystemExit(f'insufficient collision-order rows: {len(rows)}')
+
+          by_tick=collections.defaultdict(list)
+          for r in rows: by_tick[r['tick']].append(r)
+          before_count=0
+          after_count=0
+          interleaved=0
+          complete=[]
+          sinking=[]
+          for tick, rs in sorted(by_tick.items()):
+              db=[r for r in rs if r['phase']=='VS2_DRAG_BEFORE']
+              da=[r for r in rs if r['phase']=='VS2_DRAG_AFTER']
+              matches=[r for r in rs if r['phase'].startswith('CREATE_COLLISION_') and r['carriage']==r['owner']]
+              hs=[r for r in matches if r['phase']=='CREATE_COLLISION_HEAD']
+              rr=[r for r in matches if r['phase']=='CREATE_COLLISION_RETURN']
+              if db and da and hs and rr:
+                  h=min(hs,key=lambda r:r['seq'])
+                  q=max(rr,key=lambda r:r['seq'])
+                  b=min(db,key=lambda r:r['seq'])
+                  a=max(da,key=lambda r:r['seq'])
+                  complete.append(tick)
+                  if h['seq'] < q['seq'] < b['seq'] < a['seq']:
+                      before_count += 1
+                  elif b['seq'] < a['seq'] < h['seq'] < q['seq']:
+                      after_count += 1
+                  else:
+                      interleaved += 1
+                  if min(h['ly'], q['ly'], b['ly'], a['ly']) < 1.95 and not (h['ground'] and q['ground'] and b['ground'] and a['ground']):
+                      sinking.append(tick)
+          if len(complete) < 3:
+              raise SystemExit(f'insufficient same-owner complete ticks: {complete}')
+
+          if before_count == len(complete):
+              classification='CREATE_COLLISION_COMPLETES_BEFORE_VS2_REFERENCE_CARRY'
+          elif after_count == len(complete):
+              classification='VS2_REFERENCE_CARRY_COMPLETES_BEFORE_CREATE_COLLISION'
+          else:
+              classification='MIXED_OR_INTERLEAVED_COLLISION_REFERENCE_ORDER'
+
+          print(
+              'REFERENCE_OWNER_V2_COLLISION_ORDER_PROOF '
+              f'classification={classification} complete_ticks={complete} '
+              f'collision_before_drag={before_count} drag_before_collision={after_count} interleaved={interleaved} '
+              f'sinking_owner_ticks={sinking} row_count={len(rows)} read_only=true final_ready=false'
+          )
+          PY
+
+          grep -E 'REFERENCE_OWNER_V2_COLLISION_ORDER|REFERENCE_OWNER_V2_ACQUIRE|GATE_E_CARRIAGE_LOCAL_CONTINUITY' "$LOG" | tail -260 || true
+
+      - name: Upload collision-order diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-owner-v2-collision-order-log
+          path: |
+            reference-owner-v2-collision-order.log
+            reference-owner-v2-collision-order-xvfb.log
+          if-no-files-found: warn

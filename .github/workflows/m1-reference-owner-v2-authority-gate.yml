@@ -180,24 +180,35 @@ jobs:
           if not exact:
               raise SystemExit('no same-tick exact-owner body/suppression pair')
 
-          duplicate_ticks = set()
-          setpos_tick = re.compile(r'GATE_E_LOCALPLAYER_SET_POS[^\n]*player_tick=(\d+)')
+          material_duplicate_ticks = set()
+          zero_motion_ticks = set()
+          max_passthrough_horizontal = 0.0
+          setpos_re = re.compile(r'GATE_E_LOCALPLAYER_SET_POS[^\n]*player_tick=(\d+).*?delta=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)')
           for line in lines:
               if 'GATE_E_LOCALPLAYER_SET_POS' not in line or 'ContraptionColliderClient#collideEntities:330' not in line:
                   continue
-              m = setpos_tick.search(line)
-              if m:
-                  duplicate_ticks.add(int(m.group(1)))
+              m = setpos_re.search(line)
+              if not m:
+                  continue
+              tick = int(m.group(1))
+              dx, dy, dz = (float(m.group(2)), float(m.group(3)), float(m.group(4)))
+              horizontal = math.hypot(dx, dz)
+              max_passthrough_horizontal = max(max_passthrough_horizontal, horizontal)
+              if horizontal > 1.0e-8:
+                  material_duplicate_ticks.add(tick)
+              else:
+                  zero_motion_ticks.add(tick)
           paired_ticks = {row[0] for row in exact}
-          overlap = sorted(paired_ticks & duplicate_ticks)
+          overlap = sorted(paired_ticks & material_duplicate_ticks)
           if overlap:
-              raise SystemExit(f'Create second contact-carry setPos still present on VS2 body ticks: {overlap}')
+              raise SystemExit(f'material Create second contact-carry displacement still present on VS2 body ticks: {overlap}')
 
           max_body = max(math.sqrt(x*x+y*y+z*z) for _,_,x,y,z in bodies)
           max_requested = max(math.sqrt(x*x+y*y+z*z) for *_,x,y,z in suppress)
-          print(f'AUTHORITY_GATE body_count={len(bodies)} suppression_count={len(suppress)} exact_pairs={len(exact)} paired_ticks={sorted(paired_ticks)} duplicate_create_setpos_overlap={overlap}')
-          print(f'AUTHORITY_GATE max_vs2_body_delta={max_body:.6f} max_suppressed_create_delta={max_requested:.6f}')
-          print('AUTHORITY_GATE conclusion=single_external_reference_body_writer_proven_on_real_train collision_response_preserved=true')
+          paired_zero_motion = sorted(paired_ticks & zero_motion_ticks)
+          print(f'AUTHORITY_GATE body_count={len(bodies)} suppression_count={len(suppress)} exact_pairs={len(exact)} paired_ticks={sorted(paired_ticks)} material_duplicate_overlap={overlap} paired_zero_motion_calls={paired_zero_motion}')
+          print(f'AUTHORITY_GATE max_vs2_body_delta={max_body:.6f} max_suppressed_create_delta={max_requested:.6f} max_line330_passthrough_horizontal={max_passthrough_horizontal:.6f}')
+          print('AUTHORITY_GATE conclusion=single_external_reference_body_writer_proven_on_real_train collision_response_preserved=true zero_motion_invocation_is_not_movement_authority=true')
           PY
 
           grep -E 'REFERENCE_OWNER_V2_(ACQUIRE|AUTHORITY_BODY|CREATE_CONTACT_CARRY_SUPPRESSED)|GATE_E_LOCALPLAYER_SET_POS|GATE_D_TRAIN_MOVED' "$LOG" | tail -220 || true

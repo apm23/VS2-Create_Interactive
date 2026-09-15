@@ -1,0 +1,88 @@
+name: m1-native-reference-owner-seam-diagnostic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-native-reference-owner-seam-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-owner-seam-diagnostic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: pinned-vs2
+
+      - name: Prove native reference-owner boundary
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          root = Path('pinned-vs2')
+          collision = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityShipCollisionUtils.kt').read_text()
+          drag_info = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDraggingInformation.kt').read_text()
+          dragger = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt').read_text()
+          renderer = (root / 'common/src/main/java/org/valkyrienskies/mod/mixin/client/renderer/MixinGameRenderer.java').read_text()
+
+          evidence = {
+              'native_acquisition_ship_id': re.search(r'lastShipStoodOn\s*=\s*ship\.id', collision) is not None,
+              'owner_state_is_ship_id': 'var lastShipStoodOn: ShipId? = null' in drag_info,
+              'retention_is_ship_lifecycle': 'lastShipStoodOn != null' in drag_info and 'ticksSinceStoodOnShip < TICKS_TO_DRAG_ENTITIES' in drag_info,
+              'drag_resolves_registered_ship': re.search(r'shipObjectWorld\.allShips\.getById\(shipDraggingEntity\)', dragger) is not None,
+              'drag_uses_prev_current_ship_transform': 'prevTickTransform.worldToShip.transformPosition' in dragger and 'referenceTransform.shipToWorld.transformPosition' in dragger,
+              'render_resolves_client_ship': 'final ClientShip shipObject' in renderer and 'getLoadedShips().getById(lastShipStoodOn)' in renderer,
+              'camera_requires_client_ship': 'final ClientShip clientShip = (ClientShip)' in renderer and 'setupWithShipMounted' in renderer,
+          }
+
+          for key, value in evidence.items():
+              print(f'NATIVE_REFERENCE_OWNER_DIAGNOSTIC {key}={str(value).lower()}')
+
+          missing = [key for key, value in evidence.items() if not value]
+          if missing:
+              raise SystemExit('native owner anchors changed; inspect before interpreting: ' + ','.join(missing))
+
+          # Conservative pinned-source scan for an explicit public/formal non-Ship reference-owner API.
+          # Any unexpected candidate FAILS this diagnostic so a human/next watchdog turn must inspect it;
+          # absence is therefore never inferred by silently ignoring a similarly named declaration.
+          seam_terms = (
+              'ExternalReference', 'ExternalFrame', 'ReferenceFrameProvider', 'ReferenceOwner',
+              'FrameProvider', 'ReferenceSpace', 'NonShipReference', 'NonShipFrame'
+          )
+          candidates = []
+          source_roots = [root / 'common/src', root / 'fabric/src', root / 'forge/src']
+          for source_root in source_roots:
+              if not source_root.exists():
+                  continue
+              for path in source_root.rglob('*'):
+                  if path.suffix not in {'.kt', '.java'}:
+                      continue
+                  try:
+                      text = path.read_text(errors='replace')
+                  except OSError:
+                      continue
+                  for lineno, line in enumerate(text.splitlines(), 1):
+                      if any(term.lower() in line.lower() for term in seam_terms):
+                          candidates.append((str(path.relative_to(root)), lineno, line.strip()))
+
+          print(f'NATIVE_REFERENCE_OWNER_DIAGNOSTIC explicit_external_seam_candidate_count={len(candidates)}')
+          for path, lineno, line in candidates[:50]:
+              print(f'NATIVE_REFERENCE_OWNER_CANDIDATE {path}:{lineno}: {line}')
+
+          if candidates:
+              raise SystemExit('unexpected external/non-Ship reference-owner candidate(s) found; inspect before classifying seam')
+
+          print('NATIVE_REFERENCE_OWNER_DIAGNOSTIC external_nonship_reference_owner_seam=false')
+          print('NATIVE_REFERENCE_OWNER_DIAGNOSTIC conclusion=native_owner_requires_registered_vs2_ship external_nonship_reference_owner_seam=false read_only=true')
+          print('NATIVE_REFERENCE_OWNER_DIAGNOSTIC gameplay_mutation=false')

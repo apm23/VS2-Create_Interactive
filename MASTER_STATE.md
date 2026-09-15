@@ -7,9 +7,9 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Milestone: `M1 — movement / collision`
 - HARD architecture: Create owns train/carriage gameplay and collision geometry. VS2 must be the actual continuous moving reference-space/transform foundation for player body/camera. Compatibility remains a thin adapter; merely calling an EntityDragger helper after Create movement is not sufficient.
 
-## Current reconciled state — 2026-09-15
-- project_state: `ROOT_REDESIGN — BILATERAL CREATE FRAME PROVEN; VS2 EXTERNAL REFERENCE-OWNER RESOLVER V1 AWAITS COMPILE PROOF`
-- ledger_basis_head: `655fd1daa67f232a2add7b2d663786759031d02a`
+## Current reconciled state — 2026-09-16
+- project_state: `ROOT_REDESIGN — REFERENCE-OWNER V2 CORE SLICE PROVEN/COMPILED; EXACT V2 REAL-TRAIN RUNTIME PROOF NEXT`
+- ledger_basis_head: `a3f37d8e8c896dc05eca1e4b74759a25100a34bc`
 - architecture_diagnostic_commit: `6e079d62d0d30e8508ad825ef80791088fa28e5c` (`Add VS2 reference-frame ownership diagnostic`)
 - architecture_diagnostic_run: `34963733838` — SUCCESS
 - architecture_diagnostic_result: `current_adapter_is_contact/lease_reanchor_not_continuous_vs2_reference_space`
@@ -27,15 +27,25 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - resolved_create_jar_sha256: `d9c6cb6116d5caa1174a289ecd7d3cdd463ccef6e8db1249ab0bcfcd8c935870`
 - reference_owner_v1_initial_commit: `6ef53dabf799bb62e8b2d6a2d239b33917f751e4`
 - reference_owner_v1_commit: `655fd1daa67f232a2add7b2d663786759031d02a` (`Harden reference-owner v1 self-audit`)
-- reference_owner_v1_status: `infrastructure only; external owner acquisition intentionally disabled until compile/proof and packet/render lifecycle follow-up`
-- gameplay_fix_commit: `fb9520946e1041c1dc0a75a82fcae0a260cceec8` (`Bind Phase205 reanchor to selected carriage owner`)
+- reference_owner_v1_composition_fix_commit: `59e75959d8a38f94a637aa1a8120280c2bf2df0a`
+- reference_owner_v1_trigger_commit: `4aeaf9f5ba66dedb6a7ac3b14fc81bab371be8f7`
+- reference_owner_v1_run: `34984299770` — SUCCESS
+- reference_owner_v1_result: `generalized owner state + bilateral Entity-id resolver + native EntityDragger application lifecycle compile; acquisition intentionally disabled; old Phase83/205 reanchor mutually excluded whenever external owner is active`
+- reference_owner_v2_implementation_commit: `5f687aca0af43ca4783fb915c3aea1651da74dc1` (`Route M1 through external reference-owner core slice`)
+- reference_owner_v2_initial_workflow_commit: `40b68fd3c71857f3ab125b9bd5211f4973897996`
+- reference_owner_v2_initial_run: `34991346900` — FAILURE before proof/compile due composition-only Phase83 boundary mismatch; not gameplay/physics evidence
+- reference_owner_v2_composefix_commit: `ea546f83f3549736aa4ac0dfad23b82005a63cd0`
+- reference_owner_v2_proof_commit: `a3f37d8e8c896dc05eca1e4b74759a25100a34bc` (`Rerun V2 with robust Phase83 composition boundary`)
+- reference_owner_v2_run: `34994353308` — SUCCESS
+- reference_owner_v2_result: `single non-Ship external owner lifecycle proven across selected Create-owner acquisition, bounded lifetime, VS2 EntityDragger body continuity, dedicated LocalPlayer relative packet, server same-owner resolution, standing render interpolation, and transform-only yaw; old Phase83/205 reanchor authority removed; no fake VS2 ship; Fabric compile GREEN`
+- gameplay_fix_commit: `fb9520946e1041c1dc0a75a82fcae0a260cceec8` (`Bind Phase205 reanchor to selected carriage owner`) — historical only; its reanchor authority is removed by V2 composition
 - automated_m1_proof: `34943410005` — historical automated GREEN, overridden by direct runtime failure
 - owner_diagnostic_run: `34943783606` — grounded owner binding GREEN (22 supported ticks, 0 mismatches)
 - final_build_run: `34953958207` — historical candidate build SUCCESS
 - final_verify_run: `34955884046` — historical candidate verify SUCCESS
 - tested_failed_jar_sha256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`
 - final_ready: `false`
-- user_runtime_validation: `FAILED`
+- user_runtime_validation: `FAILED` for the historical exact JAR above; no V2 user-runtime candidate has been built/tested yet
 
 ## Exact-JAR real-user runtime evidence
 The user tested exact SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`:
@@ -75,23 +85,36 @@ Workflow `34977644889` used the exact Create dependency resolved by the real Gra
 - `getContactPointMotion` remains Create collision/motion territory and is not required by the generalized resolver;
 - no fake VS2 ship, geometry registration, synthetic velocity, gravity, or camera compensation is needed for the transform seam.
 
-## Reference-owner resolver v1 hypothesis
-`prepare_vs2_26_2_reference_owner_v1.py` introduces infrastructure only:
+## Reference-owner resolver v1 — proven infrastructure
+`34984299770` proved V1 composes and compiles against current M1 sources. V1 introduces:
 - a VS2-owned `ExternalReferenceFrameResolver` keyed by existing Create carriage entity id;
 - separate `externalReferenceOwnerEntityId` state rather than overloading `lastShipStoodOn` with a fake ShipId;
-- generalized owner body-frame delta is fed into VS2's existing native `EntityDragger` application lifecycle rather than calling the historical external reanchor helper;
-- the resolver itself contains no `setPos`, velocity, gravity, collision, teleport, or camera mutation API;
-- Phase83 and Phase205 old reanchor paths are mutually excluded whenever the generalized owner is active, preventing stacked/double ownership;
-- acquisition is intentionally NOT enabled in v1, so this infrastructure commit alone is not a runtime candidate and should not alter user gameplay.
+- generalized owner body-frame delta fed into VS2's existing native `EntityDragger` application lifecycle rather than calling the historical external reanchor helper;
+- no resolver-side setPos, velocity, gravity, collision, teleport, or camera mutation;
+- structural mutual exclusion of old Phase83/Phase205 authority when an external owner exists.
 
-If compile/proof is GREEN, the next hypothesis is to route acquisition + LocalPlayer relative packet/server resolution + standing-player render/yaw through the same generalized owner lifecycle, then remove the obsolete lease/reanchor authority instead of extending it.
+V1 intentionally did not enable acquisition. That limitation is superseded by V2.
+
+## Reference-owner resolver v2 — proven architecture/compile, runtime not yet proven
+V2 (`5f687aca...` + composefix `ea546f83...`) promotes the Create carriage Entity id into one VS2-owned non-Ship reference-owner lifecycle. Workflow `34994353308` proved all of the following and compiled successfully:
+- bounded external owner lifetime/state exists;
+- the already-selected Create carriage with grounded physical support + recent native Create contact acquires/refreshes the owner;
+- historical Phase83 lease/reanchor is removed from the V2 composition;
+- historical Phase205 pre-collision reanchor and duplicate contact-motion suppression are removed from the V2 composition;
+- a dedicated `PacketPlayerReferenceMotion(ownerEntityId, relative position, relative yaw)` is used instead of pretending the carriage is a VS2 ShipId;
+- LocalPlayer packet generation, server resolution, standing render interpolation, and yaw all resolve the same external owner entity id;
+- transform/yaw paths are transform-only; no synthetic velocity, fake gravity, Create collision takeover, or camera forcing is introduced;
+- `:fabric:compileJava` completed `BUILD SUCCESSFUL`.
+
+This GREEN is architecture + compile proof only. It does not prove real moving-train standing/jump/airborne/walls/turn behavior, and it does not satisfy the user runtime gate.
 
 ## FROZEN_GREEN / protected
 - Kotlin/bootstrap packaging repair `f3d1335c9fc89283d936af039eba34aa9778bd05`.
 - Create train + VS2 coexistence.
 - Steam 'n' Rails and Copycats preservation.
 - exact-JAR grounded floor solidity and grounded walking behavior are protected behavioral criteria.
-- Phase205 selected-owner evidence remains useful for owner selection, but its historical reanchor mechanism is not protected architecture.
+- Phase205 selected-owner evidence remains useful for owner selection, but its historical reanchor mechanism is not protected architecture and is removed in V2.
+- V2 core-slice architecture proof from `34994353308` is frozen unless direct runtime evidence disproves a specific boundary.
 
 ## FAILED_HYPOTHESES / anti-loop
 Do not reintroduce without new direct evidence:
@@ -110,15 +133,23 @@ Do not reintroduce without new direct evidence:
 - harness mutation used to manufacture green.
 
 ## next_safe_action
-Compile/prove `reference_owner_v1` against the current M1 production composition (`phase2..54 + phase98`) and the Phase205 ownership seam. The proof must establish:
-- generated common/fabric sources compile;
-- generalized owner state and bilateral resolver exist on common client/server code;
-- external-owner branch feeds only VS2's existing native drag application lifecycle;
-- no external helper reanchor is invoked by that new branch;
-- Phase83/Phase205 old reanchor authority is structurally excluded when generalized owner is active;
-- acquisition remains disabled so no runtime gameplay behavior is changed yet.
+Run the smallest real-train runtime proof on the exact V2 composition, using the existing verified `r0v3` moving-train fixture without weakening historical acceptance criteria or manufacturing success. Prepare exactly the normal current M1 composition and then apply:
+- `prepare_vs2_26_2_phase205.py` as required by the current cumulative composition boundary;
+- `prepare_vs2_26_2_reference_owner_v1.py`;
+- `prepare_vs2_26_2_reference_owner_v2_composefix.py`.
 
-If GREEN, proceed to the smallest next core-slice implementation for acquisition + relative packet/server resolution + standing-player render/yaw, using the same external owner key and replacing old lease/reanchor authority. Do not patch jump/wall/camera symptoms independently.
+The dedicated V2 runtime gate should establish at minimum:
+- real Create carriage present and train moving;
+- `REFERENCE_OWNER_V2_ACQUIRE` occurs for the selected carriage;
+- old Phase83/Phase205 reanchor markers do not execute;
+- grounded movement fixture still reaches its existing native confirmation;
+- a vanilla jump reaches requested -> airborne -> natural landed;
+- during that airborne interval, carriage-relative horizontal position does not exhibit the previous multi-carriage backward drift;
+- no crash/mixin/linkage failure.
+
+If this runtime gate fails, classify whether the failure is fixture/verifier, acquisition, packet/server identity, body reference continuity, render/yaw, or Create collision authority before changing gameplay. Do not patch jump/walls/camera independently.
+
+If this runtime gate is GREEN, do not declare FINAL_READY. Advance toward the smallest exact V2 test artifact only after broader M1 collision/turn criteria are still demonstrated, and retain the hard real-user exact-JAR gate.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 CI/automated proof may produce candidates but cannot restore FINAL_READY. FINAL_READY requires a new exact final JAR that passes real-user runtime for standing, movement, jump+airborne+natural landing, floor/walls/ceiling, turns, speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look, plus watchdog local runtime-gate SHA match.

@@ -124,14 +124,23 @@ elif "externalOwnerActive" not in dragger and "reanchorEntityWithExternalFrame" 
 
 dragger_file.write_text(dragger, encoding="utf-8")
 
-# Mutual exclusion with Phase83: when generalized owner becomes active in a later acquisition step,
-# the old bounded lease/reanchor bridge must not execute in parallel.
-phase83_gate = '''            if (Boolean.getBoolean("vs2.createCarryCompat")\n                && phase83ExactBaselineCarriage'''
-phase83_guarded = '''            if (Boolean.getBoolean("vs2.createCarryCompat")\n                && !((org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider) player)\n                    .getDraggingInformation().isEntityBeingDraggedByExternalReference()\n                && phase83ExactBaselineCarriage'''
+# Mutual exclusion with Phase83: later cumulative scripts may insert additional predicates into the
+# outer createCarryCompat condition. Locate the exact Phase83 block relative to its telemetry marker
+# and inject the generalized-owner exclusion into that outer condition without assuming adjacency.
+phase83_guard = '''\n                && !((org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider) player)\n                    .getDraggingInformation().isEntityBeingDraggedByExternalReference()'''
 if probe:
-    if phase83_gate in probe:
-        probe = probe.replace(phase83_gate, phase83_guarded, 1)
-    elif "isEntityBeingDraggedByExternalReference()" not in probe and "GATE_E_PHASE83_CONTACT_REFRESH" in probe:
+    if "GATE_E_PHASE83_CONTACT_REFRESH" in probe and phase83_guard.strip() not in probe:
+        phase83_marker_index = probe.find('"GATE_E_PHASE83_CONTACT_REFRESH')
+        phase83_gate_marker = '            if (Boolean.getBoolean("vs2.createCarryCompat")'
+        phase83_gate_index = probe.rfind(phase83_gate_marker, 0, phase83_marker_index)
+        if phase83_gate_index < 0:
+            raise SystemExit("reference-owner v1 could not locate Phase83 createCarryCompat gate")
+        phase83_window = probe[phase83_gate_index:phase83_marker_index]
+        if "phase83ExactBaselineCarriage" not in phase83_window or "EntityDragger.reanchorEntityWithExternalFrame" not in phase83_window:
+            raise SystemExit("reference-owner v1 Phase83 gate window lost expected owner/reanchor anchors")
+        phase83_insert_at = phase83_gate_index + len(phase83_gate_marker)
+        probe = probe[:phase83_insert_at] + phase83_guard + probe[phase83_insert_at:]
+    elif "GATE_E_PHASE83_CONTACT_REFRESH" in probe and "isEntityBeingDraggedByExternalReference()" not in probe:
         raise SystemExit("reference-owner v1 could not guard Phase83 lease/reanchor path")
     probe_file.write_text(probe, encoding="utf-8")
 

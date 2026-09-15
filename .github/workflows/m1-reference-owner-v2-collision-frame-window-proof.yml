@@ -1,0 +1,161 @@
+name: m1-reference-owner-v2-collision-frame-window-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-collision-frame-window-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  collision-frame-window:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download exact prior runtime evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: reference-owner-v2-owner-obb-support-log
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 35031106237
+
+      - name: Classify active-owner collision frame across support loss
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          log_path = Path('evidence/reference-owner-v2-owner-obb-support.log')
+          if not log_path.exists():
+              raise SystemExit('exact prior owner-obb runtime artifact missing')
+          text = log_path.read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'\x1b\[[0-9;]*m', '', text)
+          lines = text.splitlines()
+
+          support_re = re.compile(
+              r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=(\d+) physical_support=(true|false)'
+          )
+          callback_re = re.compile(
+              r'REFERENCE_OWNER_V2_OWNER_OBB_CALLBACK phase=(HEAD|RETURN) player_tick=(\d+) '
+              r'owner_id=(\d+) carriage_id=(\d+) owner_match=(true|false) '
+              r'local=\(([-+0-9.eENaInf]+),([-+0-9.eENaInf]+),([-+0-9.eENaInf]+)\) '
+              r'on_ground=(true|false)'
+          )
+          obb_re = re.compile(
+              r'GATE_E_CREATE_COLLIDE_MANY_RESULT index=(\d+) .*?surface=(true|false) '
+              r'temporal=([-+0-9.eE]+) response=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\).*?player_tick=(\d+)'
+          )
+
+          supports=[]
+          for line in lines:
+              m=support_re.search(line)
+              if m:
+                  supports.append((int(m.group(1)), int(m.group(2)), m.group(3) == 'true'))
+          if not supports:
+              raise SystemExit('no physical-support telemetry in exact artifact')
+
+          loss=None
+          prev_by_carriage={}
+          for tick, carriage, physical in supports:
+              prev = prev_by_carriage.get(carriage)
+              if prev is True and not physical:
+                  loss=(tick, carriage)
+                  break
+              prev_by_carriage[carriage]=physical
+          if loss is None:
+              raise SystemExit('no true->false support transition in exact artifact')
+          loss_tick, owner_carriage = loss
+
+          callbacks=[]
+          obbs=[]
+          current=None
+          for line_no, line in enumerate(lines):
+              cm=callback_re.search(line)
+              if cm:
+                  phase,tick,owner,carriage,match,lx,ly,lz,on_ground=cm.groups()
+                  row={
+                      'phase':phase, 'tick':int(tick), 'owner':int(owner), 'carriage':int(carriage),
+                      'match':match == 'true', 'local':(float(lx), float(ly), float(lz)),
+                      'on_ground':on_ground == 'true', 'line':line_no,
+                  }
+                  callbacks.append(row)
+                  if phase == 'HEAD':
+                      current=row
+                  elif current is not None and current['carriage'] == row['carriage']:
+                      current=None
+                  continue
+              om=obb_re.search(line)
+              if om and current is not None:
+                  idx,surface,temporal,rx,ry,rz,tick=om.groups()
+                  obbs.append({
+                      'tick':int(tick), 'surface':surface == 'true',
+                      'response':(float(rx),float(ry),float(rz)),
+                      'owner':current['owner'], 'carriage':current['carriage'],
+                      'match':current['match'],
+                  })
+
+          window_start=max(loss_tick-2, 0)
+          window_end=loss_tick+5
+          owner_heads=[
+              r for r in callbacks
+              if r['phase']=='HEAD' and r['match'] and r['owner']==owner_carriage and r['carriage']==owner_carriage
+              and window_start <= r['tick'] <= window_end
+          ]
+          owner_ticks=sorted({r['tick'] for r in owner_heads})
+          airborne_ticks=sorted({r['tick'] for r in owner_heads if not r['on_ground']})
+          local_y=[r['local'][1] for r in owner_heads]
+          local_y_spread=(max(local_y)-min(local_y)) if local_y else float('inf')
+          owner_obbs=[
+              r for r in obbs
+              if r['match'] and r['owner']==owner_carriage and r['carriage']==owner_carriage
+              and loss_tick <= r['tick'] <= window_end
+          ]
+          owner_surface=[r for r in owner_obbs if r['surface']]
+          owner_nonzero=[
+              r for r in owner_surface
+              if sum(v*v for v in r['response']) > 1.0e-12
+          ]
+
+          consecutive_after_loss=0
+          for tick in range(loss_tick, window_end+1):
+              if tick in owner_ticks:
+                  consecutive_after_loss += 1
+              else:
+                  break
+
+          if not owner_heads:
+              classification='ACTIVE_OWNER_CREATE_CALLBACK_MISSING'
+          elif not airborne_ticks:
+              classification='ACTIVE_OWNER_AIRBORNE_WINDOW_MISSING'
+          elif consecutive_after_loss < 3:
+              classification='ACTIVE_OWNER_NOT_CONTINUOUS_AFTER_SUPPORT_LOSS'
+          elif local_y_spread > 1.0e-4:
+              classification='ACTIVE_OWNER_LOCAL_Y_DRIFTS_ACROSS_SUPPORT_LOSS'
+          elif not owner_surface:
+              classification='ACTIVE_OWNER_CREATE_OBB_SURFACE_MISSING'
+          elif not owner_nonzero:
+              classification='ACTIVE_OWNER_CREATE_OBB_RESPONSE_ZERO_ONLY'
+          else:
+              classification='ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_THROUGH_SUPPORT_LOSS'
+
+          print(
+              'REFERENCE_OWNER_V2_COLLISION_FRAME_WINDOW_PROOF '
+              f'classification={classification} loss_tick={loss_tick} owner_carriage={owner_carriage} '
+              f'window={window_start}..{window_end} owner_ticks={owner_ticks} airborne_ticks={airborne_ticks} '
+              f'consecutive_after_loss={consecutive_after_loss} local_y_spread={local_y_spread:.9f} '
+              f'owner_obb_rows={len(owner_obbs)} surface_rows={len(owner_surface)} nonzero_rows={len(owner_nonzero)} '
+              'source_run=35031106237 production_unchanged_since_source=true '
+              'landing_unproven=true turn_unproven=true wall_ceiling_unproven=true '
+              'read_only=true final_ready=false'
+          )
+
+          if classification != 'ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_THROUGH_SUPPORT_LOSS':
+              raise SystemExit('collision-frame window remains unresolved: ' + classification)
+          PY

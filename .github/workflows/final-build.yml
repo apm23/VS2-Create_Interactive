@@ -50,58 +50,32 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import io
-          import json
-          import re
-          import zipfile
+          import json, re, zipfile
           from pathlib import Path
-
           props = (Path('upstream') / 'fabric' / 'gradle.properties').read_text(encoding='utf-8')
           match = re.search(r'(?m)^kotlin_fabric_version=(.+)$', props)
-          if not match:
-              raise SystemExit('kotlin_fabric_version missing from upstream/fabric/gradle.properties')
+          if not match: raise SystemExit('kotlin_fabric_version missing from upstream/fabric/gradle.properties')
           version = match.group(1).strip()
-
           cache_root = Path.home() / '.gradle' / 'caches' / 'modules-2' / 'files-2.1' / 'net.fabricmc' / 'fabric-language-kotlin' / version
           candidates = sorted(cache_root.glob('**/fabric-language-kotlin-*.jar'))
-          if not candidates:
-              raise SystemExit(f'Fabric Language Kotlin {version} was not resolved into Gradle cache')
+          if not candidates: raise SystemExit(f'Fabric Language Kotlin {version} was not resolved into Gradle cache')
           flk = candidates[0]
-
           with zipfile.ZipFile(flk) as nested:
               nested_meta = json.loads(nested.read('fabric.mod.json'))
-              if nested_meta.get('id') != 'fabric-language-kotlin':
-                  raise SystemExit(f'unexpected nested mod id: {nested_meta.get("id")}')
-              nested_names = nested.namelist()
-              if not any(name.startswith('META-INF/jars/') and 'kotlin-stdlib' in name for name in nested_names):
-                  raise SystemExit('Fabric Language Kotlin jar does not contain nested kotlin-stdlib runtime')
-
-          jars = sorted(
-              p for p in (Path('upstream') / 'fabric' / 'build' / 'libs').glob('*.jar')
-              if not p.name.endswith('-sources.jar') and not p.name.endswith('-dev.jar') and not p.name.endswith('-dev-shadow.jar')
-          )
-          if len(jars) != 1:
-              raise SystemExit(f'expected exactly one distributable jar, found {[p.name for p in jars]}')
-          target = jars[0]
-          nested_path = f'META-INF/jars/{flk.name}'
-          temp = target.with_suffix('.runtime-fixed.jar')
-
-          with zipfile.ZipFile(target, 'r') as source, zipfile.ZipFile(temp, 'w') as out:
-              metadata = json.loads(source.read('fabric.mod.json'))
-              entries = list(metadata.get('jars', []))
-              if not any(entry.get('file') == nested_path for entry in entries if isinstance(entry, dict)):
-                  entries.append({'file': nested_path})
-              metadata['jars'] = entries
-
+              if nested_meta.get('id') != 'fabric-language-kotlin': raise SystemExit('unexpected nested mod id')
+              if not any(name.startswith('META-INF/jars/') and 'kotlin-stdlib' in name for name in nested.namelist()): raise SystemExit('Fabric Language Kotlin jar does not contain nested kotlin-stdlib runtime')
+          jars = sorted(p for p in (Path('upstream')/'fabric'/'build'/'libs').glob('*.jar') if not p.name.endswith('-sources.jar') and not p.name.endswith('-dev.jar') and not p.name.endswith('-dev-shadow.jar'))
+          if len(jars) != 1: raise SystemExit(f'expected exactly one distributable jar, found {[p.name for p in jars]}')
+          target = jars[0]; nested_path = f'META-INF/jars/{flk.name}'; temp = target.with_suffix('.runtime-fixed.jar')
+          with zipfile.ZipFile(target,'r') as source, zipfile.ZipFile(temp,'w') as out:
+              metadata = json.loads(source.read('fabric.mod.json')); entries=list(metadata.get('jars',[]))
+              if not any(entry.get('file') == nested_path for entry in entries if isinstance(entry,dict)): entries.append({'file':nested_path})
+              metadata['jars']=entries
               for info in source.infolist():
-                  if info.filename in {'fabric.mod.json', nested_path}:
-                      continue
-                  out.writestr(info, source.read(info.filename))
-              out.writestr('fabric.mod.json', json.dumps(metadata, indent=2).encode('utf-8'))
-              out.writestr(nested_path, flk.read_bytes())
-
-          temp.replace(target)
-          print(f'Embedded {flk.name} into {target.name}')
+                  if info.filename in {'fabric.mod.json',nested_path}: continue
+                  out.writestr(info,source.read(info.filename))
+              out.writestr('fabric.mod.json',json.dumps(metadata,indent=2).encode('utf-8')); out.writestr(nested_path,flk.read_bytes())
+          temp.replace(target); print(f'Embedded {flk.name} into {target.name}')
           PY
 
       - name: Verify Kotlin runtime packaging
@@ -109,31 +83,16 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import io
-          import json
-          import zipfile
+          import io, json, zipfile
           from pathlib import Path
-
-          jars = sorted(
-              p for p in (Path('upstream') / 'fabric' / 'build' / 'libs').glob('*.jar')
-              if not p.name.endswith('-sources.jar') and not p.name.endswith('-dev.jar') and not p.name.endswith('-dev-shadow.jar')
-          )
-          if len(jars) != 1:
-              raise SystemExit(f'expected exactly one distributable jar, found {[p.name for p in jars]}')
-
+          jars=sorted(p for p in (Path('upstream')/'fabric'/'build'/'libs').glob('*.jar') if not p.name.endswith('-sources.jar') and not p.name.endswith('-dev.jar') and not p.name.endswith('-dev-shadow.jar'))
+          if len(jars)!=1: raise SystemExit(f'expected exactly one distributable jar, found {[p.name for p in jars]}')
           with zipfile.ZipFile(jars[0]) as outer:
-              meta = json.loads(outer.read('fabric.mod.json'))
-              nested_paths = [entry.get('file') for entry in meta.get('jars', []) if isinstance(entry, dict)]
-              flk_paths = [path for path in nested_paths if path and 'fabric-language-kotlin' in path]
-              if len(flk_paths) != 1:
-                  raise SystemExit(f'expected one nested Fabric Language Kotlin jar, found {flk_paths}')
-              nested_bytes = outer.read(flk_paths[0])
-              with zipfile.ZipFile(io.BytesIO(nested_bytes)) as nested:
-                  nested_meta = json.loads(nested.read('fabric.mod.json'))
-                  if nested_meta.get('id') != 'fabric-language-kotlin':
-                      raise SystemExit('nested runtime is not fabric-language-kotlin')
-                  if not any(name.startswith('META-INF/jars/') and 'kotlin-stdlib' in name for name in nested.namelist()):
-                      raise SystemExit('nested Fabric Language Kotlin is missing kotlin-stdlib')
+              meta=json.loads(outer.read('fabric.mod.json')); nested_paths=[entry.get('file') for entry in meta.get('jars',[]) if isinstance(entry,dict)]; flk_paths=[p for p in nested_paths if p and 'fabric-language-kotlin' in p]
+              if len(flk_paths)!=1: raise SystemExit(f'expected one nested Fabric Language Kotlin jar, found {flk_paths}')
+              with zipfile.ZipFile(io.BytesIO(outer.read(flk_paths[0]))) as nested:
+                  if json.loads(nested.read('fabric.mod.json')).get('id')!='fabric-language-kotlin': raise SystemExit('nested runtime is not fabric-language-kotlin')
+                  if not any(name.startswith('META-INF/jars/') and 'kotlin-stdlib' in name for name in nested.namelist()): raise SystemExit('nested Fabric Language Kotlin is missing kotlin-stdlib')
           print('Kotlin runtime packaging verified')
           PY
 
@@ -146,7 +105,7 @@ jobs:
           test "${#jars[@]}" -eq 1
           cp "${jars[@]}" final-dist/
           (cd final-dist && sha256sum *.jar > SHA256SUMS.txt)
-          printf 'source_commit=%s\nproven_m1_run=34799207093\nbootstrap_packaging=kotlin-runtime-embedded\n' "$GITHUB_SHA" > final-dist/BUILD_INFO.txt
+          printf 'source_commit=%s\nproven_m1_run=34943410005\nbootstrap_packaging=kotlin-runtime-embedded\n' "$GITHUB_SHA" > final-dist/BUILD_INFO.txt
           cat final-dist/SHA256SUMS.txt
 
       - name: Upload final distributable

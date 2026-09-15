@@ -8,8 +8,8 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - HARD architecture: Create owns train/carriage gameplay and collision geometry. VS2 must be the actual continuous moving reference-space/transform foundation for player body/camera. Compatibility remains a thin adapter; merely calling an EntityDragger helper after Create movement is not sufficient.
 
 ## Current reconciled state — 2026-09-15
-- project_state: `ROOT_REDESIGN — NATIVE VS2 SHIP-ID COUPLING MAPPED; M1 PLAYER CORE-SLICE PROOF NEXT`
-- ledger_basis_head: `abb57fff0d3635f09c9f85aa699df9f88d57abcf`
+- project_state: `ROOT_REDESIGN — M1 REFERENCE-OWNER CORE SLICE BOUNDED; CREATE BILATERAL FRAME-RESOLVER PROOF NEXT`
+- ledger_basis_head: `2eeac3f8222931a56e760f05ec62bbe2131e2c43`
 - architecture_diagnostic_commit: `6e079d62d0d30e8508ad825ef80791088fa28e5c` (`Add VS2 reference-frame ownership diagnostic`)
 - architecture_diagnostic_run: `34963733838` — SUCCESS
 - architecture_diagnostic_result: `current_adapter_is_contact/lease_reanchor_not_continuous_vs2_reference_space`
@@ -19,6 +19,9 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - redesign_map_commit: `abb57fff0d3635f09c9f85aa699df9f88d57abcf` (`Map VS2 reference-owner redesign boundary`)
 - redesign_map_run: `34972926851` — SUCCESS
 - redesign_map_result: `global coupling mapped read-only; owner-state tokens span 28 files, registered-ship resolution 9 files, camera/render binding 11 files; most are peripheral to M1 local-player standing/carry`
+- core_slice_commit: `2eeac3f8222931a56e760f05ec62bbe2131e2c43` (`Prove M1 reference-owner core slice`)
+- core_slice_run: `34975161200` — SUCCESS
+- core_slice_result: `standing-player reference-owner surface bounded to 6 core files; Create collision mutation not required; ship-mounted camera not required; fake VS2 ship not required if owner state + transform resolution are generalized`
 - gameplay_fix_commit: `fb9520946e1041c1dc0a75a82fcae0a260cceec8` (`Bind Phase205 reanchor to selected carriage owner`)
 - automated_m1_proof: `34943410005` — historical automated GREEN, overridden by direct runtime failure
 - owner_diagnostic_run: `34943783606` — grounded owner binding GREEN (22 supported ticks, 0 mismatches)
@@ -71,23 +74,32 @@ Read-only workflow `34972926851` mapped the global native coupling surface:
 
 The raw global counts are intentionally broader than M1 because they include mobs, AI, armor stands, sounds, ship mounting, debug UI, Forge compatibility and other peripheral systems. They do NOT mean M1 needs a 28-file rewrite.
 
-Targeted pinned-source inspection narrows the standing/walking/jump player path to these concerns:
-- `EntityDraggingInformation`: persistent reference-owner lifecycle/state;
-- `EntityDragger`: previous->current reference transform application for entity body;
-- `MixinLocalPlayer`: client->server relative player position/yaw packet path;
-- `VSGamePackets`: server-side relative player state -> world resolution;
-- `MixinGameRenderer`: standing-player drag render interpolation (distinct from ship-mounted camera mode);
-- `EntityLerper`: transform-direction helpers for relative/world yaw;
-- `EntityShipCollisionUtils`: native VS2-ship acquisition only; Create acquisition must remain in the thin adapter rather than transferring Create collision ownership into VS2.
+## M1 reference-owner core-slice proof
+Read-only workflow `34975161200` proved the standing/walking/jump local-player path is a bounded surface:
+- `EntityDraggingInformation`: central persistent owner lifecycle/state;
+- `EntityDragger`: body application from previous owner transform to current owner transform;
+- `MixinLocalPlayer`: client -> server relative position/yaw packet path uses the same owner;
+- `VSGamePackets`: server relative position -> current world transform resolution uses the same owner;
+- `MixinGameRenderer`: standing-player render interpolation uses previous/current owner render transforms;
+- `EntityLerper`: relative/world yaw conversion is transform-only;
+- native ship collision acquisition is separate and can remain untouched for real VS2 ships;
+- Create edge/backoff collision is not part of the generalized owner core and remains Create-owned;
+- standing-player render path is distinct from ship-mounted camera mode, so M1 does not require pretending the player is mounted to a VS2 ship.
 
-`MixinPlayer` ship-edge crouch/backoff is collision-specific and is not a required reference-owner primitive for the Create carriage path; Create remains collision authority.
+The proof explicitly reported:
+- `core_file_count=6`;
+- `create_collision_geometry_mutation_required=false`;
+- `ship_mount_camera_required=false`;
+- `fake_vs2_ship_required=false_if_owner_state_and_transform_resolution_are_generalized`.
+
+This authorizes design/implementation of a smallest generalized VS2-owned reference-owner lifecycle for this core slice only. It does NOT authorize reintroducing Phase83/Phase205 lease/reanchor behavior alongside it; the new lifecycle must replace that architecture for Create carriage ownership.
 
 ## FROZEN_GREEN / protected
 - Kotlin/bootstrap packaging repair `f3d1335c9fc89283d936af039eba34aa9778bd05`.
 - Create train + VS2 coexistence.
 - Steam 'n' Rails and Copycats preservation.
-- selected-carriage Phase205 ownership binding from `fb952094...` for grounded support.
-- exact-JAR grounded floor solidity and grounded walking behavior.
+- selected-carriage Phase205 ownership binding from `fb952094...` remains useful evidence for grounded owner selection, but its reanchor mechanism is not the target architecture.
+- exact-JAR grounded floor solidity and grounded walking behavior are protected behavioral criteria, not proof that the old carry architecture should be preserved.
 
 Do not modify these merely to chase airborne/camera/wall symptoms.
 
@@ -108,9 +120,14 @@ Do not reintroduce without new direct evidence:
 - harness mutation used to manufacture green.
 
 ## next_safe_action
-Prove the M1 local-player `reference owner` core slice is actually narrow enough for a VS2-owned generalized lifecycle without registering a VS2 ship and without touching Create collision geometry. The read-only proof must trace, as one lifecycle, owner state -> previous/current transform application -> LocalPlayer relative packet -> server relative/world resolution -> standing-player render interpolation, and separately prove ship-mounted camera mode is not required for a standing player.
+Before writing the generalized resolver, prove that the exact Create dependency used by the pinned 26.2 VS2 build exposes a bilateral/common carriage frame surface suitable for one owner lifecycle on client and server:
+- carriage is a normal networked `Entity` type with a stable synchronized entity identity suitable as an external-owner key;
+- `AbstractContraptionEntity.toLocalVector(..., prevAnchor=true)` can express previous-frame world -> carriage-local;
+- `AbstractContraptionEntity.toGlobalVector(..., prevAnchor=false)` can express carriage-local -> current-frame world;
+- the relevant carriage entity and transform methods are in the common Create artifact, not a client-only class;
+- no geometry registration, fake VS2 ship, synthetic velocity, gravity, or camera compensation is required.
 
-If that proof is GREEN, the next implementation hypothesis may introduce the smallest VS2-side generalized reference-owner/transform resolver used only by that M1 path, with Create supplying authoritative previous/current carriage transforms and selected carriage identity. It must replace, not stack on top of, the Phase83/Phase205 lease/reanchor architecture. Do not implement that abstraction before the core-slice proof is complete.
+Use the exact dependency resolved by the real Gradle build where possible; do not rely only on a moving upstream Create source branch. If this bilateral frame-resolver proof is GREEN, implement the smallest VS2-owned generalized reference-owner state + transform resolver for the six-file M1 core slice, with Create supplying selected carriage identity and previous/current transforms. Replace/disable Phase83/Phase205 external reanchor ownership when the generalized Create owner is active; do not stack both.
 
 Do not patch jump/wall/camera symptoms in parallel.
 

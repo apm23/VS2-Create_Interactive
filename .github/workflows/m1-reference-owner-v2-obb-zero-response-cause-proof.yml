@@ -1,0 +1,129 @@
+name: m1-reference-owner-v2-obb-zero-response-cause-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-obb-zero-response-cause-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  obb-zero-response-cause:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download exact prior runtime evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: reference-owner-v2-owner-obb-support-log
+          path: evidence
+          github-token: ${{ github.token }}
+          run-id: 35031106237
+          repository: apm23/VS2-Create_Interactive
+
+      - name: Classify zero-response descriptor
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import math, re
+          from pathlib import Path
+
+          p = Path('evidence/reference-owner-v2-owner-obb-support.log')
+          if not p.exists():
+              raise SystemExit('exact prior owner-obb runtime artifact missing')
+          text = re.sub(r'\x1b\[[0-9;]*m', '', p.read_text(encoding='utf-8', errors='replace'))
+          lines = text.splitlines()
+
+          support_re = re.compile(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=(\d+) physical_support=(true|false)')
+          cb_re = re.compile(r'REFERENCE_OWNER_V2_OWNER_OBB_CALLBACK phase=(HEAD|RETURN) player_tick=(\d+) owner_id=(\d+) carriage_id=(\d+) owner_match=(true|false)')
+          num = r'([-+0-9.eE]+|NaN|Infinity|-Infinity)'
+          obb_re = re.compile(
+              r'GATE_E_CREATE_COLLIDE_MANY_RESULT index=(\d+) .*?surface=(true|false) temporal=' + num +
+              r' response=\(' + num + r', ' + num + r', ' + num + r'\) normal=\(' + num + r', ' + num + r', ' + num +
+              r'\) location=\(' + num + r', ' + num + r', ' + num + r'\).*?player_tick=(\d+)'
+          )
+
+          supports=[]
+          for line in lines:
+              m=support_re.search(line)
+              if m: supports.append((int(m.group(1)), int(m.group(2)), m.group(3)=='true'))
+          if not supports: raise SystemExit('no support telemetry')
+
+          loss=None; prev={}
+          for tick, carriage, physical in supports:
+              if prev.get(carriage) is True and not physical:
+                  loss=(tick, carriage); break
+              prev[carriage]=physical
+          if loss is None: raise SystemExit('no true->false support transition')
+          loss_tick, owner_carriage = loss
+
+          current=None; rows=[]
+          for line in lines:
+              cm=cb_re.search(line)
+              if cm:
+                  phase,tick,owner,carriage,match=cm.groups()
+                  row=(phase,int(tick),int(owner),int(carriage),match=='true')
+                  if phase=='HEAD': current=row
+                  elif current is not None and current[3]==int(carriage): current=None
+                  continue
+              om=obb_re.search(line)
+              if om and current is not None:
+                  g=om.groups()
+                  idx=int(g[0]); surface=g[1]=='true'; temporal=float(g[2])
+                  response=tuple(float(x) for x in g[3:6])
+                  normal=tuple(float(x) for x in g[6:9])
+                  location=tuple(float(x) for x in g[9:12])
+                  ptick=int(g[12])
+                  _,ctick,owner,carriage,match=current
+                  if match and owner==owner_carriage and carriage==owner_carriage and loss_tick <= ptick <= loss_tick+5 and surface:
+                      rows.append((ptick,idx,temporal,response,normal,location))
+
+          if not rows: raise SystemExit('no active-owner surface rows in support-loss window')
+
+          def mag(v): return math.sqrt(sum(x*x for x in v))
+          finite = all(math.isfinite(x) for r in rows for x in (r[2], *r[3], *r[4], *r[5]))
+          response_nonzero=sum(mag(r[3]) > 1e-12 for r in rows)
+          normal_mags=[mag(r[4]) for r in rows]
+          temporal=[r[2] for r in rows]
+          locs=[r[5] for r in rows]
+          zero_normals=sum(n <= 1e-12 for n in normal_mags)
+          unitish_normals=sum(abs(n-1.0) <= 1e-3 for n in normal_mags)
+          temporal_positive=sum(t > 0 for t in temporal)
+          temporal_zero=sum(abs(t) <= 1e-12 for t in temporal)
+          temporal_negative=sum(t < 0 for t in temporal)
+          loc_span=tuple(max(v[i] for v in locs)-min(v[i] for v in locs) for i in range(3))
+
+          if not finite:
+              classification='ACTIVE_OWNER_OBB_ZERO_RESPONSE_NONFINITE_DESCRIPTOR'
+          elif zero_normals:
+              classification='ACTIVE_OWNER_OBB_ZERO_RESPONSE_ZERO_NORMAL'
+          elif response_nonzero:
+              classification='ACTIVE_OWNER_OBB_RESPONSE_NOT_ACTUALLY_ZERO'
+          elif temporal_positive == len(rows):
+              classification='ACTIVE_OWNER_OBB_ZERO_RESPONSE_POSITIVE_TEMPORAL_VALID_NORMAL'
+          elif temporal_zero == len(rows):
+              classification='ACTIVE_OWNER_OBB_ZERO_RESPONSE_ZERO_TEMPORAL_VALID_NORMAL'
+          elif temporal_negative == len(rows):
+              classification='ACTIVE_OWNER_OBB_ZERO_RESPONSE_NEGATIVE_TEMPORAL_VALID_NORMAL'
+          else:
+              classification='ACTIVE_OWNER_OBB_ZERO_RESPONSE_MIXED_TEMPORAL_VALID_NORMAL'
+
+          print(
+              'REFERENCE_OWNER_V2_OBB_ZERO_RESPONSE_CAUSE_PROOF '
+              f'classification={classification} loss_tick={loss_tick} owner_carriage={owner_carriage} '
+              f'rows={len(rows)} ticks={sorted({r[0] for r in rows})} response_nonzero={response_nonzero} '
+              f'temporal_min={min(temporal):.9f} temporal_max={max(temporal):.9f} '
+              f'temporal_positive={temporal_positive} temporal_zero={temporal_zero} temporal_negative={temporal_negative} '
+              f'normal_mag_min={min(normal_mags):.9f} normal_mag_max={max(normal_mags):.9f} '
+              f'zero_normals={zero_normals} unitish_normals={unitish_normals} '
+              f'location_span=({loc_span[0]:.9f},{loc_span[1]:.9f},{loc_span[2]:.9f}) '
+              f'finite_descriptor={str(finite).lower()} source_run=35031106237 read_only=true final_ready=false'
+          )
+          for tick,idx,t,response,norm,loc in rows:
+              print(f'REFERENCE_OWNER_V2_OBB_ZERO_RESPONSE_ROW tick={tick} index={idx} temporal={t:.9f} response={response} normal={norm} location={loc}')
+          PY

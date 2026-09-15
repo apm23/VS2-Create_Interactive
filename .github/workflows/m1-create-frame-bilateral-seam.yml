@@ -1,0 +1,138 @@
+name: m1-create-frame-bilateral-seam
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-create-frame-bilateral-seam.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  create-frame-seam:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Prepare real 26.2 dependency graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare_vs2_26_2.py
+          for script in scripts/prepare_vs2_26_2_phase{2..50}.py; do python3 "$script"; done
+          chmod +x upstream/gradlew
+          (cd upstream && ./gradlew --no-daemon --stacktrace :fabric:compileJava)
+
+      - name: Prove exact resolved Create carriage frame surface
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib
+          import json
+          import subprocess
+          import zipfile
+
+          abstract_cls = 'com/zurrtum/create/content/contraptions/AbstractContraptionEntity.class'
+          carriage_cls = 'com/zurrtum/create/content/trains/entity/CarriageContraptionEntity.class'
+          candidates = []
+          cache = Path.home() / '.gradle' / 'caches'
+          for jar in cache.rglob('*.jar'):
+              try:
+                  with zipfile.ZipFile(jar) as zf:
+                      names = set(zf.namelist())
+                      if abstract_cls in names and carriage_cls in names:
+                          mod_id = None
+                          mod_version = None
+                          if 'fabric.mod.json' in names:
+                              try:
+                                  meta = json.loads(zf.read('fabric.mod.json'))
+                                  mod_id = meta.get('id')
+                                  mod_version = meta.get('version')
+                              except Exception:
+                                  pass
+                          candidates.append((jar, mod_id, mod_version))
+              except (OSError, zipfile.BadZipFile):
+                  continue
+
+          if not candidates:
+              raise SystemExit('CREATE_FRAME_SEAM no resolved Gradle jar contains the real Create carriage classes')
+
+          # Prefer the concrete Create mod artifact; Loom may also leave transformed copies in cache.
+          ranked = sorted(
+              candidates,
+              key=lambda item: (
+                  0 if item[1] == 'create' else 1,
+                  1 if any(token in item[0].name.lower() for token in ('sources', 'javadoc')) else 0,
+                  len(str(item[0])),
+                  str(item[0]),
+              ),
+          )
+          jar, mod_id, mod_version = ranked[0]
+          digest = hashlib.sha256(jar.read_bytes()).hexdigest()
+          print(f'CREATE_FRAME_SEAM resolved_candidate_count={len(candidates)}')
+          print(f'CREATE_FRAME_SEAM resolved_jar={jar}')
+          print(f'CREATE_FRAME_SEAM resolved_jar_sha256={digest}')
+          print(f'CREATE_FRAME_SEAM mod_id={mod_id}')
+          print(f'CREATE_FRAME_SEAM mod_version={mod_version}')
+
+          def javap(class_name):
+              proc = subprocess.run(
+                  ['javap', '-classpath', str(jar), '-public', class_name],
+                  check=True, text=True, capture_output=True,
+              )
+              print(proc.stdout)
+              return proc.stdout
+
+          abstract = javap('com.zurrtum.create.content.contraptions.AbstractContraptionEntity')
+          carriage = javap('com.zurrtum.create.content.trains.entity.CarriageContraptionEntity')
+
+          evidence = {
+              'carriage_is_common_entity_type': (
+                  'AbstractContraptionEntity extends net.minecraft.world.entity.Entity' in abstract
+                  and 'CarriageContraptionEntity extends com.zurrtum.create.content.contraptions.OrientedContraptionEntity' in carriage
+              ),
+              'previous_world_to_local_available': (
+                  'toLocalVector(net.minecraft.world.phys.Vec3, float, boolean)' in abstract
+              ),
+              'local_to_current_world_available': (
+                  'toGlobalVector(net.minecraft.world.phys.Vec3, float, boolean)' in abstract
+              ),
+              'native_contact_motion_available': (
+                  'getContactPointMotion(net.minecraft.world.phys.Vec3)' in abstract
+              ),
+          }
+          for key, value in evidence.items():
+              print(f'CREATE_FRAME_SEAM {key}={str(value).lower()}')
+          missing = [key for key, value in evidence.items() if not value]
+          if missing:
+              raise SystemExit('resolved Create binary lost required bilateral frame surface: ' + ','.join(missing))
+
+          # AbstractContraptionEntity is the shared Entity implementation used by carriage entities;
+          # the same vanilla Entity id is what the server spawn packet synchronizes to the client.
+          # The adapter therefore does not need a fabricated ShipId: it can use the existing Create
+          # entity identity and resolve the carriage in each side's Level.
+          print('CREATE_FRAME_SEAM owner_key_candidate=vanilla_create_entity_id')
+          print('CREATE_FRAME_SEAM client_server_transform_surface=common_abstract_contraption_entity')
+          print('CREATE_FRAME_SEAM geometry_registration_required=false')
+          print('CREATE_FRAME_SEAM fake_vs2_ship_required=false')
+          print('CREATE_FRAME_SEAM synthetic_velocity_required=false')
+          print('CREATE_FRAME_SEAM camera_compensation_required=false')
+          print('CREATE_FRAME_SEAM conclusion=bilateral_create_frame_surface_available_read_only=true gameplay_mutation=false')
+          print('CREATE_FRAME_SEAM next_step=implement_vs2_owned_generalized_reference_owner_resolver_and_replace_old_external_reanchor_path')

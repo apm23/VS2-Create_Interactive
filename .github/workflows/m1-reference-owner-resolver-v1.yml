@@ -1,0 +1,126 @@
+name: m1-reference-owner-resolver-v1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-resolver-v1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-reference-owner-v1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Reconstruct current M1 composition and Phase205 seam
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+
+      - name: Prove resolver v1 architecture boundaries
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('upstream')
+          state = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDraggingInformation.kt').read_text(errors='replace')
+          dragger = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt').read_text(errors='replace')
+          resolver = (root / 'common/src/main/kotlin/org/valkyrienskies/mod/common/util/ExternalReferenceFrameResolver.kt').read_text(errors='replace')
+          probe = (root / 'fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java').read_text(errors='replace')
+          collider = (root / 'fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.java').read_text(errors='replace')
+
+          checks = {
+              'separate_external_owner_state': (
+                  'externalReferenceOwnerEntityId' in state
+                  and 'var lastShipStoodOn: ShipId?' in state
+                  and 'isEntityBeingDraggedByExternalReference' in state
+              ),
+              'resolver_uses_networked_entity_id': (
+                  'level.getEntity(ownerEntityId)' in resolver
+                  and 'toLocalVector' in resolver
+                  and 'toGlobalVector' in resolver
+              ),
+              'previous_current_frame_semantics': (
+                  'previousWorldToLocal' in resolver
+                  and '0.0f, true' in resolver
+                  and 'currentLocalToWorld' in resolver
+                  and '1.0f, false' in resolver
+              ),
+              'external_branch_inside_native_drag_lifecycle': (
+                  'val externalReferenceOwnerEntityId = entityDraggingInformation.externalReferenceOwnerEntityId' in dragger
+                  and 'ExternalReferenceFrameResolver.previousWorldToLocal' in dragger
+                  and 'ExternalReferenceFrameResolver.currentLocalToWorld' in dragger
+                  and 'addedMovement = currentWorld.sub(entityReferencePos, Vector3d())' in dragger
+                  and 'dragTheEntity = true' in dragger
+              ),
+              'phase83_mutually_excluded': (
+                  'GATE_E_PHASE83_CONTACT_REFRESH' in probe
+                  and 'isEntityBeingDraggedByExternalReference()' in probe
+              ),
+              'phase205_mutually_excluded_before_marker': (
+                  'GATE_E_PHASE205_PRE_COLLISION_REANCHOR' in collider
+                  and 'referenceProvider.getDraggingInformation().isEntityBeingDraggedByExternalReference()' in collider
+                  and collider.find('isEntityBeingDraggedByExternalReference()') < collider.find('vs2.phase205PreCollisionReanchorTick.')
+              ),
+              'acquisition_still_disabled': (
+                  'externalReferenceOwnerEntityId =' not in probe
+                  and 'setExternalReferenceOwnerEntityId(' not in probe
+                  and 'setExternalReferenceOwnerEntityId(' not in collider
+              ),
+          }
+          for key, value in checks.items():
+              print(f'REFERENCE_OWNER_V1_PROOF {key}={str(value).lower()}')
+          missing = [k for k, v in checks.items() if not v]
+          if missing:
+              raise SystemExit('resolver v1 architecture proof failed: ' + ','.join(missing))
+
+          for token in ['setPos(', 'setDeltaMovement(', '.push(', 'getContactPointMotion(', 'teleportTo(', '.teleport(', 'setNoGravity(', 'setOnGround(']:
+              if token in resolver:
+                  raise SystemExit('resolver contains forbidden mutation API: ' + token)
+
+          external_start = dragger.index('val externalReferenceOwnerEntityId = entityDraggingInformation.externalReferenceOwnerEntityId')
+          native_start = dragger.index('else if (shipDraggingEntity != null', external_start)
+          external_branch = dragger[external_start:native_start]
+          for token in ['reanchorEntityWithExternalFrame', 'setPos(', 'setDeltaMovement(', '.push(', 'getContactPointMotion(']:
+              if token in external_branch:
+                  raise SystemExit('external owner branch contains forbidden direct mutation/reanchor: ' + token)
+
+          print('REFERENCE_OWNER_V1_PROOF conclusion=bounded_infrastructure_ready_for_compile acquisition_enabled=false gameplay_activation=false')
+
+      - name: Compile Fabric with resolver v1
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :fabric:compileJava
+
+      - name: Confirm no gameplay activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -R --line-number --fixed-strings 'setExternalReferenceOwnerEntityId(' upstream/fabric/src/main upstream/common/src/main | grep -v 'EntityDraggingInformation' || false
+          echo 'REFERENCE_OWNER_V1 compile_green=true acquisition_enabled=false runtime_candidate=false'

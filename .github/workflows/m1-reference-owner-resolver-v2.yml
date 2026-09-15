@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/prepare_vs2_26_2_reference_owner_v2.py'
+      - 'scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py'
       - '.github/workflows/m1-reference-owner-resolver-v2.yml'
   workflow_dispatch:
 
@@ -40,7 +41,7 @@ jobs:
           python3 scripts/prepare_vs2_26_2_phase98.py
           python3 scripts/prepare_vs2_26_2_phase205.py
           python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
-          python3 scripts/prepare_vs2_26_2_reference_owner_v2.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
 
       - name: Prove single external reference-owner core slice
         shell: python

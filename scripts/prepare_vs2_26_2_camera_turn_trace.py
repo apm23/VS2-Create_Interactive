@@ -30,16 +30,21 @@ import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
 
 /**
  * CI-only read-only measurement of the LocalPlayer camera immediately after vanilla
- * Camera.alignWithEntity().  The expected horizontal player render target is rebuilt
+ * Camera.alignWithEntity(). The expected horizontal player render target is rebuilt
  * with the exact external-owner algorithm used later by MixinGameRenderer:
- * previous owner frame -> current owner frame.  Nothing is written to camera, player,
+ * previous owner frame -> current owner frame. Nothing is written to camera, player,
  * owner, motion, look, collision, input, timing, or train state.
+ *
+ * The first verifier sampled only the first 480 render frames, which could finish on
+ * a straight before the saved route reached a bend. Keep a much longer bounded
+ * observation horizon, but decimate logging so artifact size stays bounded.
  */
 @Mixin(Camera.class)
 public abstract class MixinCameraExternalOwnerTurnTrace {
     @Shadow private Vec3 position;
 
     @Unique private static final Logger VS2_CAMERA_TURN_LOGGER = LogManager.getLogger("VS2-CameraTurn");
+    @Unique private static int vs2$cameraTurnCalls;
     @Unique private static int vs2$cameraTurnSamples;
 
     @Inject(
@@ -62,8 +67,10 @@ public abstract class MixinCameraExternalOwnerTurnTrace {
         final Integer ownerId = dragging.getExternalReferenceOwnerEntityId();
         if (ownerId == null) return;
 
+        final int call = ++vs2$cameraTurnCalls;
+        if (call > 18000) return;
+        if ((call % 10) != 0) return;
         final int sample = ++vs2$cameraTurnSamples;
-        if (sample > 480) return;
 
         final float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
         final Vector3dc addedMovement = dragging.getAddedMovementLastTick();
@@ -85,8 +92,6 @@ public abstract class MixinCameraExternalOwnerTurnTrace {
         );
         if (expectedCurrent == null) return;
 
-        // Measure current owner-frame yaw from the same local point.  This is observation only;
-        // it is never applied to player/camera look.
         final Vector3d localX = new Vector3d(previousLocal).add(1.0, 0.0, 0.0);
         final Vector3d currentX = ExternalReferenceFrameResolver.currentLocalToWorld(
             minecraft.level, ownerId, localX
@@ -101,11 +106,11 @@ public abstract class MixinCameraExternalOwnerTurnTrace {
         final double horizontalError = Math.hypot(dx, dz);
 
         VS2_CAMERA_TURN_LOGGER.info(
-            "REFERENCE_OWNER_V2_CAMERA_TURN_FRAME sample={} player_tick={} owner_id={} partial={} " +
+            "REFERENCE_OWNER_V2_CAMERA_TURN_FRAME sample={} call={} player_tick={} owner_id={} partial={} " +
             "camera_x={} camera_y={} camera_z={} expected_x={} expected_y={} expected_z={} " +
             "horizontal_error={} owner_heading={} player_x={} player_y={} player_z={} " +
             "camera_entity_is_player=true read_only=true",
-            sample, player.tickCount, ownerId, partialTick,
+            sample, call, player.tickCount, ownerId, partialTick,
             this.position.x, this.position.y, this.position.z,
             expectedCurrent.x(), expectedCurrent.y(), expectedCurrent.z(),
             horizontalError, ownerHeading,
@@ -121,4 +126,4 @@ if "MixinCameraExternalOwnerTurnTrace" not in client:
     client.append("MixinCameraExternalOwnerTurnTrace")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("CAMERA_TURN_TRACE installed=true injection=Camera.update_after_alignWithEntity external_owner_render_algorithm=mirrored read_only=true")
+print("CAMERA_TURN_TRACE installed=true injection=Camera.update_after_alignWithEntity external_owner_render_algorithm=mirrored read_only=true horizon_calls=18000 log_every=10")

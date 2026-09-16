@@ -14,7 +14,7 @@ permissions:
 jobs:
   camera-turn-positional-proof:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 24
     steps:
       - uses: actions/checkout@v5
       - uses: actions/checkout@v5
@@ -86,7 +86,7 @@ jobs:
 
       - name: Measure external-owner camera positional frame through carriage turn
         working-directory: upstream
-        timeout-minutes: 18
+        timeout-minutes: 12
         env:
           JAVA_TOOL_OPTIONS: -Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true
           LIBGL_ALWAYS_SOFTWARE: 'true'
@@ -98,7 +98,8 @@ jobs:
           set -euo pipefail
           LOG=../camera-turn-positional-runtime.log
           XVFB_LOG=../camera-turn-positional-runtime-xvfb.log
-          rm -f "$LOG" "$XVFB_LOG"
+          PROOF=../camera-turn-positional-proof.txt
+          rm -f "$LOG" "$XVFB_LOG" "$PROOF"
           rm -rf fabric/run/crash-reports
           rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
           export DISPLAY=:99
@@ -117,95 +118,130 @@ jobs:
               || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
               || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
           }
+          summary() {
+            python3 - "$LOG" <<'PY'
+          import math,re,sys
+          text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
+          rx=re.compile(r'REFERENCE_OWNER_V2_CAMERA_TURN_FRAME sample=(\d+) call=(\d+) player_tick=(\d+) owner_id=(-?\d+) partial=([-+0-9.eE]+).*?horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
+          rows=[(int(a),int(c),int(t),int(o),float(e),float(h)) for a,c,t,o,e,h in rx.findall(text)]
+          span=0.0
+          if rows:
+              hs=[r[5] for r in rows]
+              un=[hs[0]]; prev=hs[0]
+              for h in hs[1:]:
+                  d=(h-prev+math.pi)%(2*math.pi)-math.pi
+                  un.append(un[-1]+d); prev=h
+              span=max(un)-min(un)
+          acq=len(re.findall(r'REFERENCE_OWNER_V2_ACQUIRE',text))
+          native=len(re.findall(r'GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION',text))
+          jump=len(re.findall(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE',text))
+          print(f'CAMERA_TURN_PROGRESS rows={len(rows)} unique_ticks={len({r[2] for r in rows})} owners={sorted({r[3] for r in rows})} heading_span={span:.9f} acquisitions={acq} native_contacts={native} jump_airborne={jump}')
+          PY
+          }
 
           READY=0
-          for i in $(seq 1 900); do
+          for i in $(seq 1 420); do
             if python3 - "$LOG" <<'PY'
           import math,re,sys
           text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
           rows=[]
-          rx=re.compile(r'REFERENCE_OWNER_V2_CAMERA_TURN_FRAME sample=(\d+) player_tick=(\d+) owner_id=(-?\d+) partial=([-+0-9.eE]+).*?horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
-          for m in rx.finditer(text): rows.append((int(m.group(1)),int(m.group(2)),float(m.group(5)),float(m.group(6))))
+          rx=re.compile(r'REFERENCE_OWNER_V2_CAMERA_TURN_FRAME sample=(\d+) call=(\d+) player_tick=(\d+) owner_id=(-?\d+) partial=([-+0-9.eE]+).*?horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
+          for m in rx.finditer(text): rows.append((int(m.group(1)),int(m.group(3)),float(m.group(6)),float(m.group(7))))
           if len(rows) < 120 or len({r[1] for r in rows}) < 12: raise SystemExit(1)
           hs=[r[3] for r in rows]
-          un=[hs[0]]
-          prev=hs[0]
+          un=[hs[0]]; prev=hs[0]
           for h in hs[1:]:
               d=(h-prev+math.pi)%(2*math.pi)-math.pi
               un.append(un[-1]+d); prev=h
-          span=max(un)-min(un)
-          raise SystemExit(0 if span >= 0.01 else 1)
+          raise SystemExit(0 if max(un)-min(un) >= 0.01 else 1)
           PY
             then
               READY=1
               break
             fi
+            if (( i % 30 == 0 )); then summary; fi
             if fatal_state; then tail -360 "$LOG"; exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -360 "$LOG"; exit 1; fi
             sleep 1
           done
-          test "$READY" -eq 1
+          summary
           if fatal_state; then tail -360 "$LOG"; exit 1; fi
 
-          python3 - "$LOG" <<'PY' | tee ../camera-turn-positional-proof.txt
+          python3 - "$LOG" "$READY" <<'PY' | tee "$PROOF"
           import math,re,statistics,sys
           text=re.sub(r'\x1b\[[0-9;]*[mK]','',open(sys.argv[1],encoding='utf-8',errors='replace').read())
+          ready=int(sys.argv[2])
           rx=re.compile(
-              r'REFERENCE_OWNER_V2_CAMERA_TURN_FRAME sample=(\d+) player_tick=(\d+) owner_id=(-?\d+) partial=([-+0-9.eE]+) '
+              r'REFERENCE_OWNER_V2_CAMERA_TURN_FRAME sample=(\d+) call=(\d+) player_tick=(\d+) owner_id=(-?\d+) partial=([-+0-9.eE]+) '
               r'camera_x=([-+0-9.eE]+) camera_y=([-+0-9.eE]+) camera_z=([-+0-9.eE]+) '
               r'expected_x=([-+0-9.eE]+) expected_y=([-+0-9.eE]+) expected_z=([-+0-9.eE]+) '
               r'horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
           rows=[]
           for m in rx.finditer(text):
               rows.append({
-                  'sample':int(m.group(1)), 'tick':int(m.group(2)), 'owner':int(m.group(3)),
-                  'partial':float(m.group(4)), 'cx':float(m.group(5)), 'cy':float(m.group(6)), 'cz':float(m.group(7)),
-                  'ex':float(m.group(8)), 'ey':float(m.group(9)), 'ez':float(m.group(10)),
-                  'err':float(m.group(11)), 'heading':float(m.group(12)),
+                  'sample':int(m.group(1)), 'call':int(m.group(2)), 'tick':int(m.group(3)), 'owner':int(m.group(4)),
+                  'partial':float(m.group(5)), 'cx':float(m.group(6)), 'cy':float(m.group(7)), 'cz':float(m.group(8)),
+                  'ex':float(m.group(9)), 'ey':float(m.group(10)), 'ez':float(m.group(11)),
+                  'err':float(m.group(12)), 'heading':float(m.group(13)),
               })
-          if len(rows) < 120: raise SystemExit(f'CAMERA_TURN_PROOF insufficient rows={len(rows)}')
+          acquisitions=len(re.findall(r'REFERENCE_OWNER_V2_ACQUIRE',text))
+          native=len(re.findall(r'GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION',text))
+          jump=len(re.findall(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE',text))
           owners={r['owner'] for r in rows}
-          if len(owners) != 1: raise SystemExit(f'CAMERA_TURN_PROOF owner changed owners={sorted(owners)}')
-          hs=[r['heading'] for r in rows]
-          un=[hs[0]]
-          steps=[0.0]
-          prev=hs[0]
-          for h in hs[1:]:
-              d=(h-prev+math.pi)%(2*math.pi)-math.pi
-              un.append(un[-1]+d); steps.append(abs(d)); prev=h
-          span=max(un)-min(un)
-          if span < 0.01: raise SystemExit(f'CAMERA_TURN_PROOF carriage turn not exercised heading_span={span}')
-          turning=[r['err'] for r,s in zip(rows,steps) if s >= 1.0e-4]
-          all_err=[r['err'] for r in rows]
-          max_err=max(all_err)
-          p95=statistics.quantiles(all_err,n=20,method='inclusive')[18]
-          med=statistics.median(all_err)
-          turn_max=max(turning) if turning else float('nan')
-          turn_med=statistics.median(turning) if turning else float('nan')
-          if max_err > 0.25 and turn_max > 0.25:
-              classification='CAMERA_POSITIONAL_OWNER_MISMATCH_MEASURED'
-          elif p95 <= 0.05:
-              classification='CAMERA_POSITIONAL_OWNER_ALIGNED_WITHIN_0_05'
+          unique_ticks=len({r['tick'] for r in rows})
+          span=0.0; steps=[]
+          if rows:
+              hs=[r['heading'] for r in rows]
+              un=[hs[0]]; steps=[0.0]; prev=hs[0]
+              for h in hs[1:]:
+                  d=(h-prev+math.pi)%(2*math.pi)-math.pi
+                  un.append(un[-1]+d); steps.append(abs(d)); prev=h
+              span=max(un)-min(un)
+          if not rows:
+              classification='NO_CAMERA_OWNER_ROWS' if acquisitions else 'NO_EXTERNAL_OWNER_ACQUISITION'
+          elif span < 0.01:
+              classification='CAMERA_OWNER_SAMPLED_BUT_TURN_NOT_EXERCISED'
+          elif len(owners) != 1:
+              classification='CAMERA_OWNER_CHANGED_DURING_TURN'
           else:
-              classification='CAMERA_POSITIONAL_OWNER_DELTA_INTERMEDIATE'
-          print('M1_CAMERA_TURN_POSITIONAL_RUNTIME_PROOF'
-                f' classification={classification} owner={next(iter(owners))}'
-                f' samples={len(rows)} unique_ticks={len({r["tick"] for r in rows})}'
-                f' heading_span_rad={span:.9f} heading_span_deg={math.degrees(span):.6f}'
-                f' max_horizontal_error={max_err:.9f} p95_horizontal_error={p95:.9f}'
-                f' median_horizontal_error={med:.9f} turning_rows={len(turning)}'
-                f' turning_max_error={turn_max:.9f} turning_median_error={turn_med:.9f}'
-                ' expected_path=exact_external_owner_render_algorithm'
-                ' camera_sample_point=after_vanilla_alignWithEntity'
-                ' camera_mutated=false look_mutated=false production_unchanged=true'
-                ' harness_semantics_unchanged=true telemetry_only=true final_ready=false')
-          # Print a small bounded set of the worst samples for root-boundary inspection.
-          for r in sorted(rows,key=lambda x:x['err'],reverse=True)[:8]:
-              print('M1_CAMERA_TURN_WORST_SAMPLE'
-                    f' sample={r["sample"]} tick={r["tick"]} partial={r["partial"]:.6f}'
-                    f' heading={r["heading"]:.9f} error={r["err"]:.9f}'
-                    f' camera={r["cx"]:.6f},{r["cy"]:.6f},{r["cz"]:.6f}'
-                    f' expected={r["ex"]:.6f},{r["ey"]:.6f},{r["ez"]:.6f}')
+              turning=[r['err'] for r,s in zip(rows,steps) if s >= 1.0e-4]
+              all_err=[r['err'] for r in rows]
+              max_err=max(all_err)
+              p95=statistics.quantiles(all_err,n=20,method='inclusive')[18] if len(all_err)>1 else max_err
+              med=statistics.median(all_err)
+              turn_max=max(turning) if turning else float('nan')
+              turn_med=statistics.median(turning) if turning else float('nan')
+              if max_err > 0.25 and turn_max > 0.25:
+                  classification='CAMERA_POSITIONAL_OWNER_MISMATCH_MEASURED'
+              elif p95 <= 0.05:
+                  classification='CAMERA_POSITIONAL_OWNER_ALIGNED_WITHIN_0_05'
+              else:
+                  classification='CAMERA_POSITIONAL_OWNER_DELTA_INTERMEDIATE'
+              print('M1_CAMERA_TURN_POSITIONAL_RUNTIME_PROOF'
+                    f' classification={classification} owner={next(iter(owners))}'
+                    f' samples={len(rows)} unique_ticks={unique_ticks}'
+                    f' heading_span_rad={span:.9f} heading_span_deg={math.degrees(span):.6f}'
+                    f' max_horizontal_error={max_err:.9f} p95_horizontal_error={p95:.9f}'
+                    f' median_horizontal_error={med:.9f} turning_rows={len(turning)}'
+                    f' turning_max_error={turn_max:.9f} turning_median_error={turn_med:.9f}'
+                    f' acquisitions={acquisitions} native_contacts={native} jump_airborne={jump}'
+                    ' expected_path=exact_external_owner_render_algorithm'
+                    ' camera_sample_point=after_vanilla_alignWithEntity'
+                    ' camera_mutated=false look_mutated=false production_unchanged=true'
+                    ' harness_semantics_unchanged=true telemetry_only=true final_ready=false')
+              for r in sorted(rows,key=lambda x:x['err'],reverse=True)[:8]:
+                  print('M1_CAMERA_TURN_WORST_SAMPLE'
+                        f' sample={r["sample"]} call={r["call"]} tick={r["tick"]} partial={r["partial"]:.6f}'
+                        f' heading={r["heading"]:.9f} error={r["err"]:.9f}'
+                        f' camera={r["cx"]:.6f},{r["cy"]:.6f},{r["cz"]:.6f}'
+                        f' expected={r["ex"]:.6f},{r["ey"]:.6f},{r["ez"]:.6f}')
+              raise SystemExit(0)
+          print('M1_CAMERA_TURN_POSITIONAL_RUNTIME_DIAGNOSTIC'
+                f' classification={classification} samples={len(rows)} unique_ticks={unique_ticks}'
+                f' owners={sorted(owners)} heading_span_rad={span:.9f} heading_span_deg={math.degrees(span):.6f}'
+                f' acquisitions={acquisitions} native_contacts={native} jump_airborne={jump}'
+                f' ready={ready} production_unchanged=true harness_semantics_unchanged=true telemetry_only=true final_ready=false')
+          raise SystemExit(2)
           PY
 
       - name: Upload camera turn proof

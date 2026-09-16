@@ -1,0 +1,153 @@
+name: m1-reference-owner-v2-obb-temporal-only-path-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-obb-temporal-only-path-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  obb-temporal-only-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Compose exact production source and resolve Create dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+          cd upstream
+          chmod +x gradlew
+          ./gradlew --no-daemon :fabric:compileJava >/tmp/obb-temporal-only-compile.log 2>&1 || {
+            tail -200 /tmp/obb-temporal-only-compile.log
+            exit 1
+          }
+
+      - name: Classify supported temporal-only response path read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/obb-to && mkdir -p /tmp/obb-to
+          JAR=''
+          while IFS= read -r -d '' candidate; do
+            if jar tf "$candidate" 2>/dev/null | grep -q '^com/zurrtum/create/foundation/collision/ContinuousOBBCollider.class$' \
+              && jar tf "$candidate" 2>/dev/null | grep -q '^com/zurrtum/create/client/content/contraptions/ContraptionColliderClient.class$'; then
+              JAR="$candidate"
+              break
+            fi
+          done < <(find "$HOME/.gradle/caches" -type f -name '*.jar' -print0)
+          test -n "$JAR"
+          SHA="$(sha256sum "$JAR" | awk '{print $1}')"
+          test "$SHA" = 'd9c6cb6116d5caa1174a289ecd7d3cdd463ccef6e8db1249ab0bcfcd8c935870'
+          javap -classpath "$JAR" -p -c -l -constants 'com.zurrtum.create.foundation.collision.ContinuousOBBCollider' > /tmp/obb-to/collider.txt
+          javap -classpath "$JAR" -p -c -l -constants 'com.zurrtum.create.client.content.contraptions.ContraptionColliderClient' > /tmp/obb-to/client.txt
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          collider = Path('/tmp/obb-to/collider.txt').read_text(errors='replace')
+          client = Path('/tmp/obb-to/client.txt').read_text(errors='replace')
+
+          def method_block(text, token):
+              lines=text.splitlines()
+              starts=[i for i,l in enumerate(lines) if token in l]
+              if not starts: return ''
+              s=starts[0]; e=len(lines)
+              for i in range(s+1,len(lines)):
+                  if re.match(r'^  (public|private|protected|static)', lines[i]):
+                      e=i; break
+              return '\n'.join(lines[s:e])
+
+          prod=method_block(collider,' collideMany(')
+          cons=method_block(client,' collideEntities(')
+          if not prod or not cons:
+              raise SystemExit('exact Create methods unavailable')
+
+          # Site 1 is the explicit no-collision default: surface=false, response/normal/location ZERO, temporal=1.
+          default_path = all(x in prod for x in [
+              '342: putfield      #106',
+              '350: putfield      #113',
+              '358: putfield      #116',
+              '366: putfield      #119',
+              '371: dconst_1'
+          ])
+          # Site 2 dynamically writes every CollisionResponse field, so a surface=true + response=ZERO result can be a solved result.
+          solved_path = all(x in prod for x in [
+              '1336: putfield      #106',
+              '1354: putfield      #113',
+              '1372: putfield      #116',
+              '1390: putfield      #119',
+              '1397: putfield      #122'
+          ])
+          # Consumer independently derives responseNonZero and temporalAdjusted.
+          response_zero_test = all(x in cons for x in [
+              '496: getfield      #249',
+              '510: getstatic     #256',
+              '513: invokevirtual #259',
+              '524: istore        30'
+          ])
+          temporal_test = all(x in cons for x in [
+              '528: getfield      #263',
+              '531: dconst_1',
+              '533: ifeq          540',
+              '541: istore        31'
+          ])
+          # Temporal adjustment is computed before collisionResponse is transformed/consumed.
+          temporal_motion = all(x in cons for x in [
+              '543: iload         31',
+              '555: invokevirtual #267',
+              '565: getfield      #263',
+              '568: dmul',
+              '569: invokevirtual #273',
+              '572: astore        32'
+          ])
+          response_transform_later = '590: aload         28' in cons and '592: invokevirtual #277' in cons
+
+          if all([default_path, solved_path, response_zero_test, temporal_test, temporal_motion, response_transform_later]):
+              cls='CREATE_OBB_SUPPORTS_TEMPORAL_ONLY_SOLVED_RESPONSE'
+          else:
+              cls='CREATE_OBB_TEMPORAL_ONLY_CONTROL_FLOW_UNRESOLVED'
+
+          print('REFERENCE_OWNER_V2_OBB_TEMPORAL_ONLY_PATH_PROOF '
+                f'classification={cls} default_no_collision_path={str(default_path).lower()} '
+                f'dynamic_solved_path={str(solved_path).lower()} response_zero_test={str(response_zero_test).lower()} '
+                f'temporal_independent_test={str(temporal_test).lower()} temporal_motion_branch={str(temporal_motion).lower()} '
+                f'response_transform_after_temporal={str(response_transform_later).lower()} '
+                'read_only=true gameplay_mutation=false final_ready=false')
+
+          lines=cons.splitlines()
+          for target in [524,541,572,590,592]:
+              for i,line in enumerate(lines):
+                  if re.match(rf'\s*{target}:', line):
+                      print(f'REFERENCE_OWNER_V2_OBB_TEMPORAL_CONTROL_CONTEXT_BEGIN offset={target}')
+                      print('\n'.join(lines[max(0,i-10):min(len(lines),i+16)]))
+                      print(f'REFERENCE_OWNER_V2_OBB_TEMPORAL_CONTROL_CONTEXT_END offset={target}')
+                      break
+          PY

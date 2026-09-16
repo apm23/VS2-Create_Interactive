@@ -1,0 +1,159 @@
+name: m1-natural-landing-admission-boundary-proof
+
+on:
+  push:
+    paths:
+      - '.github/workflows/m1-natural-landing-admission-boundary-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  admission-boundary-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Verify pinned artifact metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          check_artifact() {
+            local id="$1" expected="$2"
+            actual="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/$id" | jq -r '.digest')"
+            test "$actual" = "$expected"
+          }
+          check_artifact 10433880714 'sha256:2bf9e1598489ea73cefaa87627345a20b9087ae397ef1c69a6488b8c4530b370'
+          check_artifact 10433634322 'sha256:9f36a7b465de1f3d4b8776c02806c1ef43e751ef4e47032fbf9073863177d96d'
+
+      - name: Download attempt1 exact artifact
+        uses: actions/download-artifact@v5
+        with:
+          artifact-ids: '10433880714'
+          path: evidence/attempt1
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: apm23/VS2-Create_Interactive
+
+      - name: Download attempt2 exact artifact
+        uses: actions/download-artifact@v5
+        with:
+          artifact-ids: '10433634322'
+          path: evidence/attempt2
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: apm23/VS2-Create_Interactive
+
+      - name: Prove repeated pre-jump admission exhaustion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          source_run = 35062245886
+          source_head = 'cb03574bd11d39ba21ef07e18ddfe7fc87c714ce'
+          a1_id = 10433880714
+          a2_id = 10433634322
+          a1_digest = 'sha256:2bf9e1598489ea73cefaa87627345a20b9087ae397ef1c69a6488b8c4530b370'
+          a2_digest = 'sha256:9f36a7b465de1f3d4b8776c02806c1ef43e751ef4e47032fbf9073863177d96d'
+
+          harness = Path('scripts/prepare_vs2_26_2_natural_landing_harness_v2.py').read_text(encoding='utf-8')
+          required_harness = [
+              'self.tickCount >= vs2$strafeStartTick + 15',
+              'Boolean.getBoolean("vs2.productionFixtureJumpFloorSupportNow")',
+              'vs2.phase170NativeContactApplicationTick',
+          ]
+          for token in required_harness:
+              if token not in harness:
+                  raise SystemExit('current harness lost admission anchor: ' + token)
+          forbidden = ['self.setPos(', 'self.setDeltaMovement(']
+          for token in forbidden:
+              if token in harness:
+                  raise SystemExit('natural landing harness unexpectedly contains direct motion mutation: ' + token)
+
+          def load(attempt):
+              p = Path(f'evidence/{attempt}/reference-owner-v2-natural-landing-v2.log')
+              if not p.exists():
+                  matches = list(Path(f'evidence/{attempt}').rglob('reference-owner-v2-natural-landing-v2.log'))
+                  if len(matches) != 1:
+                      raise SystemExit(f'missing exact {attempt} log')
+                  p = matches[0]
+              text = p.read_text(encoding='utf-8', errors='replace')
+              return re.sub(r'\x1b\[[0-9;]*[mK]', '', text)
+
+          def one(pattern, text, label):
+              m = re.search(pattern, text)
+              if not m:
+                  raise SystemExit('missing ' + label)
+              return m
+
+          def no_jump(text, label):
+              if re.search(r'GATE_E_M1_NATIVE_JUMP_REQUESTED|GATE_E_M1_NATIVE_JUMP_AIRBORNE', text):
+                  raise SystemExit(label + ' unexpectedly reached jump seam')
+
+          def support_rows(text, owner):
+              rows=[]
+              pat=re.compile(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=(\d+) physical_support=(true|false)')
+              for m in pat.finditer(text):
+                  if int(m.group(2)) == owner:
+                      rows.append((int(m.group(1)), m.group(3) == 'true'))
+              return rows
+
+          a1 = load('attempt1')
+          a2 = load('attempt2')
+
+          # Attempt1: reverse+strafe are genuinely support-qualified, but the +15 jump settle gate
+          # occurs after strict support on that owner has already ended.
+          one(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick=20 carriage_id=5[^\n]*confirmed=true', a1, 'attempt1 walk')
+          one(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick=25 support_tick=24 strict_create_support=true', a1, 'attempt1 reverse confirmation')
+          sr1 = one(r'GATE_E_M1_NATIVE_STRAFE_REQUESTED player_tick=(25)[^\n]*direction=right', a1, 'attempt1 strafe request')
+          one(r'GATE_E_M1_NATIVE_STRAFE_CONFIRMED player_tick=26 support_tick=25 strict_create_support=true', a1, 'attempt1 strafe confirmation')
+          no_jump(a1, 'attempt1')
+          rows1 = support_rows(a1, 5)
+          true1 = [t for t,v in rows1 if v]
+          if not true1:
+              raise SystemExit('attempt1 missing owner5 strict support')
+          last_true1 = max(true1)
+          first_false1 = min(t for t,v in rows1 if not v and t > last_true1)
+          strafe_start1 = int(sr1.group(1))
+          earliest_jump1 = strafe_start1 + 15
+          if not (last_true1 == 33 and first_false1 == 34 and earliest_jump1 == 40 and last_true1 < earliest_jump1):
+              raise SystemExit(f'attempt1 boundary mismatch last_true={last_true1} first_false={first_false1} earliest_jump={earliest_jump1}')
+          one(r'GATE_E_M1_JUMP_ARM_PREDICATES player_tick=35[^\n]*backward_confirmed=true[^\n]*strafe_confirmed=true[^\n]*floor_property=false[^\n]*final_jump_arm_ready=false', a1, 'attempt1 post-support jump gate')
+
+          # Attempt2: reverse is support-qualified, but support drops exactly on strafe start,
+          # so strafe can never qualify and therefore jump admission is impossible before the route is gone.
+          one(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick=38 carriage_id=10[^\n]*confirmed=true', a2, 'attempt2 walk')
+          one(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick=43 support_tick=42 strict_create_support=true', a2, 'attempt2 reverse confirmation')
+          sr2 = one(r'GATE_E_M1_NATIVE_STRAFE_REQUESTED player_tick=(43)[^\n]*direction=right', a2, 'attempt2 strafe request')
+          if re.search(r'GATE_E_M1_NATIVE_STRAFE_CONFIRMED', a2):
+              raise SystemExit('attempt2 unexpectedly confirmed strafe')
+          one(r'GATE_E_M1_NATIVE_STRAFE_REJECTED_NO_CREATE_SUPPORT player_tick=44 motion_tick=43 support_tick=43 support_now=false', a2, 'attempt2 first strafe support rejection')
+          no_jump(a2, 'attempt2')
+          rows2 = support_rows(a2, 10)
+          true2 = [t for t,v in rows2 if v]
+          if not true2:
+              raise SystemExit('attempt2 missing owner10 strict support')
+          last_true2 = max(true2)
+          first_false2 = min(t for t,v in rows2 if not v and t > last_true2)
+          strafe_start2 = int(sr2.group(1))
+          hypothetical_earliest_jump2 = strafe_start2 + 15
+          if not (last_true2 == 42 and first_false2 == 43 and hypothetical_earliest_jump2 == 58 and first_false2 <= strafe_start2):
+              raise SystemExit(f'attempt2 boundary mismatch last_true={last_true2} first_false={first_false2} earliest_jump={hypothetical_earliest_jump2}')
+          one(r'GATE_E_M1_JUMP_ARM_PREDICATES player_tick=44[^\n]*backward_confirmed=true[^\n]*strafe_confirmed=false[^\n]*floor_property=false[^\n]*final_jump_arm_ready=false', a2, 'attempt2 post-support jump gate')
+
+          classification = 'REPRODUCIBLE_PRE_JUMP_ADMISSION_ROUTE_EXHAUSTS_STRICT_SUPPORT'
+          print('M1_NATURAL_LANDING_ADMISSION_BOUNDARY_PROOF classification=' + classification +
+                f' source_run={source_run} source_head={source_head}' +
+                f' attempt1_artifact={a1_id} attempt1_digest={a1_digest} attempt1_strafe_start={strafe_start1}' +
+                f' attempt1_last_strict_support={last_true1} attempt1_first_support_false={first_false1} attempt1_earliest_jump={earliest_jump1}' +
+                f' attempt2_artifact={a2_id} attempt2_digest={a2_digest} attempt2_strafe_start={strafe_start2}' +
+                f' attempt2_last_strict_support={last_true2} attempt2_first_support_false={first_false2} attempt2_hypothetical_earliest_jump={hypothetical_earliest_jump2}' +
+                ' jump_reached_attempt1=false jump_reached_attempt2=false production_physics_inference=false verifier_only=true harness_mutation=false final_ready=false')
+          PY

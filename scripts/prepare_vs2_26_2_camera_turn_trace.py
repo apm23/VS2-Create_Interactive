@@ -35,9 +35,9 @@ import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
  * previous owner frame -> current owner frame. Nothing is written to camera, player,
  * owner, motion, look, collision, input, timing, or train state.
  *
- * The first verifier sampled only the first 480 render frames, which could finish on
- * a straight before the saved route reached a bend. Keep a much longer bounded
- * observation horizon, but decimate logging so artifact size stays bounded.
+ * Run 35113644070 proved Camera.update is sparse in this headless fixture but does see
+ * LocalPlayer + provider + active external owner + resolvable transforms. Therefore do
+ * not decimate active-owner callbacks here: every such callback is a useful turn sample.
  */
 @Mixin(Camera.class)
 public abstract class MixinCameraExternalOwnerTurnTrace {
@@ -68,8 +68,7 @@ public abstract class MixinCameraExternalOwnerTurnTrace {
         if (ownerId == null) return;
 
         final int call = ++vs2$cameraTurnCalls;
-        if (call > 18000) return;
-        if ((call % 10) != 0) return;
+        if (call > 4096) return;
         final int sample = ++vs2$cameraTurnSamples;
 
         final float partialTick = deltaTracker.getGameTimeDeltaPartialTick(true);
@@ -126,4 +125,4 @@ if "MixinCameraExternalOwnerTurnTrace" not in client:
     client.append("MixinCameraExternalOwnerTurnTrace")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("CAMERA_TURN_TRACE installed=true injection=Camera.update_after_alignWithEntity external_owner_render_algorithm=mirrored read_only=true horizon_calls=18000 log_every=10")
+print("CAMERA_TURN_TRACE installed=true injection=Camera.update_after_alignWithEntity external_owner_render_algorithm=mirrored read_only=true horizon_calls=4096 log_every=1")

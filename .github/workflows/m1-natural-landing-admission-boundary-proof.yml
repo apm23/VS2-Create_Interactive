@@ -32,23 +32,23 @@ jobs:
           check_artifact 10433880714 'sha256:2bf9e1598489ea73cefaa87627345a20b9087ae397ef1c69a6488b8c4530b370'
           check_artifact 10433634322 'sha256:9f36a7b465de1f3d4b8776c02806c1ef43e751ef4e47032fbf9073863177d96d'
 
-      - name: Download attempt1 exact artifact
-        uses: actions/download-artifact@v5
-        with:
-          artifact-ids: '10433880714'
-          path: evidence/attempt1
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: apm23/VS2-Create_Interactive
-          run-id: '35062245886'
-
-      - name: Download attempt2 exact artifact
-        uses: actions/download-artifact@v5
-        with:
-          artifact-ids: '10433634322'
-          path: evidence/attempt2
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: apm23/VS2-Create_Interactive
-          run-id: '35062245886'
+      - name: Download exact pinned artifacts by ID
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          download_artifact() {
+            local id="$1" dest="$2"
+            mkdir -p "$dest"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/$id/zip" \
+              -o "$dest/artifact.zip"
+            unzip -q "$dest/artifact.zip" -d "$dest"
+            rm "$dest/artifact.zip"
+          }
+          download_artifact 10433880714 evidence/attempt1
+          download_artifact 10433634322 evidence/attempt2
 
       - name: Prove repeated pre-jump admission exhaustion
         shell: bash

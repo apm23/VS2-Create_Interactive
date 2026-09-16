@@ -1,0 +1,55 @@
+name: m1-current-create-frame-continuity-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-current-create-frame-continuity-proof.yml'
+      - 'scripts/prove_current_create_frame_continuity.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prove-current-create-frame-continuity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify pinned valid-jump artifact identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="$(gh api repos/apm23/VS2-Create_Interactive/actions/artifacts/10444135201 --jq '.digest')"
+          test "$digest" = 'sha256:62dc537d525cf2f5375892157583e024cfa2c03b314df98a33aca0d09f8810ce'
+          echo "PINNED_VALID_JUMP_ARTIFACT id=10444135201 digest=$digest run=35089177675 head=012d92dabb86cac5571d5d320eea9fa77ea539d6"
+      - name: Download exact valid-jump artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf proof-artifact
+          mkdir proof-artifact
+          gh run download 35089177675 -n current-production-post-arc-owner-log -D proof-artifact
+          test -s proof-artifact/current-production-post-arc-owner.log
+      - name: Prove current Create collision-frame continuity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/prove_current_create_frame_continuity.py proof-artifact/current-production-post-arc-owner.log | tee current-create-frame-continuity-proof.txt
+          grep -q 'CURRENT_CREATE_COLLISION_FRAME_CONTINUITY_PROOF' current-create-frame-continuity-proof.txt
+          grep -q 'current_Create_collision_frame_remains_continuous_through_observed_rotation_updates=true' current-create-frame-continuity-proof.txt
+          grep -q 'resolver_patch_not_authorized_from_old_mismatch=true' current-create-frame-continuity-proof.txt
+          grep -q 'Create_collision_authority_unchanged=true' current-create-frame-continuity-proof.txt
+      - name: Upload corrected root-boundary proof
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: current-create-frame-continuity-proof
+          path: current-create-frame-continuity-proof.txt
+          if-no-files-found: warn

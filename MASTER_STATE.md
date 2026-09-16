@@ -12,16 +12,19 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- `current_head`: `5d66fdc4f71e760f04b417af3e531381a65cd8a9` immediately before this ledger-only reconciliation commit.
-- project_state: `ROOT_REDESIGN — VALID-JUMP EVIDENCE NOW PROVES THE EXTERNAL OWNER LIFECYCLE AND THE PLAYER'S CURRENT CREATE COLLISION-FRAME COORDINATES REMAIN CONTINUOUS THROUGH THE OBSERVED ROTATION UPDATES. THE PREVIOUS 134f OLD-toLocalVector/PARTIAL-0 MISMATCH WAS A PREVIOUS-ROTATION DIAGNOSTIC FRAME MISMATCH, NOT PROOF OF RESOLVER FAILURE. THE DIRECT USER WALL/TURN/CAMERA REGRESSION STILL REOPENS M1. NO NEW GAMEPLAY PATCH IS AUTHORIZED UNTIL THE WALL/CEILING RESPONSE OR PLAYER/CAMERA REFERENCE-FRAME SEAM IS DIRECTLY LOCALIZED.`
+- `current_head`: `465b517ede2574155a7decbc18e8917de7fe4b9a` immediately before this ledger-only reconciliation commit.
+- project_state: `ROOT_REDESIGN — CURRENT CREATE COLLISION-FRAME CONTINUITY REMAINS PROTECTED. SOURCE MAPPING NOW PROVES CREATE HAS THE AUTHORITATIVE WALL/CEILING RESPONSE WRITERS, AND THE PINNED VALID-JUMP ARTIFACT PROVES ALL OBSERVED HORIZONTAL WALL CONTACTS USE VALID TEMPORAL-ONLY OBB RESOLUTION. THERE IS NO UNRESOLVED ZERO-RESPONSE WALL EVIDENCE AND NO GAMEPLAY WALL PATCH IS AUTHORIZED FROM THOSE ROWS. HOWEVER, THE PINNED ARTIFACT NEVER EXERCISED AN OVERHEAD CEILING CONTACT, DID NOT DIRECTLY CORRELATE THOSE WALL ROWS TO A FINAL CREATE setPos WRITER, AND THE EXTERNAL-OWNER CAMERA POSITIONAL FRAME DURING TURNS REMAINS RUNTIME-UNPROVEN. THE DIRECT USER WALL/TURN/CAMERA REGRESSION STILL REOPENS M1.`
 - latest gameplay implementation: `9aea12a6114198c33c70d52897eb9d3c29342425` (`Refresh jump owner from exact Create grounded carry contact`).
-- latest post-arc proof trigger: `a2b685f6015d77bf76162e403a7158d0d378de5c`.
-- latest corrected verifier head: `5d66fdc4f71e760f04b417af3e531381a65cd8a9` (`Prove current Create frame continuity across rotation updates`).
-- latest corrected proof: workflow `m1-current-create-frame-continuity-proof`, run `35100081357`, job `104806995883`, SUCCESS.
-- corrected proof artifact: `10447812797`, artifact zip SHA256 `cf2c150d3ace8dc75e7ebacdef6ef13f3c08cbaccdf8201ad30938e0e22bf655`.
+- latest source-map verifier head: `094218f888702665f337443bedd544dbee6fc04d` (`Map wall ceiling and camera response seams`).
+- latest pinned contact classifier head: `c5267cc6b82da1e6be2723bc341c3ab887b1e8c4` (`Classify pinned wall and ceiling OBB contacts`).
+- latest wall temporal-response verifier head: `465b517ede2574155a7decbc18e8917de7fe4b9a` (`Classify pinned wall temporal response path`).
+- source-map workflow `m1-wall-ceiling-camera-source-map`, run `35101691613`, SUCCESS; artifact `10448192299`, zip SHA256 `c9e19ec866b671a7820e3b80c0b5ad002e7c3cc37c42f48d0aaffafbb12b985d`.
+- pinned wall/ceiling contact workflow `m1-pinned-wall-ceiling-contact-proof`, run `35104224078`, SUCCESS; artifact `10450080515`, zip SHA256 `9614041999295ef68bd6e908e394c1954f2394519144b76b2447f632d0221e85`.
+- pinned wall temporal/writer workflow `m1-pinned-wall-response-writer-proof`, run `35104523803`, SUCCESS; artifact `10449412710`, zip SHA256 `4ab40a457a756db47bd141510387fad607aad9421de44bd09a9c52b4977d5584`.
+- corrected current-frame proof remains workflow `m1-current-create-frame-continuity-proof`, run `35100081357`, SUCCESS.
 - final_ready: `false`.
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`; never ask user to retest it.
-- active blocker: localize the exact wall/ceiling collision-response and player render/camera reference-frame boundary during turn/jump using Create's current `worldToLocalPos` collision frame. Do not use the old `toLocalVector(..., 0)` diagnostic as current-frame evidence.
+- active blocker: directly instrument/measure the still-unproven overhead-ceiling response and player-vs-camera positional reference frame during carriage turns. Preserve Create collision authority and free look. Wall temporal-only rows are no longer an authorization source for a gameplay patch.
 - no relevant blocker workflow is active at this ledger point.
 - known invalid workflow noise: `.github/workflows/m1-reference-owner-v2-airborne-drag-boundary-proof-v2.yml` emits instant zero-job failures; ignore it.
 
@@ -56,13 +59,18 @@ This direct runtime evidence overrides automated M1 green and blocks `FINAL_READ
 - native drag gate run `35045444238`: `EXTERNAL_OWNER_NATIVE_GATE_NOT_REJECTING`; do not patch `isDraggable` / `vs$shouldDrag`.
 - body writer verifier `35048234680` over `35046701119`: existing VS2 boundingBox/setPos writer applies its calculated step exactly; do not add or replace a body-position writer.
 - corrected current-frame run `35100081357`: current Create collision-frame coordinates remain continuous through observed jump-arc rotation updates; resolver patch is not authorized from the old partial-0 mismatch.
+- source-map run `35101691613`: Create current-world-to-local OBB path, horizontal wall-axis clipping, vertical Y clipping, response `setPos`, and surface contact-motion writer are present; legacy Phase205 duplicate authority is removed; external-owner render interpolation is present; camera owner files remain absent (`camera_owner_files=0`).
 
 ## OBB / collision semantics — FROZEN_GREEN for the proven boundary
 - runtime `35031106237`: owner/carriage matched through support loss and Create callbacks continued.
 - runs `35037369180`, `35037534677`, `35039049624`, `35040491258`: temporal-only solved response is valid.
 - verifier `35041914462`: `ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_TEMPORAL_ONLY`.
 - `surface=true + collisionResponse=ZERO + 0<temporal<1` is valid Create behavior; do not reinterpret it as failure.
-- The direct-user wall/ceiling/turn regression is NOT frozen green; only the above tested OBB semantics are protected.
+- pinned contact run `35104224078`: 128 OBB rows, 53 surface rows, 7 horizontal wall-direction rows at ticks `[26,27,28,29,31,52,60]`; no overhead ceiling-direction row was observed.
+- pinned wall-response run `35104523803`: all 7 wall rows are valid temporal-only responses; `temporal_only_rows=7`, `unresolved_zero_rows=0`, `nonzero_response_rows=0`, temporals `[0.710437968,0.710017131,0.7097019,0.711176538,0.483729387,0.984695356,0.821042984]`; all 7 have nearby LocalPlayer `collide` consumption telemetry. No gameplay wall response rewrite is authorized from these rows.
+- the same artifact had `create_setpos_neighborhood_rows=0`, so exact final Create position-writer correlation for those wall rows is not yet proven by this artifact.
+- ceiling contact remains unexercised in the pinned valid-jump artifact (`ceiling_rows=0`).
+- The direct-user wall/ceiling/turn regression is NOT globally frozen green; only the tested current-frame and temporal-response semantics above are protected.
 
 ## Lifecycle history / current production
 - verifier `35048427002`: first false clear was grounded-contact expiry on native jump tick; production `a14260c...` corrected that narrow failure.
@@ -117,6 +125,7 @@ This does not negate the user's wall/turn/camera failure. It only prevents a fal
 - owner-cap lag proof `35071088843`;
 - fixture arbitration boundaries `35084762923`, `35085286003`;
 - current Create collision-frame continuity across observed jump-arc rotations `35100081357`;
+- pinned wall temporal-only response semantics `35104523803`;
 - historical user-proven floor solidity and grounded walking.
 
 ## FAILED_HYPOTHESES / anti-loop
@@ -137,7 +146,7 @@ Do not reintroduce without new direct evidence:
 - harness mutation used to manufacture physics GREEN;
 - blind resolver prev/current/yaw/point semantic changes after `35023234306` and corrected proof `35100081357`;
 - treating the old `toLocalVector(...,0)` diagnostic mismatch as a current Create collision-frame failure;
-- treating temporal-only zero collisionResponse as failure;
+- treating temporal-only zero collisionResponse as failure, including the exact pinned wall rows proven in `35104523803`;
 - patching `isDraggable`/`vs$shouldDrag` after `35045444238`;
 - adding/replacing a body-position writer after `35048234680`;
 - changing Phase64 grounding/Y-clip merely because its source location is known;
@@ -145,14 +154,15 @@ Do not reintroduce without new direct evidence:
 - changing the server `firstOrNull` initial fixture carriage selector from the admitted/current divergence.
 
 ## next_safe_action
-1. Preserve the proven external-owner lifecycle, resolver prev/current pairing, native drag gate, existing VS2 body writer, and Create collision authority.
-2. Source-map the exact post-EntityDragger Create collision path for horizontal wall and overhead ceiling contacts. Prove which current-frame OBB normal/response reaches each `setPos`/motion writer; do not infer wall behavior from floor support.
-3. Source-map the player render/camera positional reference-frame path during carriage yaw/turn separately from mouse/look orientation. Free look must remain uncoupled; no direct camera compensation.
-4. If existing artifacts cannot exercise wall/ceiling contact, add the smallest read-only instrumentation at the current `worldToLocalPos` collision seam and render/camera seam. Instrument before/after current collision-local position, OBB normal/response/surface/temporal response, final Create collision `setPos`, and player-vs-camera positional frame. Do not mutate motion, collision, camera, input, or timing.
-5. Only a direct current-frame invariance failure or missing/incorrect Create wall/ceiling response may authorize one gameplay hypothesis. One commit = one hypothesis.
-6. If a gameplay patch regresses any frozen-green criterion, revert before stacking another workaround.
-7. After wall/ceiling and turn/camera are genuinely green, rerun natural landing / movement proof, then proceed toward M1 completion.
-8. Automated proof alone can never set `FINAL_READY`; exact final JAR still requires direct user runtime acceptance.
+1. Preserve the proven external-owner lifecycle, resolver prev/current pairing, native drag gate, existing VS2 body writer, Create collision authority, and the newly proven pinned wall temporal-only semantics.
+2. Do not patch horizontal wall OBB response from the pinned rows: run `35104523803` proves all seven observed wall-direction contacts are valid temporal-only and none is unresolved-zero.
+3. Add the smallest read-only runtime instrumentation/harness that genuinely exercises an overhead ceiling contact in Create's current `worldToLocalPos` frame. Record OBB normal/response/surface/temporal, final `collide` result, and the final Create position/motion writer with player tick. Do not mutate position, motion, onGround, collision, input, timing, gravity, or train state.
+4. Separately instrument the player-vs-camera positional frame during carriage yaw/turn at `Camera.update` immediately after vanilla `alignWithEntity`, while preserving mouse/look orientation. Compare camera position against the external-owner player render/reference position; do not counter-rotate or force camera state.
+5. If wall behavior must be revisited later, first add tick-bearing final Create `setPos` correlation; the current pinned artifact has all seven wall rows near `collide` consumption but no direct final Create `setPos` neighborhood proof.
+6. Only a direct current-frame invariance failure, missing/incorrect Create ceiling response, or measured player-camera positional-frame mismatch may authorize one gameplay hypothesis. One commit = one hypothesis.
+7. If a gameplay patch regresses any frozen-green criterion, revert before stacking another workaround.
+8. After ceiling and turn/camera are genuinely green, rerun wall solidity with final-writer correlation plus natural landing / movement proof, then proceed toward M1 completion.
+9. Automated proof alone can never set `FINAL_READY`; exact final JAR still requires direct user runtime acceptance.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 Automated proof can never alone set `FINAL_READY`. A new exact JAR must pass direct user runtime for stable standing, forward/back/strafe/sprint, jump+airborne+natural landing, floor/walls/ceiling, turns, acceleration/deceleration/speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look. The watchdog local SHA gate must match that exact accepted JAR.

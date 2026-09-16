@@ -38,6 +38,10 @@ import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
  * Run 35113644070 proved Camera.update is sparse in this headless fixture but does see
  * LocalPlayer + provider + active external owner + resolvable transforms. Therefore do
  * not decimate active-owner callbacks here: every such callback is a useful turn sample.
+ * Run 35120320374 then observed only one active-owner sample before ownership disappeared.
+ * Keep the last observed owner id only inside this telemetry mixin and continue sampling
+ * its current transform once per player tick after release. This distinguishes an owner
+ * lifecycle loss before a real carriage turn from a fixture that never exercises a turn.
  */
 @Mixin(Camera.class)
 public abstract class MixinCameraExternalOwnerTurnTrace {
@@ -46,6 +50,8 @@ public abstract class MixinCameraExternalOwnerTurnTrace {
     @Unique private static final Logger VS2_CAMERA_TURN_LOGGER = LogManager.getLogger("VS2-CameraTurn");
     @Unique private static int vs2$cameraTurnCalls;
     @Unique private static int vs2$cameraTurnSamples;
+    @Unique private static Integer vs2$lastObservedExternalOwnerId;
+    @Unique private static int vs2$lastOwnerTimelineTick = Integer.MIN_VALUE;
 
     @Inject(
         method = "update",
@@ -63,9 +69,47 @@ public abstract class MixinCameraExternalOwnerTurnTrace {
         if (!(player instanceof IEntityDraggingInformationProvider provider)) return;
 
         final EntityDraggingInformation dragging = provider.getDraggingInformation();
-        if (!dragging.isEntityBeingDraggedByExternalReference()) return;
+        final boolean activeExternalOwner = dragging.isEntityBeingDraggedByExternalReference();
         final Integer ownerId = dragging.getExternalReferenceOwnerEntityId();
-        if (ownerId == null) return;
+        if (activeExternalOwner && ownerId != null) {
+            vs2$lastObservedExternalOwnerId = ownerId;
+        }
+
+        final Integer trackedOwnerId = ownerId != null ? ownerId : vs2$lastObservedExternalOwnerId;
+        if (trackedOwnerId != null && player.tickCount != vs2$lastOwnerTimelineTick) {
+            vs2$lastOwnerTimelineTick = player.tickCount;
+            final Vector3d timelineOrigin = ExternalReferenceFrameResolver.currentLocalToWorld(
+                minecraft.level, trackedOwnerId, new Vector3d(0.0, 0.0, 0.0)
+            );
+            final Vector3d timelineX = ExternalReferenceFrameResolver.currentLocalToWorld(
+                minecraft.level, trackedOwnerId, new Vector3d(1.0, 0.0, 0.0)
+            );
+            final boolean timelineTransformResolved = timelineOrigin != null && timelineX != null;
+            double timelineHeading = Double.NaN;
+            if (timelineTransformResolved) {
+                timelineHeading = Math.atan2(
+                    timelineX.z() - timelineOrigin.z(),
+                    timelineX.x() - timelineOrigin.x()
+                );
+            }
+            VS2_CAMERA_TURN_LOGGER.info(
+                "REFERENCE_OWNER_V2_CAMERA_OWNER_TIMELINE player_tick={} active_external={} current_owner_id={} " +
+                "tracked_owner_id={} owner_age={} on_ground={} transform_resolved={} owner_heading={} " +
+                "camera_x={} camera_y={} camera_z={} player_x={} player_y={} player_z={} read_only=true",
+                player.tickCount,
+                activeExternalOwner,
+                ownerId,
+                trackedOwnerId,
+                dragging.getTicksSinceExternalReferenceOwner(),
+                player.onGround(),
+                timelineTransformResolved,
+                timelineHeading,
+                this.position.x, this.position.y, this.position.z,
+                player.getX(), player.getY(), player.getZ()
+            );
+        }
+
+        if (!activeExternalOwner || ownerId == null) return;
 
         final int call = ++vs2$cameraTurnCalls;
         if (call > 4096) return;
@@ -125,4 +169,4 @@ if "MixinCameraExternalOwnerTurnTrace" not in client:
     client.append("MixinCameraExternalOwnerTurnTrace")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("CAMERA_TURN_TRACE installed=true injection=Camera.update_after_alignWithEntity external_owner_render_algorithm=mirrored read_only=true horizon_calls=4096 log_every=1")
+print("CAMERA_TURN_TRACE installed=true injection=Camera.update_after_alignWithEntity external_owner_render_algorithm=mirrored read_only=true horizon_calls=4096 log_every=1 post_release_owner_heading_timeline=true")

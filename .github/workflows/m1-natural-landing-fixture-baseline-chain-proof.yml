@@ -1,0 +1,91 @@
+name: m1-natural-landing-fixture-baseline-chain-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-natural-landing-fixture-baseline-chain-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  fixture-baseline-chain-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prove source chain
+        shell: bash
+        run: |
+          set -euo pipefail
+          P55=scripts/prepare_vs2_26_2_phase55.py
+          P71=scripts/prepare_vs2_26_2_phase71.py
+          P154=scripts/prepare_vs2_26_2_phase154.py
+          grep -Fq 'Entity carriage = carriageCandidates.stream()' "$P55"
+          grep -Fq '.min(Comparator.comparingDouble(entity -> entity.distanceToSqr(player)))' "$P55"
+          grep -Fq 'arbitration=nearest_entity_center' "$P55"
+          grep -Fq 'if (!carryBaselineCaptured && createRegisteredContact && player.onGround())' "$P71"
+          grep -Fq 'carryBaselineCarriageId = carriage.getId();' "$P71"
+          grep -Fq 'phase154Carriage = client.level.getEntity(carryBaselineCarriageId);' "$P154"
+          grep -Fq 'GATE_E_PHASE154_FIXTURE_WALK_START' "$P154"
+
+      - name: Download pinned admitted/current artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api() { curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$1"; }
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10434807961 | jq -r '.digest')" = 'sha256:ee7da59e8eebd01e017c023175e1845db04ed5ffd0dca8ab8d4720c98d4a236a'
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10439801138 | jq -r '.digest')" = 'sha256:6d6f6a3eb2e1683f7599c5466716e03db01897dedfc5a8daa5bdcb97bafc78b0'
+          for spec in '10434807961 admitted' '10439801138 current'; do
+            set -- $spec
+            mkdir -p "evidence/$2"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/$1/zip" -o "evidence/$2.zip"
+            unzip -q "evidence/$2.zip" -d "evidence/$2"
+          done
+
+      - name: Prove selected carriage becomes fixture baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(root):
+              p=list(Path(root).rglob('reference-owner-v2-natural-landing-v2.log'))
+              if len(p)!=1: raise SystemExit(f'expected one log in {root}, got {p}')
+              return re.sub(r'\x1b\[[0-9;]*[mK]','',p[0].read_text(errors='replace'))
+
+          def req(pattern,text,label):
+              m=re.search(pattern,text)
+              if not m: raise SystemExit('missing '+label)
+              return m
+
+          admitted=load('evidence/admitted')
+          current=load('evidence/current')
+
+          req(r'GATE_E_CARRIAGE_SELECTION player_tick=14 selected_id=8[^\n]*arbitration=nearest_entity_center',admitted,'admitted nearest selection id8')
+          req(r'GATE_E_CLIENT_CARRY_BASELINE carriage_id=8[^\n]*contact=true on_ground=true',admitted,'admitted baseline id8')
+          req(r'GATE_E_PHASE154_FIXTURE_WALK_START player_tick=19 carriage_id=8',admitted,'admitted walk id8')
+          if re.search(r'GATE_E_CLIENT_CARRY_REBASE',admitted): raise SystemExit('admitted unexpectedly rebased after capture')
+
+          req(r'GATE_E_CARRIAGE_SELECTION player_tick=14 selected_id=2[^\n]*arbitration=nearest_entity_center',current,'current nearest selection id2')
+          req(r'GATE_E_CLIENT_CARRY_BASELINE carriage_id=2[^\n]*contact=true on_ground=true',current,'current baseline id2')
+          req(r'GATE_E_PHASE154_FIXTURE_WALK_START player_tick=22 carriage_id=2',current,'current walk id2')
+          if re.search(r'GATE_E_CLIENT_CARRY_REBASE',current): raise SystemExit('current unexpectedly rebased after capture')
+          if re.search(r'GATE_E_M1_NATIVE_JUMP_REQUESTED|GATE_E_M1_NATIVE_JUMP_AIRBORNE',current):
+              raise SystemExit('current unexpectedly reached jump')
+
+          print('M1_NATURAL_LANDING_FIXTURE_BASELINE_CHAIN_PROOF '
+                'classification=NEAREST_CENTER_SELECTED_CARRIAGE_FEEDS_CONTACT_BASELINE_THEN_FIXTURE_WALK '
+                ' admitted_selection=8 admitted_baseline=8 admitted_walk=8 admitted_walk_tick=19'
+                ' current_selection=2 current_baseline=2 current_walk=2 current_walk_tick=22'
+                ' current_jump_reached=false fixture_admission_chain=true production_owner_logic_unchanged=true'
+                ' gameplay_patch_authorized=false verifier_only=true final_ready=false')
+          PY

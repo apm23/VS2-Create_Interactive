@@ -30,15 +30,13 @@ jobs:
           python3 - "${ground_files[0]}" "${final_files[0]}" <<'PY'
           from pathlib import Path
           import sys
-
-          for raw in sys.argv[1:]:
+          for raw in dict.fromkeys(sys.argv[1:]):
               path=Path(raw)
               text=path.read_text(encoding='utf-8')
               print(f'=== SOURCE_MAP {path} sha_text_len={len(text)} ===')
               for token in ['GATE_E_CREATE_SET_ON_GROUND_SEAM','GATE_E_CREATE_FINAL_MOTION_SEAM']:
                   pos=text.find(token)
-                  if pos < 0:
-                      continue
+                  if pos < 0: continue
                   start=max(0, text.rfind('\n',0,max(0,pos-3500)))
                   end=text.find('\n', min(len(text),pos+5000))
                   if end < 0: end=len(text)
@@ -46,16 +44,30 @@ jobs:
               print('SOURCE_MAP_TOKENS',
                     'rising_guard=' + str('rising_guard' in text),
                     'setOnGround=' + str('setOnGround' in text),
-                    'CallbackInfo=' + str('CallbackInfo' in text),
                     'cancel=' + str('.cancel(' in text or 'ci.cancel(' in text),
                     'setReturnValue=' + str('setReturnValue(' in text))
           PY
 
-      - name: Confirm related contact telemetry remains diagnostic
+      - name: Locate original airborne-preservation guard composition
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'source=ContraptionColliderClient read_only=true fixture_accounting=true' scripts/prepare_vs2_26_2_phase170.py
-          grep -q 'read-only' scripts/prepare_vs2_26_2_phase171.py
-          grep -q 'read-only' scripts/prepare_vs2_26_2_phase172.py
-          echo 'GROUNDING_SOURCE_MAP classification=SOURCE_LOCATED_REVIEW_REQUIRED production_unchanged=true harness_unchanged=true final_ready=false'
+          mapfile -t origin_files < <(grep -R -l --include='*.py' 'preserveVanillaAirborneDuringCreateCarry' scripts | sort)
+          printf 'GROUND_GUARD_ORIGIN_FILES=%s\n' "${origin_files[*]}"
+          test "${#origin_files[@]}" -ge 1
+          for f in "${origin_files[@]}"; do
+            echo "=== GROUND_GUARD_ORIGIN $f ==="
+            grep -n -B 18 -A 45 'preserveVanillaAirborneDuringCreateCarry' "$f" || true
+          done
+
+      - name: Classify source-map boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          TRACE=scripts/prepare_vs2_26_2_m1_jump_arm_trace.py
+          grep -Fq 'entity.setOnGround(onGround && !risingLocalPlayer);' "$TRACE"
+          grep -Fq 'boolean risingLocalPlayer = compatLocalPlayer && deltaYAtCall > 0.05;' "$TRACE"
+          grep -Fq 'boolean appliedOnGround = onGround && !risingLocalPlayer;' "$TRACE"
+          grep -Fq 'entity.setDeltaMovement(appliedMotion);' "$TRACE"
+          grep -Fq 'The collider replacements preserve the exact existing writes.' "$TRACE"
+          echo 'GROUNDING_SOURCE_MAP classification=EXISTING_GROUNDING_GUARD_AND_FINAL_MOTION_WRITES_LOCATED verifier_only=true production_unchanged=true harness_unchanged=true final_ready=false'

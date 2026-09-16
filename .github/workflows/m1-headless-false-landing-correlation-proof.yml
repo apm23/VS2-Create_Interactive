@@ -1,0 +1,97 @@
+name: m1-headless-false-landing-correlation-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-headless-false-landing-correlation-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  correlate-headless-cutoff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Download exact post-lifecycle-fix natural landing artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: reference-owner-v2-natural-landing-log
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: apm23/VS2-Create_Interactive
+          run-id: 35049968486
+
+      - name: Correlate false landing with headless native aiStep cutoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          log=Path('evidence/reference-owner-v2-natural-landing.log').read_text(encoding='utf-8',errors='replace')
+          landed=re.search(r'GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)',log)
+          if not landed:
+              raise SystemExit('missing fixture landed marker')
+          landed_tick=int(landed.group(1))
+
+          fallback=[]
+          fallback_jump={}
+          fallback_strafe={}
+          for m in re.finditer(r'GATE_E_PHASE198_HEADLESS_NATIVE_AISTEP_FALLBACK[^\n]*player_tick=(\d+)[^\n]*strafe_window=(true|false)[^\n]*jump_window=(true|false)',log):
+              t=int(m.group(1)); fallback.append(t)
+              fallback_strafe[t]=m.group(2)=='true'; fallback_jump[t]=m.group(3)=='true'
+          fallback=sorted(set(fallback))
+          if not fallback:
+              raise SystemExit('missing headless fallback evidence')
+
+          move_ticks=[]
+          for line in log.splitlines():
+              if 'GATE_E_LOCALPLAYER_SET_POS' not in line or 'LocalPlayer#move' not in line:
+                  continue
+              m=re.search(r'player_tick=(\d+)',line)
+              if m: move_ticks.append(int(m.group(1)))
+          move_ticks=sorted(set(move_ticks))
+          if not move_ticks:
+              raise SystemExit('missing LocalPlayer move writer evidence')
+
+          support=[]
+          for m in re.finditer(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=5 physical_support=(true|false) vertical_gap=([-+0-9.eE]+)',log):
+              support.append((int(m.group(1)),m.group(2)=='true',float(m.group(3))))
+          plateau=[x for x in support if not x[1] and 0.15 <= x[2] <= 0.35]
+          if not plateau:
+              raise SystemExit('missing owner5 support-miss plateau')
+          plateau_start=min(x[0] for x in plateau)
+
+          fallback_last=max(fallback)
+          move_last=max(move_ticks)
+          after_landed=[t for t in fallback if t>landed_tick]
+          post_landed_jump_false=all(not fallback_jump[t] for t in after_landed)
+          fallback_kept_by_strafe=all(fallback_strafe[t] for t in after_landed)
+          no_fallback_after_cutoff=not any(t>fallback_last for t in fallback)
+          no_move_after_cutoff=not any(t>move_last for t in move_ticks)
+          cutoff_matches_plateau=(fallback_last==move_last==plateau_start)
+
+          if landed_tick < fallback_last and post_landed_jump_false and fallback_kept_by_strafe and cutoff_matches_plateau:
+              classification='HEADLESS_FALSE_LANDING_DISARMS_JUMP_FALLBACK_AT_STRAFE_END_BEFORE_REAL_SUPPORT'
+          else:
+              classification='HEADLESS_FALSE_LANDING_CUTOFF_UNRESOLVED'
+
+          print('REFERENCE_OWNER_V2_HEADLESS_FALSE_LANDING_CORRELATION classification='+classification+
+                ' source_run=35049968486 landed_marker_tick='+str(landed_tick)+
+                ' fallback_first='+str(min(fallback))+' fallback_last='+str(fallback_last)+
+                ' localplayer_move_last='+str(move_last)+' support_plateau_start='+str(plateau_start)+
+                ' post_landed_fallback_ticks='+str(after_landed)+
+                ' post_landed_jump_window_false='+str(post_landed_jump_false).lower()+
+                ' post_landed_strafe_window_true='+str(fallback_kept_by_strafe).lower()+
+                ' cutoff_matches_plateau='+str(cutoff_matches_plateau).lower()+
+                ' verifier_only=true production_unchanged=true final_ready=false')
+          if classification!='HEADLESS_FALSE_LANDING_DISARMS_JUMP_FALLBACK_AT_STRAFE_END_BEFORE_REAL_SUPPORT':
+              raise SystemExit(1)
+          PY

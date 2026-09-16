@@ -66,19 +66,80 @@ if old not in text:
     raise SystemExit("composefix could not find the exact V2 Phase83 boundary block")
 patched = text.replace(old, new, 1)
 
-# Evidence-backed lifecycle correction: run 35048427002 proved that the old grounded-expiry
-# predicate clears an otherwise valid external owner on the first native jump tick because
-# Minecraft still reports onGround=true while native vertical motion is already upward.
-# Keep the owner only through that genuine native upward transition; no synthetic velocity,
-# reanchor, collision override, or extra body writer is introduced.
+# Exact source-failure proof run 35062047086 over runtime artifact 35057564114 proves a second
+# lifecycle seam: after a genuine native upward jump, Minecraft can return onGround=true with Y=0
+# before Create has genuinely reacquired support. The old upward-only exception therefore clears the
+# valid owner at age 3 and reopens Create's ordinal-1 carry writer. Preserve a bounded jump-arc latch:
+# it is armed only by the already-proven native upward transition, reset only by genuine Create
+# support acquisition, and still bounded by the native 25-tick owner cap. No movement vector,
+# gravity, reanchor, collision override, camera mutation, or additional body writer is introduced.
+old_state = '''    var ticksSinceExternalReferenceOwner: Int = 0
+    var serverRelativeExternalPosition: Vector3dc? = null
+'''
+new_state = '''    var ticksSinceExternalReferenceOwner: Int = 0
+    var externalReferenceOwnerJumpActive: Boolean = false
+    var serverRelativeExternalPosition: Vector3dc? = null
+'''
+if patched.count(old_state) != 1:
+    raise SystemExit(f"composefix expected one external-owner age state anchor, found {patched.count(old_state)}")
+patched = patched.replace(old_state, new_state, 1)
+
+old_refresh = '''    fun refreshExternalReferenceOwner(ownerEntityId: Int) {
+        if (externalReferenceOwnerEntityId != ownerEntityId) {
+            externalReferenceOwnerEntityId = ownerEntityId
+        }
+        ticksSinceExternalReferenceOwner = 0
+    }
+'''
+new_refresh = '''    fun refreshExternalReferenceOwner(ownerEntityId: Int) {
+        if (externalReferenceOwnerEntityId != ownerEntityId) {
+            externalReferenceOwnerEntityId = ownerEntityId
+        }
+        ticksSinceExternalReferenceOwner = 0
+        externalReferenceOwnerJumpActive = false
+    }
+'''
+if patched.count(old_refresh) != 1:
+    raise SystemExit(f"composefix expected one owner refresh function, found {patched.count(old_refresh)}")
+patched = patched.replace(old_refresh, new_refresh, 1)
+
+old_clear = '''    fun clearExternalReferenceOwner() {
+        externalReferenceOwnerEntityId = null
+        ticksSinceExternalReferenceOwner = 0
+        serverRelativeExternalPosition = null
+'''
+new_clear = '''    fun clearExternalReferenceOwner() {
+        externalReferenceOwnerEntityId = null
+        ticksSinceExternalReferenceOwner = 0
+        externalReferenceOwnerJumpActive = false
+        serverRelativeExternalPosition = null
+'''
+if patched.count(old_clear) != 1:
+    raise SystemExit(f"composefix expected one owner clear function, found {patched.count(old_clear)}")
+patched = patched.replace(old_clear, new_clear, 1)
+
 old_lifetime = '''                val groundedContactExpired = entity.onGround() && entityDraggingInformation.ticksSinceExternalReferenceOwner > 2
 '''
 new_lifetime = '''                val nativeUpwardMotion = entity.deltaMovement.y > 1.0E-5
-                val groundedContactExpired = entity.onGround() && !nativeUpwardMotion && entityDraggingInformation.ticksSinceExternalReferenceOwner > 2
+                if (nativeUpwardMotion) {
+                    entityDraggingInformation.externalReferenceOwnerJumpActive = true
+                }
+                val groundedContactExpired = entity.onGround() &&
+                    !entityDraggingInformation.externalReferenceOwnerJumpActive &&
+                    entityDraggingInformation.ticksSinceExternalReferenceOwner > 2
 '''
 if patched.count(old_lifetime) != 1:
     raise SystemExit(f"composefix expected one grounded lifecycle expiry predicate, found {patched.count(old_lifetime)}")
 patched = patched.replace(old_lifetime, new_lifetime, 1)
+
+for required in [
+    "externalReferenceOwnerJumpActive: Boolean = false",
+    "externalReferenceOwnerJumpActive = true",
+    "!entityDraggingInformation.externalReferenceOwnerJumpActive",
+    "entityDraggingInformation.ticksSinceExternalReferenceOwner > 2",
+]:
+    if required not in patched:
+        raise SystemExit("composefix lost jump-arc lifecycle anchor: " + required)
 
 compile(patched, str(SOURCE), "exec")
 exec(compile(patched, str(SOURCE), "exec"), {"__name__": "__main__", "__file__": str(SOURCE)})

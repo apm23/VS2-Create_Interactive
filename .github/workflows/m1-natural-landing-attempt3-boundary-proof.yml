@@ -1,0 +1,184 @@
+name: m1-natural-landing-attempt3-boundary-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-natural-landing-attempt3-boundary-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  attempt3-boundary-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream-pinned
+
+      - name: Verify exact attempt3 artifact metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          actual="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' \
+            https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10434807961 | jq -r '.digest')"
+          test "$actual" = 'sha256:ee7da59e8eebd01e017c023175e1845db04ed5ffd0dca8ab8d4720c98d4a236a'
+
+      - name: Download exact attempt3 artifact by ID
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          curl -fsSL -L -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' \
+            https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10434807961/zip \
+            -o evidence/artifact.zip
+          unzip -q evidence/artifact.zip -d evidence
+          test -f evidence/reference-owner-v2-natural-landing-v2.log
+
+      - name: Classify owner-cap and native Create landing boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import math, re
+
+          source_run = 35062245886
+          source_attempt = 3
+          source_head = 'cb03574bd11d39ba21ef07e18ddfe7fc87c714ce'
+          artifact_id = 10434807961
+          artifact_digest = 'sha256:ee7da59e8eebd01e017c023175e1845db04ed5ffd0dca8ab8d4720c98d4a236a'
+
+          compose = Path('scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py').read_text(encoding='utf-8')
+          v2 = Path('scripts/prepare_vs2_26_2_reference_owner_v2.py').read_text(encoding='utf-8')
+          phase81 = Path('scripts/prepare_vs2_26_2_phase81.py').read_text(encoding='utf-8')
+          pinned_state = Path('upstream-pinned/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDraggingInformation.kt').read_text(encoding='utf-8')
+          text = Path('evidence/reference-owner-v2-natural-landing-v2.log').read_text(encoding='utf-8', errors='replace')
+          text = re.sub(r'\x1b\[[0-9;]*[mK]', '', text)
+
+          for token in [
+              'externalReferenceOwnerJumpActive: Boolean = false',
+              'externalReferenceOwnerJumpActive = true',
+              '!entityDraggingInformation.externalReferenceOwnerJumpActive',
+              'native 25-tick owner cap',
+          ]:
+              if token not in compose:
+                  raise SystemExit('current jump-latch source lost anchor: ' + token)
+          for token in [
+              'entityDraggingInformation.ticksSinceExternalReferenceOwner += 1',
+              'val ownerExpired = entityDraggingInformation.ticksSinceExternalReferenceOwner >= EntityDraggingInformation.TICKS_TO_DRAG_ENTITIES',
+              'entityDraggingInformation.clearExternalReferenceOwner()',
+          ]:
+              if token not in v2:
+                  raise SystemExit('current V2 lifetime source lost anchor: ' + token)
+          if 'Math.abs(phase81VerticalGap) <= 0.05' not in phase81:
+              raise SystemExit('Phase81 strict support threshold changed')
+          cap = re.search(r'const val TICKS_TO_DRAG_ENTITIES\s*=\s*(\d+)', pinned_state)
+          if not cap or int(cap.group(1)) != 25:
+              raise SystemExit('unexpected pinned external-owner drag cap')
+          drag_cap = int(cap.group(1))
+
+          def one(pattern, label):
+              m = re.search(pattern, text)
+              if not m:
+                  raise SystemExit('missing ' + label)
+              return m
+
+          req = one(r'GATE_E_M1_NATIVE_JUMP_REQUESTED player_tick=(\d+)[^\n]*on_ground=true', 'jump request')
+          air = one(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick=(\d+)[^\n]*delta_y=([-+0-9.eE]+)[^\n]*on_ground=false', 'airborne marker')
+          request_tick = int(req.group(1)); airborne_tick = int(air.group(1))
+          if request_tick != 45 or airborne_tick != 45 or float(air.group(2)) <= 0.05:
+              raise SystemExit('attempt3 jump admission differs from expected exact evidence')
+
+          acquisitions = [(int(t), int(cid)) for t,cid in re.findall(r'REFERENCE_OWNER_V2_ACQUIRE player_tick=(\d+) carriage_id=(\d+)', text)]
+          prior = [x for x in acquisitions if x[0] <= request_tick]
+          if not prior:
+              raise SystemExit('missing owner acquisition before jump')
+          refresh_tick, owner_id = max(prior)
+          if (refresh_tick, owner_id) != (43, 8):
+              raise SystemExit(f'unexpected final pre-jump owner refresh {(refresh_tick, owner_id)}')
+          if any(refresh_tick < t <= 70 for t,_ in acquisitions):
+              raise SystemExit('owner unexpectedly refreshed before native Create landing boundary')
+
+          drag43 = one(r'GATE_E_LOCALPLAYER_SET_POS[^\n]*player_tick=43[^\n]*EntityDragger#dragEntitiesWithShips', 'tick43 EntityDragger writer')
+          acq43 = one(r'REFERENCE_OWNER_V2_ACQUIRE player_tick=43 carriage_id=8', 'tick43 owner refresh')
+          if not drag43.start() < acq43.start():
+              raise SystemExit('tick43 refresh ordering changed')
+
+          suppressed = [(int(t), int(cid), int(owner)) for t,cid,owner in re.findall(
+              r'REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED player_tick=(\d+) carriage_id=(\d+) owner_id=(\d+)', text)]
+          jump_suppressed = [x for x in suppressed if request_tick <= x[0] <= 90 and x[2] == owner_id]
+          if not jump_suppressed:
+              raise SystemExit('missing active-owner authority suppression during jump')
+          last_suppression_tick = max(x[0] for x in jump_suppressed)
+          if last_suppression_tick != 67:
+              raise SystemExit(f'unexpected last external-owner authority tick {last_suppression_tick}')
+          derived_expiry_tick = refresh_tick + drag_cap
+          if derived_expiry_tick != 68:
+              raise SystemExit(f'unexpected derived cap expiry tick {derived_expiry_tick}')
+          if re.search(r'REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED player_tick=(68|69|70)\b', text):
+              raise SystemExit('external-owner authority unexpectedly survived cap boundary')
+
+          support_re = re.compile(
+              r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=8 physical_support=(true|false) '
+              r'vertical_gap=([-+0-9.eE]+)[^\n]*local_feet=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+);[^\n]*xz_inside_any=(true|false)')
+          rows=[]
+          for m in support_re.finditer(text):
+              rows.append((int(m.group(1)), m.group(2)=='true', float(m.group(3)), float(m.group(4)), float(m.group(5)), float(m.group(6)), m.group(7)=='true'))
+          baseline = [r for r in rows if r[0] == 44]
+          if len(baseline) != 1 or not baseline[0][1]:
+              raise SystemExit('missing strict pre-jump owner8 support at tick44')
+          active_rows = [r for r in rows if request_tick <= r[0] <= last_suppression_tick]
+          if not active_rows:
+              raise SystemExit('missing owner-local rows while external owner active')
+          x0,z0 = active_rows[0][3], active_rows[0][5]
+          max_drift = max(math.hypot(r[3]-x0, r[5]-z0) for r in active_rows)
+          max_step = max([math.hypot(b[3]-a[3], b[5]-a[5]) for a,b in zip(active_rows,active_rows[1:])] or [0.0])
+          if max_drift > 0.5 or max_step > 0.35:
+              raise SystemExit(f'owner-relative continuity regressed before cap drift={max_drift} step={max_step}')
+
+          obb70 = one(r'GATE_E_CREATE_COLLIDE_MANY_RESULT[^\n]*surface=true[^\n]*player_tick=70[^\n]*player_on_ground=true', 'tick70 Create OBB surface')
+          ground70 = one(r'GATE_E_CREATE_SET_ON_GROUND_SEAM player_tick=70[^\n]*requested_on_ground=true[^\n]*applied_on_ground=true', 'tick70 Create grounded seam')
+          contact70 = one(r'GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION player_tick=70 carriage_id=8[^\n]*application_call=true[^\n]*source=ContraptionColliderClient', 'tick70 native Create contact')
+          final70 = one(r'GATE_E_CREATE_FINAL_MOTION_SEAM player_tick=70[^\n]*applied_y=0\.0[^\n]*grounded_clip=true', 'tick70 grounded Y clip')
+          support70 = one(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=70 carriage_id=8 physical_support=false vertical_gap=([-+0-9.eE]+)[^\n]*local_feet=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+);[^\n]*xz_inside_any=true', 'tick70 strict-support false row')
+          gap70 = float(support70.group(1)); local_y70 = float(support70.group(3))
+          if not (0.05 < gap70 < 0.07):
+              raise SystemExit(f'tick70 gap no longer isolates strict threshold boundary: {gap70}')
+
+          settled=[]
+          for tick in range(70,76):
+              m = re.search(rf'GATE_E_PHASE131_SUPPORT_SOURCE player_tick={tick} carriage_id=8 physical_support=false vertical_gap=([-+0-9.eE]+)[^\n]*local_feet=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+);[^\n]*xz_inside_any=true', text)
+              if not m:
+                  raise SystemExit(f'missing settled owner8 row tick{tick}')
+              settled.append((tick, *map(float, m.groups())))
+              one(rf'GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION player_tick={tick} carriage_id=8[^\n]*application_call=true', f'tick{tick} native Create contact')
+          settled_xz=max(math.hypot(r[2]-settled[0][2], r[4]-settled[0][4]) for r in settled)
+          settled_y=max(abs(r[3]-settled[0][3]) for r in settled)
+          if settled_xz > 1.0e-9 or settled_y > 1.0e-9:
+              raise SystemExit(f'post-contact local landing state not settled xz={settled_xz} y={settled_y}')
+
+          classification = 'HEADLESS_ARC_REACHES_OWNER_CAP_BEFORE_NATIVE_CREATE_LANDING_PHASE131_GAP_FALSE_NEGATIVE'
+          print('M1_NATURAL_LANDING_ATTEMPT3_BOUNDARY_PROOF classification=' + classification +
+                f' source_run={source_run} source_attempt={source_attempt} source_head={source_head}' +
+                f' artifact_id={artifact_id} artifact_digest={artifact_digest}' +
+                f' owner={owner_id} refresh_tick={refresh_tick} drag_cap={drag_cap} derived_expiry_tick={derived_expiry_tick}' +
+                f' jump_tick={request_tick} last_authority_suppression_tick={last_suppression_tick}' +
+                f' max_owner_relative_drift_before_cap={max_drift:.6f} max_owner_relative_step_before_cap={max_step:.6f}' +
+                f' native_create_grounded_tick=70 phase131_support_tick70=false phase131_gap_tick70={gap70:.15f} phase81_threshold=0.05 local_y_tick70={local_y70:.15f}' +
+                f' settled_native_contact_ticks=70-75 settled_xz_drift={settled_xz:.6f} settled_y_drift={settled_y:.6f}' +
+                ' verifier_only=true harness_unchanged=true production_unchanged=true production_physics_green=false final_ready=false')
+          PY

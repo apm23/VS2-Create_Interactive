@@ -105,9 +105,10 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y ffmpeg xdotool openbox
+          sudo apt-get install -y ffmpeg xdotool openbox x11-utils
           ffmpeg -version | head -1
           command -v xdotool
+          command -v xwininfo
           openbox --version | head -1
 
       - name: Record one exact-head active-owner turn
@@ -127,10 +128,12 @@ jobs:
           XVFB_LOG=../camera-visual-close-xvfb.log
           WM_LOG=../camera-visual-close-openbox.log
           WINDOW_TREE=../camera-visual-close-window-tree.txt
+          WINDOW_CANDIDATES=../camera-visual-close-window-candidates.txt
           MP4=../camera-turn-visual-close.mp4
           META=../camera-turn-visual-close-metadata.txt
           BLACKCHECK=../camera-turn-visual-close-luma.txt
-          rm -f "$LOG" "$XVFB_LOG" "$WM_LOG" "$WINDOW_TREE" "$MP4" "$META" "$BLACKCHECK"
+          FRAMEHASH=../camera-turn-visual-close-framemd5.txt
+          rm -f "$LOG" "$XVFB_LOG" "$WM_LOG" "$WINDOW_TREE" "$WINDOW_CANDIDATES" "$MP4" "$META" "$BLACKCHECK" "$FRAMEHASH"
           rm -rf fabric/run/crash-reports fabric/run/saves/train-v2-camera-visual-close
           rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
           mkdir -p fabric/run/saves
@@ -142,6 +145,7 @@ jobs:
           sleep 1
           openbox > "$WM_LOG" 2>&1 &
           WM_PID=$!
+          xsetroot -solid '#303030' || true
           ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v2-camera-visual-close' > "$LOG" 2>&1 &
           CLIENT_PID=$!
           cleanup() {
@@ -167,14 +171,35 @@ jobs:
           done
           test "$STARTED" -eq 1
 
+          # Select the largest mapped non-root X11 client window instead of guessing the title.
           WIN_ID=''
-          for i in $(seq 1 30); do
-            WIN_ID=$(xdotool search --onlyvisible --name 'Minecraft|Fabric|Valkyrien' 2>/dev/null | head -1 || true)
+          BEST_AREA=0
+          for retry in $(seq 1 30); do
+            : > "$WINDOW_CANDIDATES"
+            while read -r wid; do
+              [ -n "$wid" ] || continue
+              INFO=$(xwininfo -id "$wid" 2>/dev/null || true)
+              echo "$INFO" | grep -q 'Map State: IsViewable' || continue
+              W=$(printf '%s\n' "$INFO" | awk '/Width:/{print $2; exit}')
+              H=$(printf '%s\n' "$INFO" | awk '/Height:/{print $2; exit}')
+              [ -n "$W" ] && [ -n "$H" ] || continue
+              AREA=$((W*H))
+              NAME=$(xdotool getwindowname "$wid" 2>/dev/null || true)
+              CLASS=$(xprop -id "$wid" WM_CLASS 2>/dev/null || true)
+              PID=$(xdotool getwindowpid "$wid" 2>/dev/null || true)
+              printf 'id=%s area=%s size=%sx%s pid=%s name=%q class=%q\n' "$wid" "$AREA" "$W" "$H" "$PID" "$NAME" "$CLASS" >> "$WINDOW_CANDIDATES"
+              if [ "$AREA" -gt "$BEST_AREA" ] && [ "$W" -ge 320 ] && [ "$H" -ge 200 ]; then
+                BEST_AREA=$AREA
+                WIN_ID=$wid
+              fi
+            done < <(xdotool search --name '.*' 2>/dev/null | sort -u || true)
             if [ -n "$WIN_ID" ]; then break; fi
             sleep 1
           done
           xwininfo -root -tree > "$WINDOW_TREE" 2>&1 || true
+          cat "$WINDOW_CANDIDATES" || true
           test -n "$WIN_ID"
+
           xdotool windowmap "$WIN_ID" || true
           xdotool windowmove "$WIN_ID" 0 0 || true
           xdotool windowsize "$WIN_ID" 1280 720 || true
@@ -189,12 +214,16 @@ jobs:
           if fatal_state; then tail -240 "$LOG"; exit 1; fi
           test -s "$MP4"
 
+          # Reject all-black and static-desktop captures before telemetry can mark the visual close green.
           ffmpeg -hide_banner -loglevel error -i "$MP4" -vf 'signalstats,metadata=print' -an -f null - 2> "$BLACKCHECK" || true
           MAX_Y=$(grep -o 'lavfi.signalstats.YAVG=[0-9.]*' "$BLACKCHECK" | cut -d= -f2 | sort -n | tail -1 || true)
           BRIGHT_FRAMES=$(awk -F= '/lavfi.signalstats.YAVG=/{if ($2+0 > 20) n++} END{print n+0}' "$BLACKCHECK")
+          ffmpeg -hide_banner -loglevel error -i "$MP4" -map 0:v:0 -f framemd5 "$FRAMEHASH"
+          UNIQUE_FRAMES=$(grep -v '^#' "$FRAMEHASH" | awk -F',' '{gsub(/ /,"",$6); print $6}' | sort -u | wc -l)
           test -n "$MAX_Y"
           awk -v y="$MAX_Y" 'BEGIN{exit !(y>20)}'
           test "$BRIGHT_FRAMES" -ge 30
+          test "$UNIQUE_FRAMES" -ge 10
 
           python3 - "$LOG" "$START_LINE" <<'PY'
           import math,re,sys
@@ -230,9 +259,12 @@ jobs:
             echo 'capture_seconds=15'
             echo 'source_checkout_verified=true'
             echo 'visual_nonblack_verified=true'
+            echo 'visual_dynamic_verified=true'
             echo "capture_window_id=$WIN_ID"
+            echo "capture_window_area=$BEST_AREA"
             echo "max_luma=$MAX_Y"
             echo "bright_frames=$BRIGHT_FRAMES"
+            echo "unique_frames=$UNIQUE_FRAMES"
             echo 'jar_sha256=n/a_not_final_candidate'
             echo "mp4_sha256=$MP4_SHA"
           } > "$META"
@@ -246,8 +278,10 @@ jobs:
             camera-turn-visual-close.mp4
             camera-turn-visual-close-metadata.txt
             camera-turn-visual-close-luma.txt
+            camera-turn-visual-close-framemd5.txt
             camera-visual-close-runtime.log
             camera-visual-close-xvfb.log
             camera-visual-close-openbox.log
             camera-visual-close-window-tree.txt
+            camera-visual-close-window-candidates.txt
           if-no-files-found: warn

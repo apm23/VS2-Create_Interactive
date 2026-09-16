@@ -1,0 +1,236 @@
+name: m1-camera-external-reference-runtime-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-camera-external-reference-runtime-proof.yml'
+      - 'scripts/prepare_vs2_26_2_reference_owner_v2_camera_fix.py'
+      - 'scripts/prepare_vs2_26_2_camera_external_reference_proof.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  camera-external-reference-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Compose production plus one camera reference hypothesis
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_camera_fix.py
+          grep -q 'REFERENCE_OWNER_V2_CAMERA_POSITIONAL_FRAME' upstream/common/src/main/java/org/valkyrienskies/mod/mixin/client/MixinCamera.java
+
+      - name: Apply unchanged harness and read-only camera proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare_vs2_26_2_natural_landing_harness_v2.py
+          python3 scripts/prepare_vs2_26_2_camera_external_reference_proof.py
+          grep -q 'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinCameraExternalReferenceFrameProof.java
+
+      - name: Compile camera reference composition
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :fabric:compileJava
+
+      - name: Reconstruct verified r0v3 train save
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED='e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556'
+          mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v3.part-*' -print | sort -V)
+          test "${#parts[@]}" -eq 17
+          cat "${parts[@]}" > train-world-state-r0v3.b64
+          base64 -d train-world-state-r0v3.b64 > train-world-state-r0v3.zip
+          test "$(sha256sum train-world-state-r0v3.zip | awk '{print $1}')" = "$EXPECTED"
+          rm -rf world-fixture
+          mkdir world-fixture
+          unzip -q train-world-state-r0v3.zip -d world-fixture
+          mkdir -p upstream/fabric/run/saves
+          rm -rf upstream/fabric/run/saves/train-v2-camera-external-reference
+          mv 'world-fixture/train build 1' upstream/fabric/run/saves/train-v2-camera-external-reference
+
+      - name: Prefetch client assets
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:downloadAssets; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+
+      - name: Measure final camera reference frame through turn
+        working-directory: upstream
+        timeout-minutes: 12
+        env:
+          JAVA_TOOL_OPTIONS: -Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
+          ALSOFT_DRIVERS: 'null'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=../camera-external-reference-runtime.log
+          XVFB_LOG=../camera-external-reference-runtime-xvfb.log
+          PROOF=../camera-external-reference-proof.txt
+          rm -f "$LOG" "$XVFB_LOG" "$PROOF"
+          rm -rf fabric/run/crash-reports
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > "$XVFB_LOG" 2>&1 &
+          XVFB_PID=$!
+          ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v2-camera-external-reference' > "$LOG" 2>&1 &
+          CLIENT_PID=$!
+          cleanup() {
+            kill "$CLIENT_PID" 2>/dev/null || true
+            kill "$XVFB_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          fatal_state() {
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' "$LOG" \
+              || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
+              || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
+              || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
+          }
+
+          READY=0
+          for i in $(seq 1 420); do
+            if python3 - "$LOG" <<'PY'
+          import math,re,sys
+          text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
+          rx=re.compile(r'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample=(\d+) player_tick=(\d+) owner_id=(-?\d+).*?horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
+          rows=[(int(s),int(t),int(o),float(e),float(h)) for s,t,o,e,h in rx.findall(text)]
+          if len(rows) < 2 or len({r[1] for r in rows}) < 2: raise SystemExit(1)
+          hs=[r[4] for r in rows]
+          un=[hs[0]]; prev=hs[0]
+          for h in hs[1:]:
+              d=(h-prev+math.pi)%(2*math.pi)-math.pi
+              un.append(un[-1]+d); prev=h
+          raise SystemExit(0 if max(un)-min(un) >= 0.01 else 1)
+          PY
+            then
+              READY=1
+              break
+            fi
+            if fatal_state; then tail -360 "$LOG"; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -360 "$LOG"; exit 1; fi
+            sleep 1
+          done
+
+          if fatal_state; then tail -360 "$LOG"; exit 1; fi
+
+          python3 - "$LOG" "$READY" <<'PY' | tee "$PROOF"
+          import math,re,statistics,sys
+          text=re.sub(r'\x1b\[[0-9;]*[mK]','',open(sys.argv[1],encoding='utf-8',errors='replace').read())
+          ready=int(sys.argv[2])
+          rx=re.compile(
+              r'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample=(\d+) player_tick=(\d+) owner_id=(-?\d+) partial=([-+0-9.eE]+) '
+              r'camera_x=([-+0-9.eE]+) camera_y=([-+0-9.eE]+) camera_z=([-+0-9.eE]+) '
+              r'expected_x=([-+0-9.eE]+) expected_y=([-+0-9.eE]+) expected_z=([-+0-9.eE]+) '
+              r'horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
+          rows=[]
+          for m in rx.finditer(text):
+              rows.append({
+                  'sample':int(m.group(1)), 'tick':int(m.group(2)), 'owner':int(m.group(3)),
+                  'partial':float(m.group(4)), 'cx':float(m.group(5)), 'cy':float(m.group(6)), 'cz':float(m.group(7)),
+                  'ex':float(m.group(8)), 'ey':float(m.group(9)), 'ez':float(m.group(10)),
+                  'err':float(m.group(11)), 'heading':float(m.group(12)),
+              })
+          acquisitions=len(re.findall(r'REFERENCE_OWNER_V2_ACQUIRE',text))
+          native=len(re.findall(r'GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION',text))
+          owners={r['owner'] for r in rows}
+          unique_ticks=len({r['tick'] for r in rows})
+          span=0.0
+          if rows:
+              hs=[r['heading'] for r in rows]
+              un=[hs[0]]; prev=hs[0]
+              for h in hs[1:]:
+                  d=(h-prev+math.pi)%(2*math.pi)-math.pi
+                  un.append(un[-1]+d); prev=h
+              span=max(un)-min(un)
+
+          if not rows:
+              classification='NO_CAMERA_REFERENCE_ROWS' if acquisitions else 'NO_EXTERNAL_OWNER_ACQUISITION'
+          elif unique_ticks < 2:
+              classification='INSUFFICIENT_CAMERA_REFERENCE_ROWS'
+          elif span < 0.01:
+              classification='TURN_NOT_EXERCISED_WHILE_OWNER_ACTIVE'
+          elif len(owners) != 1:
+              classification='OWNER_CHANGED_DURING_TURN'
+          else:
+              errors=[r['err'] for r in rows]
+              max_err=max(errors)
+              p95=statistics.quantiles(errors,n=20,method='inclusive')[18] if len(errors)>1 else max_err
+              median=statistics.median(errors)
+              classification = (
+                  'CAMERA_EXTERNAL_REFERENCE_POSITIONAL_ALIGNED_WITHIN_0_05'
+                  if max_err <= 0.05
+                  else 'CAMERA_EXTERNAL_REFERENCE_POSITIONAL_MISMATCH_REMAINS'
+              )
+              print('M1_CAMERA_EXTERNAL_REFERENCE_RUNTIME_PROOF'
+                    f' classification={classification} owner={next(iter(owners))}'
+                    f' samples={len(rows)} unique_ticks={unique_ticks}'
+                    f' heading_span_rad={span:.9f} heading_span_deg={math.degrees(span):.6f}'
+                    f' max_horizontal_error={max_err:.9f} p95_horizontal_error={p95:.9f}'
+                    f' median_horizontal_error={median:.9f}'
+                    f' acquisitions={acquisitions} native_contacts={native}'
+                    ' position_basis=previous_owner_to_current_owner'
+                    ' look_mutated=false player_mutated=false collision_mutated=false'
+                    ' production_camera_hypothesis=true harness_semantics_unchanged=true'
+                    ' video_recorded=false final_ready=false')
+              for r in sorted(rows,key=lambda x:x['err'],reverse=True)[:8]:
+                  print('M1_CAMERA_EXTERNAL_REFERENCE_WORST_SAMPLE'
+                        f' sample={r["sample"]} tick={r["tick"]} owner={r["owner"]}'
+                        f' heading={r["heading"]:.9f} error={r["err"]:.9f}'
+                        f' camera={r["cx"]:.6f},{r["cy"]:.6f},{r["cz"]:.6f}'
+                        f' expected={r["ex"]:.6f},{r["ey"]:.6f},{r["ez"]:.6f}')
+              raise SystemExit(0 if max_err <= 0.05 else 2)
+
+          print('M1_CAMERA_EXTERNAL_REFERENCE_RUNTIME_DIAGNOSTIC'
+                f' classification={classification} samples={len(rows)} unique_ticks={unique_ticks}'
+                f' owners={sorted(owners)} heading_span_rad={span:.9f}'
+                f' heading_span_deg={math.degrees(span):.6f} acquisitions={acquisitions}'
+                f' native_contacts={native} ready={ready}'
+                ' production_camera_hypothesis=true harness_semantics_unchanged=true'
+                ' video_recorded=false final_ready=false')
+          raise SystemExit(2)
+          PY
+
+      - name: Upload camera external reference proof
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: camera-external-reference-runtime-proof
+          path: |
+            camera-external-reference-runtime.log
+            camera-external-reference-runtime-xvfb.log
+            camera-external-reference-proof.txt
+          if-no-files-found: warn

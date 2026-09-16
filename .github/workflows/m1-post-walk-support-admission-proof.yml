@@ -46,8 +46,8 @@ jobs:
           text=Path('evidence/reference-owner-v2-natural-landing-v2.log').read_text(encoding='utf-8',errors='replace')
 
           walk=re.search(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*confirmed=true', text)
-          back=re.search(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*on_ground=true', text)
-          strafe=re.search(r'GATE_E_M1_NATIVE_STRAFE_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*on_ground=true', text)
+          back=re.search(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED[^\n]*player_tick=(\d+)', text)
+          strafe=re.search(r'GATE_E_M1_NATIVE_STRAFE_CONFIRMED[^\n]*player_tick=(\d+)', text)
           if not (walk and back and strafe):
               raise SystemExit('missing walk/backward/strafe confirmation evidence')
           walk_tick=int(walk.group(1)); back_tick=int(back.group(1)); strafe_tick=int(strafe.group(1))

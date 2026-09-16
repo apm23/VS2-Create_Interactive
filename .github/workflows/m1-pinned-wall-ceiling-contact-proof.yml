@@ -1,0 +1,46 @@
+name: m1-pinned-wall-ceiling-contact-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-pinned-wall-ceiling-contact-proof.yml'
+      - 'scripts/prove_pinned_wall_ceiling_contacts.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  classify-pinned-contact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download exact valid-jump artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: current-production-post-arc-owner-log
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 35089177675
+
+      - name: Classify existing wall/ceiling OBB contacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s evidence/current-production-post-arc-owner.log
+          python3 scripts/prove_pinned_wall_ceiling_contacts.py evidence/current-production-post-arc-owner.log | tee pinned-wall-ceiling-contact-proof.txt
+          grep -q 'M1_PINNED_WALL_CEILING_CONTACT_PROOF' pinned-wall-ceiling-contact-proof.txt
+          grep -q 'source_run=35089177675' pinned-wall-ceiling-contact-proof.txt
+          grep -q 'production_unchanged=true read_only=true final_ready=false' pinned-wall-ceiling-contact-proof.txt
+
+      - name: Upload contact classification
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: pinned-wall-ceiling-contact-proof
+          path: pinned-wall-ceiling-contact-proof.txt
+          if-no-files-found: warn

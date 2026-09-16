@@ -13,6 +13,7 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -39,9 +40,12 @@ import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
  * LocalPlayer + provider + active external owner + resolvable transforms. Therefore do
  * not decimate active-owner callbacks here: every such callback is a useful turn sample.
  * Run 35120320374 then observed only one active-owner sample before ownership disappeared.
- * Keep the last observed owner id only inside this telemetry mixin and continue sampling
- * its current transform once per player tick after release. This distinguishes an owner
- * lifecycle loss before a real carriage turn from a fixture that never exercises a turn.
+ * Run 35123611422 improved that to eleven owner7 samples and proved owner7 heading stays
+ * exactly zero through the resolvable window; owner7 disappears before any measured turn,
+ * while the fixture later selects another carriage. Keep the last owner timeline and also
+ * classify the nearest transform-resolvable loaded entity around the player. This remains
+ * observation-only and distinguishes an ownership-boundary miss from a fixture with no
+ * loaded carriage turn at all.
  */
 @Mixin(Camera.class)
 public abstract class MixinCameraExternalOwnerTurnTrace {
@@ -107,6 +111,49 @@ public abstract class MixinCameraExternalOwnerTurnTrace {
                 this.position.x, this.position.y, this.position.z,
                 player.getX(), player.getY(), player.getZ()
             );
+
+            int transformOwnerCandidates = 0;
+            Integer nearestTransformOwnerId = null;
+            double nearestTransformOwnerD2 = Double.NaN;
+            double nearestTransformOwnerHeading = Double.NaN;
+            double bestD2 = Double.POSITIVE_INFINITY;
+            for (Entity candidate : minecraft.level.getEntities(player, player.getBoundingBox().inflate(256.0))) {
+                final Vector3d candidateOrigin = ExternalReferenceFrameResolver.currentLocalToWorld(
+                    minecraft.level, candidate.getId(), new Vector3d(0.0, 0.0, 0.0)
+                );
+                if (candidateOrigin == null) continue;
+                final Vector3d candidateX = ExternalReferenceFrameResolver.currentLocalToWorld(
+                    minecraft.level, candidate.getId(), new Vector3d(1.0, 0.0, 0.0)
+                );
+                if (candidateX == null) continue;
+                transformOwnerCandidates++;
+                final double dx = candidate.getX() - player.getX();
+                final double dy = candidate.getY() - player.getY();
+                final double dz = candidate.getZ() - player.getZ();
+                final double d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 < bestD2) {
+                    bestD2 = d2;
+                    nearestTransformOwnerId = candidate.getId();
+                    nearestTransformOwnerD2 = d2;
+                    nearestTransformOwnerHeading = Math.atan2(
+                        candidateX.z() - candidateOrigin.z(),
+                        candidateX.x() - candidateOrigin.x()
+                    );
+                }
+            }
+            VS2_CAMERA_TURN_LOGGER.info(
+                "REFERENCE_OWNER_V2_CAMERA_NEAREST_TRANSFORM_OWNER player_tick={} candidate_count={} " +
+                "nearest_owner_id={} nearest_owner_d2={} nearest_owner_heading={} active_external={} " +
+                "current_owner_id={} tracked_owner_id={} read_only=true",
+                player.tickCount,
+                transformOwnerCandidates,
+                nearestTransformOwnerId,
+                nearestTransformOwnerD2,
+                nearestTransformOwnerHeading,
+                activeExternalOwner,
+                ownerId,
+                trackedOwnerId
+            );
         }
 
         if (!activeExternalOwner || ownerId == null) return;
@@ -169,4 +216,4 @@ if "MixinCameraExternalOwnerTurnTrace" not in client:
     client.append("MixinCameraExternalOwnerTurnTrace")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("CAMERA_TURN_TRACE installed=true injection=Camera.update_after_alignWithEntity external_owner_render_algorithm=mirrored read_only=true horizon_calls=4096 log_every=1 post_release_owner_heading_timeline=true")
+print("CAMERA_TURN_TRACE installed=true injection=Camera.update_after_alignWithEntity external_owner_render_algorithm=mirrored read_only=true horizon_calls=4096 log_every=1 post_release_owner_heading_timeline=true nearest_loaded_transform_owner_timeline=true")

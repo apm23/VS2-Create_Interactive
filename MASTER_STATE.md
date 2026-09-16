@@ -12,14 +12,15 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- project_state: `ROOT_REDESIGN — EXACT STRICT-SUPPORT AIRBORNE FAILURE IS PROVEN TO CLEAR THE VALID OWNER ON A FALSE-GROUNDED AGE-3 TICK; NARROW BOUNDED JUMP-ARC LIFECYCLE PATCH LANDED; STRICT-SUPPORT NATURAL-LANDING REPROOF ATTEMPT2 ACTIVE AFTER ATTEMPT1 PRE-JUMP NON-ADMISSION`.
+- project_state: `ROOT_REDESIGN — JUMP-ARC LIFECYCLE PATCH LANDED; TWO EXACT NATURAL-LANDING REPRO ATTEMPTS BOTH FAIL BEFORE JUMP ADMISSION BECAUSE THE FINITE CI ROUTE EXHAUSTS STRICT CREATE SUPPORT; READ-ONLY ADMISSION-BOUNDARY VERIFIER ACTIVE`.
 - production implementation basis: `c3e7c51a0751b542bdc7a0b8144880026a0f6fd8` (`Keep reference owner through native jump arc`).
 - proof trigger head: `cb03574bd11d39ba21ef07e18ddfe7fc87c714ce` (`Trigger natural landing proof for lifecycle patch`); this changes only the executable mode of the existing fixture script to satisfy the workflow path trigger and adds no gameplay/harness semantics.
-- latest ledger-only commit may advance actual HEAD beyond the proof head; always reconcile actual HEAD first.
+- admission verifier head: `85eaea024912c2a99aa9373002877edc790f41a7` (`Prove repeated pre-jump admission exhaustion`); verifier-only, no production or harness semantics changed.
+- latest ledger-only commit may advance actual HEAD beyond the verifier head; always reconcile actual HEAD first.
 - final_ready: `false`.
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`; never ask user to retest it.
-- active blocker workflow: `m1-reference-owner-v2-natural-landing-proof-v2`.
-- active blocker run: `35062245886`, attempt2, exact proof head `cb03574...`; `in_progress` when this ledger state was written.
+- active blocker workflow: `m1-natural-landing-admission-boundary-proof`.
+- active blocker run: `35065737938`, exact verifier head `85eaea0...`; `in_progress` when this ledger state was written.
 
 ## Historical direct-user runtime gate — authoritative regression evidence
 Exact JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef` FAILED:
@@ -117,16 +118,26 @@ Run `35062245886`, exact proof head `cb03574...`.
 ### Attempt1 — PRE-JUMP NON-ADMISSION; no gameplay inference
 Artifact `10433880714`, digest `sha256:2bf9e1598489ea73cefaa87627345a20b9087ae397ef1c69a6488b8c4530b370`:
 - production composition, harness composition, compile, world reconstruction and runtime launch all succeeded;
-- carriage present/train moved, external owner acquisition occurred 14 times;
-- owner/carriage5: walk confirmed tick20; backward confirmed at player tick25 for strict support tick24; strafe confirmed at player tick26 for strict support tick25;
-- strict Phase131 support for owner5 remained true through tick33, then the finite route/support selection moved away before the harness became jump-eligible;
-- harness requires the intended settle window after strafe; `GATE_E_M1_NATIVE_JUMP_REQUESTED=0` and `GATE_E_M1_NATIVE_JUMP_AIRBORNE=0`;
+- owner/carriage5: walk confirmed tick20; backward confirmed at player tick25 for strict support tick24; strafe requested tick25 and confirmed tick26 for strict support tick25;
+- strict Phase131 support for owner5 remained true through tick33 and becomes false at tick34;
+- current jump admission requires `self.tickCount >= vs2$strafeStartTick + 15`, so earliest possible jump is tick40;
+- jump request/airborne markers are absent; the route loses strict support before jump eligibility;
 - therefore attempt1 never exercised the patched jump lifecycle and cannot classify production physics success/failure.
-Smallest safe action was an exact same-head rerun, not a gameplay or harness patch.
-### Attempt2 — ACTIVE
-- exact rerun of job `104684825886` was requested without code changes;
-- same run id `35062245886`, run attempt2, exact head `cb03574...`;
-- `in_progress` when this ledger state was written.
+### Attempt2 — PRE-JUMP NON-ADMISSION; no gameplay inference
+Artifact `10433634322`, digest `sha256:9f36a7b465de1f3d4b8776c02806c1ef43e751ef4e47032fbf9073863177d96d`:
+- production composition, harness composition, compile, world reconstruction and runtime launch all succeeded;
+- owner/carriage10: walk confirmed tick38; backward confirmed player tick43 for strict support tick42; right-strafe requested tick43;
+- strict Phase131 support is true through tick42 and false from tick43; strafe confirmation never occurs and repeated `GATE_E_M1_NATIVE_STRAFE_REJECTED_NO_CREATE_SUPPORT` begins at player tick44 for motion/support tick43;
+- jump request/airborne markers are absent; jump gate cannot open because support is already gone at strafe admission;
+- therefore attempt2 also never exercised the patched jump lifecycle and cannot classify production physics success/failure.
+
+## Repeated pre-jump admission boundary verifier — ACTIVE
+Verifier-only commit `85eaea024912c2a99aa9373002877edc790f41a7`, workflow `m1-natural-landing-admission-boundary-proof`, run `35065737938`.
+- Pins attempt1 artifact `10433880714` + exact digest and attempt2 artifact `10433634322` + exact digest.
+- Verifies current harness admission anchors without changing them.
+- Intended classification: `REPRODUCIBLE_PRE_JUMP_ADMISSION_ROUTE_EXHAUSTS_STRICT_SUPPORT`.
+- This proof is explicitly verifier-only: no harness mutation, no production physics inference, no gameplay patch authorization.
+- Run was `in_progress` when this ledger state was written.
 
 ## Diagnostic runtime attempts superseded by exact verifier
 Read-only trace commit `b675e45...`, run `35058550331`:
@@ -172,12 +183,13 @@ Do not reintroduce without new direct evidence:
 - adding/replacing a body-position writer after `35048234680`.
 
 ## next_safe_action
-1. Inspect only natural-landing proof run `35062245886` attempt2 first.
-2. If queued/in_progress: HOLD and stack no further production/harness hypothesis.
-3. If attempt2 again never reaches jump request/airborne, classify the current natural-landing CI route as reproducibly non-admitting before the patched seam; add only the smallest read-only/admission-boundary proof necessary before changing any harness semantics. Do not infer gameplay physics failure from non-admission.
-4. If runtime reaches a valid strict-support-qualified jump and `natural_landing_real_support_green`: freeze the strict-support natural-landing criterion, update this ledger, then advance to the smallest wall/ceiling solidity proof. Do not declare M1 complete or FINAL_READY from CI.
-5. If a valid strict-support-qualified jump reaches airborne but owner-relative drift remains, inspect exact owner lifecycle/authority markers from that artifact before any second gameplay hypothesis. If the new latch regresses a frozen-green criterion, revert `c3e7c51...` before any workaround stacking.
-6. Do not change transform math, native drag gate, VS2 body writer, OBB semantics, camera, gravity, or Create collision-response authority from this seam.
+1. Inspect only `m1-natural-landing-admission-boundary-proof` run `35065737938` first.
+2. If queued/in_progress: HOLD and stack no production or harness hypothesis.
+3. If verifier GREEN with `REPRODUCIBLE_PRE_JUMP_ADMISSION_ROUTE_EXHAUSTS_STRICT_SUPPORT`, treat both natural-landing reruns as proof-route non-admission only. Then inspect the smallest fixture/admission boundary needed to obtain a valid strict-support-qualified jump without manufacturing physics success; do not patch production from this verifier.
+4. If verifier fails because an artifact or marker contradicts the proposed classification, inspect only that exact contradiction and repair/verifier-classify it before any harness change.
+5. Once a valid strict-support-qualified jump actually runs on production basis `c3e7c51...`: if `natural_landing_real_support_green`, freeze natural landing and advance to smallest wall/ceiling solidity proof; if owner-relative drift remains, inspect exact owner lifecycle/authority markers before any second gameplay hypothesis.
+6. Revert `c3e7c51...` before stacking any workaround if a valid runtime proves it regresses a FROZEN_GREEN criterion.
+7. Do not change transform math, native drag gate, VS2 body writer, OBB semantics, camera, gravity, or Create collision-response authority from this pre-jump CI admission seam.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 Automated proof can never alone set `FINAL_READY`. A new exact JAR must pass direct user runtime for stable standing, forward/back/strafe/sprint, jump+airborne+natural landing, floor/walls/ceiling, turns, acceleration/deceleration/speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look. The watchdog local SHA gate must match that exact accepted JAR.

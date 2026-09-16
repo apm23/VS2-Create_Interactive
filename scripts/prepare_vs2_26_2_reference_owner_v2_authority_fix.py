@@ -15,6 +15,16 @@ mixin_json = resources / "vs2-create-compat.mixins.json"
 # Once a valid VS2 external reference owner is active, only the second contact-point carry translation
 # is suppressed for LocalPlayer regardless of which carriage callback produced it. The active owner id
 # remains the explicit authority key; this is not a global Create collision or movement suppression.
+#
+# Current-production post-arc run 35089177675 adds a narrower lifecycle fact. A valid owner7 native jump
+# remained authoritative through the real descent, but the landing itself was expressed by Create's
+# exact-owner contact-carry callback plus applied grounding while Phase170 emitted no native-application
+# marker. The old jump-owner fallback therefore never refreshed and the 40-tick safety cap cleared a
+# visibly settled owner at tick84. Reuse this already-authoritative exact-owner Create callback as the
+# landing/settled refresh signal. While jump-active it is admitted only after the ordinary 25-tick cap,
+# preserving rejection of early false grounded/side contacts at ticks49 and55-64. After landing resets
+# the jump latch, continued exact-owner grounded contact may refresh the same existing owner. This never
+# acquires a new owner and never changes Create collision response, motion, gravity, transforms, or camera.
 java.parent.mkdir(parents=True, exist_ok=True)
 java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
@@ -36,6 +46,7 @@ import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
  * second Entity.setPos is contact-point carry translation. While VS2 has an active external reference
  * owner for LocalPlayer, VS2 owns reference continuity, so no Create carriage may also apply that
  * second carry writer. Calls are classified against the explicit active owner id for proof/logging.
+ * The same exact-owner callback can refresh an already-existing grounded owner; it never acquires one.
  */
 @Mixin(targets = "com.zurrtum.create.client.content.contraptions.ContraptionColliderClient", remap = false)
 public abstract class MixinExternalReferenceOwnerCreateCarry {
@@ -76,6 +87,29 @@ public abstract class MixinExternalReferenceOwnerCreateCarry {
         }
 
         boolean exactExternalOwner = ownerEntityId.intValue() == carriageEntity.getId();
+        boolean groundedExactOwnerContact = exactExternalOwner && player.onGround();
+        boolean jumpLandingAfterOrdinaryCap = groundedExactOwnerContact
+            && dragging.getExternalReferenceOwnerJumpActive()
+            && dragging.getTicksSinceExternalReferenceOwner()
+                >= org.valkyrienskies.mod.common.util.EntityDraggingInformation.TICKS_TO_DRAG_ENTITIES;
+        boolean settledSameOwnerContact = groundedExactOwnerContact
+            && !dragging.getExternalReferenceOwnerJumpActive();
+        if (jumpLandingAfterOrdinaryCap || settledSameOwnerContact) {
+            int ageBeforeRefresh = dragging.getTicksSinceExternalReferenceOwner();
+            dragging.refreshExternalReferenceOwner(carriageEntity.getId());
+            VS2_REFERENCE_OWNER_AUTHORITY.info(
+                "REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH player_tick={} carriage_id={} " +
+                    "jump_landing_after_ordinary_cap={} settled_same_owner_contact={} " +
+                    "physical_support=unknown recent_native_contact=unknown owner_key=entity_id " +
+                    "source=create_contact_carry age_before_refresh={}",
+                player.tickCount,
+                carriageEntity.getId(),
+                jumpLandingAfterOrdinaryCap,
+                settledSameOwnerContact,
+                ageBeforeRefresh
+            );
+        }
+
         VS2_REFERENCE_OWNER_AUTHORITY.info(
             "REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED player_tick={} carriage_id={} owner_id={} " +
                 "requested_delta={},{},{} collision_response_preserved=true active_external_owner=true exact_external_owner={}",
@@ -106,6 +140,13 @@ required = [
     "getExternalReferenceOwnerEntityId()",
     "activeExternalOwner",
     "ownerEntityId.intValue() == carriageEntity.getId()",
+    "groundedExactOwnerContact",
+    "getExternalReferenceOwnerJumpActive()",
+    "getTicksSinceExternalReferenceOwner()",
+    "EntityDraggingInformation.TICKS_TO_DRAG_ENTITIES",
+    "refreshExternalReferenceOwner(carriageEntity.getId())",
+    "REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH",
+    "source=create_contact_carry",
     "REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED",
     "active_external_owner=true",
     "collision_response_preserved=true",
@@ -125,3 +166,4 @@ for forbidden in [
 
 print("REFERENCE_OWNER_V2_AUTHORITY_FIX active_owner_scoped=true create_collision_response_preserved=true")
 print("REFERENCE_OWNER_V2_AUTHORITY_FIX exact_and_sibling_contact_carry_suppressed=true synthetic_motion=false collision_takeover=false")
+print("REFERENCE_OWNER_V2_AUTHORITY_FIX exact_owner_grounded_refresh=true jump_refresh_after_ordinary_cap_only=true")

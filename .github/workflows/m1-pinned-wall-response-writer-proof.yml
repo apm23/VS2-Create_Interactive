@@ -1,0 +1,42 @@
+name: m1-pinned-wall-response-writer-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-pinned-wall-response-writer-proof.yml'
+      - 'scripts/prove_pinned_wall_response_writer.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prove-wall-response:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download exact valid-jump artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: current-production-post-arc-owner-log
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 35089177675
+      - name: Classify pinned wall temporal response and writer neighborhood
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s evidence/current-production-post-arc-owner.log
+          python3 scripts/prove_pinned_wall_response_writer.py evidence/current-production-post-arc-owner.log | tee pinned-wall-response-writer-proof.txt
+          grep -q 'M1_PINNED_WALL_RESPONSE_WRITER_PROOF' pinned-wall-response-writer-proof.txt
+          grep -q 'production_unchanged=true read_only=true final_ready=false' pinned-wall-response-writer-proof.txt
+      - name: Upload wall response proof
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: pinned-wall-response-writer-proof
+          path: pinned-wall-response-writer-proof.txt
+          if-no-files-found: warn

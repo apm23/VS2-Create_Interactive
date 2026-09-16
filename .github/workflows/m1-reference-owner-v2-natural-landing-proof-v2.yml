@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/m1-reference-owner-v2-natural-landing-proof-v2.yml'
       - 'scripts/prepare_vs2_26_2_natural_landing_harness_v2.py'
+      - 'scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py'
   workflow_dispatch:
 
 permissions:

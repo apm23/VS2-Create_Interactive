@@ -1,0 +1,66 @@
+name: m1-wall-ceiling-camera-source-map
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-wall-ceiling-camera-source-map.yml'
+      - 'scripts/prove_wall_ceiling_camera_source_map.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-map:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Checkout pinned Create source
+        uses: actions/checkout@v5
+        with:
+          repository: ZurrTum/Create-Fly
+          ref: 12c75509e16dd4f33c5f6260bd0330f1ed094bb5
+          path: create-source
+
+      - name: Compose exact current V2 production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+
+      - name: Source-map wall ceiling and camera seams
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/prove_wall_ceiling_camera_source_map.py | tee wall-ceiling-camera-source-map.txt
+          grep -q 'M1_WALL_CEILING_CAMERA_SOURCE_MAP' wall-ceiling-camera-source-map.txt
+          grep -q 'classification=CREATE_WALL_CEILING_RESPONSE_WRITERS_PRESENT_CAMERA_POSITIONAL_OWNER_UNWIRED' wall-ceiling-camera-source-map.txt
+          grep -q 'create_collision_authority_preserved=true' wall-ceiling-camera-source-map.txt
+          grep -q 'wall_ceiling_runtime_contact_still_unproven=true' wall-ceiling-camera-source-map.txt
+          grep -q 'turn_camera_runtime_still_unproven=true' wall-ceiling-camera-source-map.txt
+          grep -q 'gameplay_unchanged=true' wall-ceiling-camera-source-map.txt
+
+      - name: Upload source-map proof
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wall-ceiling-camera-source-map
+          path: wall-ceiling-camera-source-map.txt
+          if-no-files-found: warn

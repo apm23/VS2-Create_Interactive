@@ -107,7 +107,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg xdotool openbox
           ffmpeg -version | head -1
-          xdotool version
+          command -v xdotool
+          openbox --version | head -1
 
       - name: Record one exact-head active-owner turn
         working-directory: upstream

@@ -1,0 +1,269 @@
+name: m1-reference-owner-v2-natural-landing-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-natural-landing-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  natural-landing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Compose exact current production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+
+          PROBE=upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
+          AUTH=upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinExternalReferenceOwnerCreateCarry.java
+          FIXTURE=upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java
+          grep -q 'REFERENCE_OWNER_V2_ACQUIRE' "$PROBE"
+          grep -q 'REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED' "$AUTH"
+          grep -q 'GATE_E_M1_NATIVE_JUMP_REQUESTED' "$FIXTURE"
+          grep -q 'GATE_E_M1_NATIVE_JUMP_AIRBORNE' "$FIXTURE"
+          grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED' "$FIXTURE"
+
+      - name: Narrow fixture jump admission to fresh proven support
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java')
+          s=p.read_text(encoding='utf-8')
+          pattern=re.compile(r'    @Unique\n    private boolean vs2\$jumpArmReady\(LocalPlayer self\) \{.*?\n    \}', re.S)
+          m=pattern.search(s)
+          if not m:
+              raise SystemExit('landing proof could not locate exact jumpArmReady harness method')
+          old=m.group(0)
+          if 'vs2.productionFixtureJumpFloorSupportNow' not in old or 'vs2.phase170NativeContactApplicationTick' not in old:
+              raise SystemExit('landing proof refused to replace an unexpected jump admission boundary')
+          new='''    @Unique
+    private boolean vs2$jumpArmReady(LocalPlayer self) {
+        if (vs2$jumpStartTick != Integer.MIN_VALUE) return !vs2$jumpLandedLogged;
+        if (!vs2$fixtureWalkSeen(self) || !self.onGround()) return false;
+        if (!Boolean.getBoolean("vs2.productionFixtureJumpFloorSupportNow")) return false;
+        String floorTickRaw = System.getProperty("vs2.productionFixtureJumpFloorSupportTick");
+        String nativeTickRaw = System.getProperty("vs2.phase170NativeContactApplicationTick");
+        if (floorTickRaw == null || nativeTickRaw == null) return false;
+        try {
+            int floorTick = Integer.parseInt(floorTickRaw);
+            int nativeTick = Integer.parseInt(nativeTickRaw);
+            boolean floorFresh = floorTick == self.tickCount || floorTick == self.tickCount - 1;
+            boolean nativeFresh = nativeTick == self.tickCount || nativeTick == self.tickCount - 1;
+            return floorFresh && nativeFresh;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }'''
+          for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport(', 'setVelocity(', 'cir.setReturnValue(']:
+              if forbidden in new:
+                  raise SystemExit('landing fixture introduced forbidden movement mutation: '+forbidden)
+          s=s[:m.start()]+new+s[m.end():]
+          p.write_text(s, encoding='utf-8')
+          print('REFERENCE_OWNER_V2_LANDING_HARNESS fixture_only=true vanilla_jump=true fresh_floor=true fresh_native_contact=true gameplay_physics_mutation=false')
+          PY
+
+          FIXTURE=upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java
+          grep -q 'if (vs2\$jumpStartTick != Integer.MIN_VALUE) return !vs2\$jumpLandedLogged;' "$FIXTURE"
+          grep -q 'boolean floorFresh = floorTick == self.tickCount || floorTick == self.tickCount - 1;' "$FIXTURE"
+          grep -q 'boolean nativeFresh = nativeTick == self.tickCount || nativeTick == self.tickCount - 1;' "$FIXTURE"
+          ! grep -q 'self.setPos(' "$FIXTURE"
+          ! grep -q 'self.setDeltaMovement(' "$FIXTURE"
+
+      - name: Compile exact composition plus fixture-only admission
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :fabric:compileJava
+
+      - name: Reconstruct verified r0v3 train save
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED='e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556'
+          mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v3.part-*' -print | sort -V)
+          test "${#parts[@]}" -eq 17
+          cat "${parts[@]}" > train-world-state-r0v3.b64
+          base64 -d train-world-state-r0v3.b64 > train-world-state-r0v3.zip
+          test "$(sha256sum train-world-state-r0v3.zip | awk '{print $1}')" = "$EXPECTED"
+          unzip -tq train-world-state-r0v3.zip
+          rm -rf world-fixture
+          mkdir world-fixture
+          unzip -q train-world-state-r0v3.zip -d world-fixture
+          mkdir -p upstream/fabric/run/saves
+          rm -rf upstream/fabric/run/saves/train-v2-natural-landing
+          mv 'world-fixture/train build 1' upstream/fabric/run/saves/train-v2-natural-landing
+
+      - name: Prefetch client assets
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:downloadAssets; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+
+      - name: Prove airborne to natural landing continuity
+        working-directory: upstream
+        timeout-minutes: 18
+        env:
+          JAVA_TOOL_OPTIONS: -Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
+          ALSOFT_DRIVERS: 'null'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=../reference-owner-v2-natural-landing.log
+          XVFB_LOG=../reference-owner-v2-natural-landing-xvfb.log
+          rm -f "$LOG" "$XVFB_LOG"
+          rm -rf fabric/run/crash-reports
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > "$XVFB_LOG" 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+          ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v2-natural-landing' > "$LOG" 2>&1 &
+          CLIENT_PID=$!
+
+          cleanup() {
+            if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
+            if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
+          }
+          trap cleanup EXIT
+
+          fatal_state() {
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' "$LOG" \
+              || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
+              || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
+              || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
+          }
+
+          READY=0
+          for i in $(seq 1 900); do
+            CARRIAGE=0; MOVED=0; ACQUIRED=0; WALK=0; REQUESTED=0; AIRBORNE=0; LANDED=0
+            grep -q 'GATE_D_CARRIAGE_PRESENT' "$LOG" && CARRIAGE=1 || true
+            grep -q 'GATE_D_TRAIN_MOVED' "$LOG" && MOVED=1 || true
+            grep -q 'REFERENCE_OWNER_V2_ACQUIRE' "$LOG" && ACQUIRED=1 || true
+            grep -Eq 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED.*confirmed=true' "$LOG" && WALK=1 || true
+            grep -q 'GATE_E_M1_NATIVE_JUMP_REQUESTED' "$LOG" && REQUESTED=1 || true
+            grep -q 'GATE_E_M1_NATIVE_JUMP_AIRBORNE' "$LOG" && AIRBORNE=1 || true
+            grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED' "$LOG" && LANDED=1 || true
+            if [ "$CARRIAGE" -eq 1 ] && [ "$MOVED" -eq 1 ] && [ "$ACQUIRED" -eq 1 ] && [ "$WALK" -eq 1 ] \
+              && [ "$REQUESTED" -eq 1 ] && [ "$AIRBORNE" -eq 1 ] && [ "$LANDED" -eq 1 ]; then READY=1; break; fi
+            if fatal_state; then tail -360 "$LOG"; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -360 "$LOG"; exit 1; fi
+            sleep 1
+          done
+          test "$READY" -eq 1
+          sleep 2
+
+          if grep -q 'GATE_E_PHASE83_CONTACT_REFRESH' "$LOG"; then echo 'legacy Phase83 reanchor executed'; exit 1; fi
+          if grep -q 'GATE_E_PHASE205_PRE_COLLISION_REANCHOR' "$LOG"; then echo 'legacy Phase205 reanchor executed'; exit 1; fi
+          if grep -q 'GATE_E_PHASE205_DUPLICATE_CONTACT_CARRY_SUPPRESSED' "$LOG"; then echo 'legacy Phase205 suppression executed'; exit 1; fi
+
+          python3 - "$LOG" <<'PY'
+          import math,re,sys
+          text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
+          req=re.search(r'GATE_E_M1_NATIVE_JUMP_REQUESTED[^\n]*player_tick=(\d+)',text)
+          air=re.search(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)[^\n]*delta_y=([-+0-9.eE]+)',text)
+          land=re.search(r'GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)',text)
+          if not (req and air and land): raise SystemExit('missing jump request/airborne/landed markers')
+          r_tick=int(req.group(1)); a_tick=int(air.group(1)); l_tick=int(land.group(1)); rise_delta=float(air.group(2))
+          if not (r_tick <= a_tick < l_tick): raise SystemExit(f'invalid jump ordering request={r_tick} airborne={a_tick} landed={l_tick}')
+          if l_tick-r_tick > 40: raise SystemExit(f'landing took too long: {l_tick-r_tick} ticks')
+
+          acquisitions=[(int(t),int(c)) for t,c in re.findall(r'REFERENCE_OWNER_V2_ACQUIRE[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)',text)]
+          prior=[x for x in acquisitions if x[0] <= r_tick]
+          if not prior: raise SystemExit('no external owner acquisition before jump')
+          owner_tick,owner_id=max(prior)
+          changed=[(t,c) for t,c in acquisitions if r_tick <= t <= l_tick and c != owner_id]
+          if changed: raise SystemExit(f'external owner changed during jump owner={owner_id} changes={changed[:8]}')
+
+          local_re=re.compile(r'GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)')
+          samples=[]
+          for m in local_re.finditer(text):
+            tick,cid=int(m.group(1)),int(m.group(2))
+            if r_tick-1 <= tick <= l_tick+2 and cid==owner_id:
+              samples.append((tick,float(m.group(3)),float(m.group(4)),float(m.group(5))))
+          samples.sort()
+          jump_samples=[s for s in samples if r_tick <= s[0] <= l_tick]
+          if len(jump_samples)<3: raise SystemExit(f'insufficient same-owner jump samples owner={owner_id} count={len(jump_samples)}')
+          x0,z0=jump_samples[0][1],jump_samples[0][3]
+          max_drift=max(math.hypot(x-x0,z-z0) for _,x,_,z in jump_samples)
+          max_step=max([math.hypot(b[1]-a[1],b[3]-a[3]) for a,b in zip(jump_samples,jump_samples[1:])] or [0.0])
+          if max_drift>1.5: raise SystemExit(f'owner-relative airborne drift too large: {max_drift:.6f}')
+          if max_step>0.75: raise SystemExit(f'owner-relative one-tick step too large: {max_step:.6f}')
+
+          baseline=min(samples,key=lambda s:abs(s[0]-r_tick))[2]
+          peak=max(s[2] for s in jump_samples)
+          final=min(samples,key=lambda s:abs(s[0]-l_tick))[2]
+          if peak < baseline+0.10 and rise_delta <= 0.05:
+            raise SystemExit(f'no natural upward arc baseline={baseline:.6f} peak={peak:.6f} delta={rise_delta:.6f}')
+          if abs(final-baseline)>0.35:
+            raise SystemExit(f'landing local Y did not return near floor baseline={baseline:.6f} final={final:.6f}')
+
+          support=[(int(t),int(c),v=='true') for t,c,v in re.findall(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=(\d+) physical_support=(true|false)',text)]
+          reacquire=[(t,c) for t,c,v in support if v and c==owner_id and l_tick <= t <= l_tick+3]
+          if not reacquire: raise SystemExit(f'no same-owner physical support reacquired after landing owner={owner_id} landed={l_tick}')
+
+          suppressed=re.findall(r'REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED[^\n]*owner_id=(\d+)',text)
+          if not suppressed: raise SystemExit('active-owner authority suppression never executed')
+
+          print('REFERENCE_OWNER_V2_NATURAL_LANDING_PROOF '
+                f'classification=SAME_OWNER_NATIVE_JUMP_NATURAL_LANDING_CONTINUOUS owner={owner_id} acquired_tick={owner_tick} '
+                f'request_tick={r_tick} airborne_tick={a_tick} landed_tick={l_tick} duration={l_tick-r_tick} '
+                f'jump_samples={len(jump_samples)} max_horizontal_drift={max_drift:.6f} max_horizontal_step={max_step:.6f} '
+                f'baseline_local_y={baseline:.6f} peak_local_y={peak:.6f} final_local_y={final:.6f} support_reacquire={reacquire[:3]} '
+                'fixture_only_jump_admission=true synthetic_motion=false final_ready=false')
+          PY
+
+          grep -E 'REFERENCE_OWNER_V2_(ACQUIRE|CREATE_CONTACT_CARRY_SUPPRESSED|NATURAL_LANDING_PROOF)|GATE_E_M1_NATIVE_JUMP_(REQUESTED|AIRBORNE|LANDED)|GATE_E_PHASE131_SUPPORT_SOURCE' "$LOG" | tail -260 || true
+
+      - name: Upload natural landing diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-owner-v2-natural-landing-log
+          path: |
+            reference-owner-v2-natural-landing.log
+            reference-owner-v2-natural-landing-xvfb.log
+          if-no-files-found: warn

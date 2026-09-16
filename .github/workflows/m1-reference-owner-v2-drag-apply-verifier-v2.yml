@@ -1,0 +1,107 @@
+name: m1-reference-owner-v2-drag-apply-verifier-v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-drag-apply-verifier-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact drag-apply runtime artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: reference-owner-v2-drag-apply-proof-log
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: apm23/VS2-Create_Interactive
+          run-id: 35046701119
+
+      - name: Reclassify writer application inside proven native jump window
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import math,re
+          path='evidence/reference-owner-v2-drag-apply-proof.log'
+          text=open(path,encoding='utf-8',errors='replace').read()
+          num=r'([-+0-9.eE]+)'
+          pre_re=re.compile(
+              r'REFERENCE_OWNER_V2_DRAG_APPLY_PRE player_tick=(\d+) pre_tick=(true|false) drag=(true|false) movement_nonnull=(true|false)'
+              r' movement_x='+num+r' movement_y='+num+r' movement_z='+num+
+              r' pos_x='+num+r' pos_y='+num+r' pos_z='+num+r' on_ground=(true|false) read_only=true')
+          post_re=re.compile(
+              r'REFERENCE_OWNER_V2_DRAG_APPLY_POST player_tick=(\d+) pre_tick=(true|false)'
+              r' movement_x='+num+r' movement_y='+num+r' movement_z='+num+
+              r' pos_x='+num+r' pos_y='+num+r' pos_z='+num+r' on_ground=(true|false) read_only=true')
+          request=re.search(r'GATE_E_M1_NATIVE_JUMP_REQUESTED player_tick=(\d+)',text)
+          airborne=re.search(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick=(\d+).*?delta_y='+num+r'.*?vertical_arc=true',text)
+          landed=re.search(r'GATE_E_M1_NATIVE_JUMP_LANDED player_tick=(\d+)',text)
+          if not request or not airborne or not landed:
+              raise SystemExit('native jump markers incomplete in exact source artifact')
+          request_tick=int(request.group(1))
+          airborne_tick=int(airborne.group(1))
+          vertical_delta=float(airborne.group(2))
+          landing_tick=int(landed.group(1))
+          if vertical_delta <= 0.0 or landing_tick < airborne_tick:
+              raise SystemExit('invalid native jump marker ordering')
+
+          events=[]
+          for m in pre_re.finditer(text): events.append((m.start(),'pre',m))
+          for m in post_re.finditer(text): events.append((m.start(),'post',m))
+          events.sort(key=lambda x:x[0])
+          pending={}
+          pairs=[]
+          for _,kind,m in events:
+              tick=int(m.group(1)); pre_tick=m.group(2); key=(tick,pre_tick)
+              if kind=='pre':
+                  vals=[float(m.group(i)) for i in range(5,11)]
+                  pending.setdefault(key,[]).append(vals)
+              else:
+                  vals=[float(m.group(i)) for i in range(3,9)]
+                  q=pending.get(key,[])
+                  if q:
+                      pv=q.pop(0)
+                      mv=pv[0:3]; p0=pv[3:6]; p1=vals[3:6]
+                      actual=[p1[i]-p0[i] for i in range(3)]
+                      residual=math.sqrt(sum((actual[i]-mv[i])**2 for i in range(3)))
+                      mag=math.sqrt(sum(v*v for v in mv))
+                      pairs.append((tick,pre_tick,mag,residual))
+
+          jump_pairs=[p for p in pairs if airborne_tick <= p[0] <= landing_tick and p[2] > 1e-4]
+          missed=0
+          for (tick,_),items in pending.items():
+              if not (airborne_tick <= tick <= landing_tick):
+                  continue
+              for pv in items:
+                  if math.sqrt(sum(v*v for v in pv[:3])) > 1e-4:
+                      missed += 1
+          if missed:
+              classification='EXTERNAL_OWNER_BODY_WRITER_MISSES_CALCULATED_STEP'
+          elif jump_pairs and max(p[3] for p in jump_pairs) <= 1e-6:
+              classification='EXTERNAL_OWNER_BODY_WRITER_APPLIES_CALCULATED_STEP'
+          elif jump_pairs:
+              classification='EXTERNAL_OWNER_BODY_WRITER_DIVERGES_FROM_CALCULATED_STEP'
+          else:
+              classification='EXTERNAL_OWNER_BODY_WRITER_RUNTIME_UNRESOLVED'
+          max_res=max((p[3] for p in jump_pairs),default=float('nan'))
+          max_mag=max((p[2] for p in jump_pairs),default=float('nan'))
+          print('REFERENCE_OWNER_V2_DRAG_APPLY_RECHECK classification='+classification+
+                ' source_run=35046701119 request_tick='+str(request_tick)+
+                ' airborne_tick='+str(airborne_tick)+' landing_marker_tick='+str(landing_tick)+
+                ' vertical_delta='+str(vertical_delta)+' jump_material_pairs='+str(len(jump_pairs))+
+                ' missed_jump_material='+str(missed)+' max_jump_movement='+str(max_mag)+
+                ' max_writer_residual='+str(max_res)+
+                ' verifier_only=true production_unchanged=true final_ready=false')
+          for p in jump_pairs:
+              print('REFERENCE_OWNER_V2_DRAG_APPLY_RECHECK_PAIR tick=%d pre_tick=%s movement_mag=%.9f residual=%.12f' % p)
+          if classification == 'EXTERNAL_OWNER_BODY_WRITER_RUNTIME_UNRESOLVED':
+              raise SystemExit(1)
+          PY

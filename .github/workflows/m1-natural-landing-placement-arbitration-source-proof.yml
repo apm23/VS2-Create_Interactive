@@ -1,0 +1,34 @@
+name: m1-natural-landing-placement-arbitration-source-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-natural-landing-placement-arbitration-source-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  placement-arbitration-source-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prove source inheritance
+        shell: bash
+        run: |
+          set -euo pipefail
+          P55=scripts/prepare_vs2_26_2_phase55.py
+          P71=scripts/prepare_vs2_26_2_phase71.py
+          P107=scripts/prepare_vs2_26_2_phase107.py
+          P154=scripts/prepare_vs2_26_2_phase154.py
+          grep -Fq 'Entity carriage = carriageCandidates.stream()' "$P55"
+          grep -Fq '.min(Comparator.comparingDouble(entity -> entity.distanceToSqr(player)))' "$P55"
+          grep -Fq 'arbitration=nearest_entity_center' "$P55"
+          grep -Fq 'carryBaselineCarriageId = carriage.getId();' "$P71"
+          grep -Fq 'System.setProperty("vs2.productionNativePlacementCarriageId", Integer.toString(carriage.getId()));' "$P107"
+          grep -Fq 'source=exact_local_fallback read_only=true' "$P107"
+          grep -Fq 'phase154Carriage = client.level.getEntity(carryBaselineCarriageId);' "$P154"
+          echo 'M1_NATURAL_LANDING_PLACEMENT_ARBITRATION_SOURCE_PROOF classification=PLACEMENT_TARGET_AND_WALK_BASELINE_INHERIT_SAME_NEAREST_CENTER_CARRIAGE_VARIABLE production_physics_unchanged=true selector_unchanged=true verifier_only=true final_ready=false'

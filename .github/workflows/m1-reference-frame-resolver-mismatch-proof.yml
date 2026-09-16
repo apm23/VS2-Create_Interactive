@@ -1,0 +1,59 @@
+name: m1-reference-frame-resolver-mismatch-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-frame-resolver-mismatch-proof.yml'
+      - 'scripts/prove_reference_frame_resolver_mismatch.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prove-reference-frame-resolver-mismatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Verify pinned jump-arc artifact identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="$(gh api repos/apm23/VS2-Create_Interactive/actions/artifacts/10444135201 --jq '.digest')"
+          test "$digest" = 'sha256:62dc537d525cf2f5375892157583e024cfa2c03b314df98a33aca0d09f8810ce'
+          echo "PINNED_JUMP_ARC_ARTIFACT id=10444135201 digest=$digest run=35089177675 head=012d92dabb86cac5571d5d320eea9fa77ea539d6"
+
+      - name: Download exact jump-arc artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf proof-artifact
+          mkdir proof-artifact
+          gh run download 35089177675 -n current-production-post-arc-owner-log -D proof-artifact
+          test -s proof-artifact/current-production-post-arc-owner.log
+
+      - name: Prove resolver/body writer leaves Create collision frame
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/prove_reference_frame_resolver_mismatch.py proof-artifact/current-production-post-arc-owner.log | tee reference-frame-resolver-mismatch-proof.txt
+          grep -q 'ROOT_REFERENCE_FRAME_RESOLVER_MISMATCH_PROOF' reference-frame-resolver-mismatch-proof.txt
+          grep -q 'conclusion=external_owner_identity_remains_active_but_EntityDragger_transform_can_leave_Create_collision_frame_during_jump_arc' reference-frame-resolver-mismatch-proof.txt
+          grep -q 'create_collision_authority_unchanged=true' reference-frame-resolver-mismatch-proof.txt
+          grep -q 'body_writer_replacement_not_authorized=true' reference-frame-resolver-mismatch-proof.txt
+
+      - name: Upload root-boundary proof
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: reference-frame-resolver-mismatch-proof
+          path: reference-frame-resolver-mismatch-proof.txt
+          if-no-files-found: warn

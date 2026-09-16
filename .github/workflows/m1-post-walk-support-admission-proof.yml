@@ -1,0 +1,104 @@
+name: m1-post-walk-support-admission-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-post-walk-support-admission-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify-post-walk-admission:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Download exact natural-landing attempt-2 artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -L \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -o evidence.zip \
+            https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10430617963/zip
+          test "$(sha256sum evidence.zip | awk '{print $1}')" = "c2bd572632b8720ddb0ed35cf1f801049bdac7f294124cfe64b2756caf3e15b2"
+          mkdir evidence
+          unzip -q evidence.zip -d evidence
+          test -f evidence/reference-owner-v2-natural-landing-v2.log
+
+      - name: Verify strict-support admission ordering
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          text=Path('evidence/reference-owner-v2-natural-landing-v2.log').read_text(encoding='utf-8',errors='replace')
+
+          walk=re.search(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*confirmed=true', text)
+          back=re.search(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*on_ground=true', text)
+          strafe=re.search(r'GATE_E_M1_NATIVE_STRAFE_CONFIRMED[^\n]*player_tick=(\d+)[^\n]*on_ground=true', text)
+          if not (walk and back and strafe):
+              raise SystemExit('missing walk/backward/strafe confirmation evidence')
+          walk_tick=int(walk.group(1)); back_tick=int(back.group(1)); strafe_tick=int(strafe.group(1))
+
+          acquisitions=[(int(t),int(cid)) for t,cid in re.findall(r'REFERENCE_OWNER_V2_ACQUIRE[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)', text)]
+          if not acquisitions:
+              raise SystemExit('attempt2 did not acquire an external owner')
+
+          support_by_tick={}
+          for m in re.finditer(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=(\d+) physical_support=(true|false)', text):
+              t=int(m.group(1)); cid=int(m.group(2)); physical=m.group(3)=='true'
+              support_by_tick.setdefault(t,[]).append((cid,physical))
+
+          strict_ticks=sorted(t for t,rows in support_by_tick.items() if any(p for _,p in rows))
+          if not strict_ticks:
+              raise SystemExit('attempt2 has no strict Create support evidence')
+          strict_before_back=[t for t in strict_ticks if t < back_tick]
+          if not strict_before_back:
+              raise SystemExit('no strict Create support before backward confirmation')
+          last_strict=max(strict_before_back)
+
+          def support_state(t):
+              rows=support_by_tick.get(t,[])
+              return rows, any(p for _,p in rows), any(not p for _,p in rows)
+
+          back_rows,back_true,back_false=support_state(back_tick)
+          strafe_rows,strafe_true,strafe_false=support_state(strafe_tick)
+          jump_ticks=[int(t) for t in re.findall(r'GATE_E_M1_NATIVE_JUMP_REQUESTED[^\n]*player_tick=(\d+)', text)]
+
+          proven=(
+              walk_tick < last_strict < back_tick <= strafe_tick
+              and back_false and not back_true
+              and strafe_false and not strafe_true
+              and not jump_ticks
+          )
+          classification=(
+              'POST_WALK_LOCOMOTION_CONFIRMED_WITHOUT_STRICT_CREATE_SUPPORT'
+              if proven else
+              'POST_WALK_SUPPORT_ADMISSION_UNRESOLVED'
+          )
+          print('REFERENCE_OWNER_V2_POST_WALK_SUPPORT_ADMISSION classification='+classification+
+                ' source_run=35054065739 source_attempt=2 artifact_id=10430617963'+
+                ' walk_confirm_tick='+str(walk_tick)+
+                ' last_strict_support_tick='+str(last_strict)+
+                ' backward_confirm_tick='+str(back_tick)+
+                ' backward_support_rows='+repr(back_rows)+
+                ' strafe_confirm_tick='+str(strafe_tick)+
+                ' strafe_support_rows='+repr(strafe_rows)+
+                ' jump_requested_ticks='+repr(jump_ticks)+
+                ' acquisition_count='+str(len(acquisitions))+
+                ' verifier_only=true production_unchanged=true final_ready=false')
+          if not proven:
+              raise SystemExit(1)
+          PY

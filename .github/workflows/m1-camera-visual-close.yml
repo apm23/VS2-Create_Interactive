@@ -100,15 +100,14 @@ jobs:
             sleep $((attempt * 10))
           done
 
-      - name: Ensure minimal recording dependency
+      - name: Ensure narrow visual-capture dependencies
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v ffmpeg >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y ffmpeg
-          fi
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg xdotool openbox
           ffmpeg -version | head -1
+          xdotool version
 
       - name: Record one exact-head active-owner turn
         working-directory: upstream
@@ -116,6 +115,7 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true
           LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_LOADER_DRIVER_OVERRIDE: llvmpipe
           MESA_GL_VERSION_OVERRIDE: '4.6'
           MESA_GLSL_VERSION_OVERRIDE: '460'
           ALSOFT_DRIVERS: 'null'
@@ -124,9 +124,12 @@ jobs:
           set -euo pipefail
           LOG=../camera-visual-close-runtime.log
           XVFB_LOG=../camera-visual-close-xvfb.log
+          WM_LOG=../camera-visual-close-openbox.log
+          WINDOW_TREE=../camera-visual-close-window-tree.txt
           MP4=../camera-turn-visual-close.mp4
           META=../camera-turn-visual-close-metadata.txt
-          rm -f "$LOG" "$XVFB_LOG" "$MP4" "$META"
+          BLACKCHECK=../camera-turn-visual-close-luma.txt
+          rm -f "$LOG" "$XVFB_LOG" "$WM_LOG" "$WINDOW_TREE" "$MP4" "$META" "$BLACKCHECK"
           rm -rf fabric/run/crash-reports fabric/run/saves/train-v2-camera-visual-close
           rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
           mkdir -p fabric/run/saves
@@ -135,10 +138,14 @@ jobs:
           export DISPLAY=:99
           Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > "$XVFB_LOG" 2>&1 &
           XVFB_PID=$!
+          sleep 1
+          openbox > "$WM_LOG" 2>&1 &
+          WM_PID=$!
           ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v2-camera-visual-close' > "$LOG" 2>&1 &
           CLIENT_PID=$!
           cleanup() {
             kill "$CLIENT_PID" 2>/dev/null || true
+            kill "$WM_PID" 2>/dev/null || true
             kill "$XVFB_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
@@ -152,22 +159,41 @@ jobs:
 
           STARTED=0
           for i in $(seq 1 180); do
-            if grep -q 'REFERENCE_OWNER_V2_ACQUIRE' "$LOG"; then
-              STARTED=1
-              break
-            fi
+            if grep -q 'REFERENCE_OWNER_V2_ACQUIRE' "$LOG"; then STARTED=1; break; fi
             if fatal_state; then tail -240 "$LOG"; exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -240 "$LOG"; exit 1; fi
             sleep 1
           done
           test "$STARTED" -eq 1
+
+          WIN_ID=''
+          for i in $(seq 1 30); do
+            WIN_ID=$(xdotool search --onlyvisible --name 'Minecraft|Fabric|Valkyrien' 2>/dev/null | head -1 || true)
+            if [ -n "$WIN_ID" ]; then break; fi
+            sleep 1
+          done
+          xwininfo -root -tree > "$WINDOW_TREE" 2>&1 || true
+          test -n "$WIN_ID"
+          xdotool windowmap "$WIN_ID" || true
+          xdotool windowmove "$WIN_ID" 0 0 || true
+          xdotool windowsize "$WIN_ID" 1280 720 || true
+          xdotool windowraise "$WIN_ID" || true
+          xdotool windowactivate --sync "$WIN_ID" || true
+          sleep 2
           START_LINE=$(wc -l < "$LOG")
 
-          ffmpeg -y -f x11grab -framerate 30 -video_size 1280x720 -i :99.0 \
+          ffmpeg -y -f x11grab -framerate 30 -video_size 1280x720 -i :99.0+0,0 \
             -t 15 -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p "$MP4"
 
           if fatal_state; then tail -240 "$LOG"; exit 1; fi
           test -s "$MP4"
+
+          ffmpeg -hide_banner -loglevel error -i "$MP4" -vf 'signalstats,metadata=print' -an -f null - 2> "$BLACKCHECK" || true
+          MAX_Y=$(grep -o 'lavfi.signalstats.YAVG=[0-9.]*' "$BLACKCHECK" | cut -d= -f2 | sort -n | tail -1 || true)
+          BRIGHT_FRAMES=$(awk -F= '/lavfi.signalstats.YAVG=/{if ($2+0 > 20) n++} END{print n+0}' "$BLACKCHECK")
+          test -n "$MAX_Y"
+          awk -v y="$MAX_Y" 'BEGIN{exit !(y>20)}'
+          test "$BRIGHT_FRAMES" -ge 30
 
           python3 - "$LOG" "$START_LINE" <<'PY'
           import math,re,sys
@@ -176,22 +202,17 @@ jobs:
           text='\n'.join(lines)
           rx=re.compile(r'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample=(\d+) player_tick=(\d+) owner_id=(-?\d+).*?horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
           groups={}
-          for s,t,o,e,h in rx.findall(text):
-              groups.setdefault(int(o),[]).append((int(t),float(e),float(h)))
+          for s,t,o,e,h in rx.findall(text): groups.setdefault(int(o),[]).append((int(t),float(e),float(h)))
           valid=[]
           for owner,rows in groups.items():
               if len({t for t,_,_ in rows}) < 2: continue
-              hs=[h for _,_,h in rows]
-              un=[hs[0]]; prev=hs[0]
+              hs=[h for _,_,h in rows]; un=[hs[0]]; prev=hs[0]
               for h in hs[1:]:
                   d=(h-prev+math.pi)%(2*math.pi)-math.pi
                   un.append(un[-1]+d); prev=h
-              span=max(un)-min(un)
-              maxerr=max(e for _,e,_ in rows)
-              if span>=0.01 and maxerr<=0.05:
-                  valid.append((span,maxerr,owner,len(rows)))
-          if not valid:
-              raise SystemExit('visual capture interval did not contain proven active-owner turn')
+              span=max(un)-min(un); maxerr=max(e for _,e,_ in rows)
+              if span>=0.01 and maxerr<=0.05: valid.append((span,maxerr,owner,len(rows)))
+          if not valid: raise SystemExit('visual capture interval did not contain proven active-owner turn')
           span,maxerr,owner,count=max(valid)
           print(f'CAMERA_VISUAL_CLOSE_INTERVAL_OK owner={owner} rows={count} heading_span_rad={span:.9f} max_horizontal_error={maxerr:.9f}')
           PY
@@ -207,6 +228,10 @@ jobs:
             echo 'scenario=active_external_owner_real_carriage_turn'
             echo 'capture_seconds=15'
             echo 'source_checkout_verified=true'
+            echo 'visual_nonblack_verified=true'
+            echo "capture_window_id=$WIN_ID"
+            echo "max_luma=$MAX_Y"
+            echo "bright_frames=$BRIGHT_FRAMES"
             echo 'jar_sha256=n/a_not_final_candidate'
             echo "mp4_sha256=$MP4_SHA"
           } > "$META"
@@ -219,6 +244,9 @@ jobs:
           path: |
             camera-turn-visual-close.mp4
             camera-turn-visual-close-metadata.txt
+            camera-turn-visual-close-luma.txt
             camera-visual-close-runtime.log
             camera-visual-close-xvfb.log
+            camera-visual-close-openbox.log
+            camera-visual-close-window-tree.txt
           if-no-files-found: warn

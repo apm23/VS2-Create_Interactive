@@ -12,16 +12,17 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- project_state: `ROOT_REDESIGN — UPWARD-JUMP OWNER CLEAR FIXED; OWNER-RELATIVE JUMP CONTINUITY MATERIALLY IMPROVED; OWNER REMAINS ACTIVE THROUGH DESCENT; HEADLESS FALSE-LANDING AISTEP CUTOFF PROVEN; HARNESS-ONLY REAL-SUPPORT NATURAL-LANDING REPROOF ACTIVE`.
-- ledger_basis_head: `618da46f8cffe9ed34a3502e4e4080bb0fc4f4b1` (`Repair headless natural landing proof boundary`).
+- project_state: `ROOT_REDESIGN — UPWARD-JUMP OWNER CLEAR FIXED; OWNER-RELATIVE JUMP CONTINUITY MATERIALLY IMPROVED; OWNER REMAINS ACTIVE THROUGH DESCENT; HEADLESS FALSE-LANDING AISTEP CUTOFF PROVEN; NATURAL-LANDING PROOF CURRENTLY BLOCKED BY PRE-JUMP FIXTURE/SUPPORT NONDETERMINISM`.
+- implementation_basis_head: `d284e7a0377600b865ed29d520ad1107bf35083c` (`Preserve locomotion sequencing in landing harness`).
+- latest ledger commit may advance actual HEAD without production gameplay mutation; reconcile actual HEAD first on every watchdog cycle.
 - final_ready: `false`.
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`; never ask user to retest it.
 - production scheduler patch: `0ce0dfd4f6f29685eb18b6e3a8c14ddc247bbb9b`.
 - production active-owner Create carry authority patch: `652667e887720509f37618641e231f70e8e689c4`.
 - production upward-jump lifecycle correction: `a14260cc76b61e5c6be0de38e634abe9ee7f0800`.
 - active proof workflow: `m1-reference-owner-v2-natural-landing-proof-v2`.
-- active proof run: `35052376394`, exact proof head `618da46f...`; in progress when this ledger was written.
-- proof-only harness commit changes fixture/native-aiStep scheduling and verification only; production physics/gameplay source is unchanged relative to `a14260c...`.
+- active proof run: `35054065739`, exact proof head `d284e7a...`, attempt `2`; queued when this ledger was written.
+- no production physics/gameplay source changed in `d284e7a...`; it only repairs fixture jump sequencing while retaining the bounded headless-aiStep fallback.
 
 ## Historical direct-user runtime gate — authoritative regression evidence
 Exact JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef` FAILED:
@@ -117,15 +118,34 @@ Exact source run `35049968486`:
 - stable support-miss plateau starts tick36.
 Conclusion: the post-tick36 stall in that CI run is a headless fixture scheduling artifact, not production physics evidence.
 
-## Active real-support landing repro
-Commit `618da46f8cffe9ed34a3502e4e4080bb0fc4f4b1` is one harness-only hypothesis:
-- adds `scripts/prepare_vs2_26_2_natural_landing_harness_v2.py`;
-- adds `.github/workflows/m1-reference-owner-v2-natural-landing-proof-v2.yml`;
-- keeps existing native `aiStep` fallback alive for a bounded 40-tick jump arc despite a false generic landing marker;
+## Natural-landing v2 proof status
+### Initial harness hypothesis
+Commit `618da46f8cffe9ed34a3502e4e4080bb0fc4f4b1`:
+- adds `scripts/prepare_vs2_26_2_natural_landing_harness_v2.py` and workflow `m1-reference-owner-v2-natural-landing-proof-v2`;
+- keeps native `aiStep` fallback alive for a bounded 40-tick jump arc despite a false generic landing marker;
 - adds no direct `setPos`, `setDeltaMovement`, move, gravity, teleport or `setOnGround` mutation;
-- landing verifier no longer trusts generic `onGround` marker; it requires genuine same-owner Phase131 `physical_support=true` reacquisition;
+- landing verifier requires genuine same-owner Phase131 `physical_support=true` reacquisition;
 - preserves exact verified r0v3 world SHA `e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556`.
-Active run: `35052376394`.
+
+Run `35052376394` reached acquisition and jump/airborne, but its fixture sequencing was contaminated: jump was requested before the intended reverse/strafe phases had completed. It cannot authorize a production physics patch.
+
+### Sequencing repair
+Commit `d284e7a0377600b865ed29d520ad1107bf35083c` restores the original fixture admission sequence exactly:
+`forward/walk -> backward -> strafe -> settle -> jump`, while retaining only the bounded post-false-landing `aiStep` fallback. Production gameplay/physics is unchanged.
+
+Run `35054065739` attempt 1, exact head `d284e7a...`, compiled and launched successfully but timed out before a valid natural-landing proof:
+- walk confirmed tick41;
+- backward requested/confirmed tick45;
+- right-strafe requested/confirmed tick46;
+- `REFERENCE_OWNER_V2_ACQUIRE` count = `0`;
+- Phase131 `physical_support=true` count = `0`;
+- jump requested = `0`, airborne = `0`;
+- native Create contact applications were still observed, including carriage4 before/through locomotion, but strict Phase131 support never became true; from ticks ~33-40 local X/Z was inside carriage4 while vertical gap stayed about `0.0626001`.
+Artifact id `10430766364`, digest `sha256:2e67856d37c3d947139aeb558bcbf5633d0ce0834ad9470295e30f5a82b6f44a`.
+
+Important comparison: prior run `35052376394` on the same r0v3 world had `REFERENCE_OWNER_V2_ACQUIRE=7`, Phase131 `physical_support=true=9`, jump=1 and airborne=1. Therefore attempt1 of `35054065739` is currently classified as a pre-jump fixture/support nondeterminism, not evidence for a production collision/physics change.
+
+Exact rerun of the same job/run was started as attempt 2 on `35054065739`; it was queued when this ledger was written. Do not stack another hypothesis while it is active.
 
 ## FROZEN_GREEN / protected
 - bootstrap/Kotlin packaging `f3d1335...`;
@@ -165,12 +185,12 @@ Do not reintroduce without new direct evidence:
 - adding/replacing a body-position writer after run `35048234680`.
 
 ## next_safe_action
-1. Inspect only active natural-landing-v2 run `35052376394` first.
+1. Inspect only `m1-reference-owner-v2-natural-landing-proof-v2` run `35054065739` attempt 2 first.
 2. If queued/in_progress: HOLD; stack no production or harness hypothesis.
-3. If compile/workflow/harness mechanics fail before useful runtime evidence: repair only this proof harness.
-4. If runtime reaches genuine same-owner Phase131 support reacquisition and verifier prints `natural_landing_real_support_green`: freeze natural landing criterion for automated M1 proof and advance to wall/ceiling solidity; do not claim FINAL_READY.
-5. If runtime still has no genuine Create support reacquisition while bounded native aiStep continues: inspect the exact Create grounding/collision boundary from that new artifact before any gameplay patch. Do not extend lifecycle, alter transform math, or add movement writers.
-6. Only after natural landing is GREEN advance to wall/ceiling, then turn/speed-change stability.
+3. If attempt2 again has `ACQUIRE=0` / Phase131 `physical_support=true=0`, classify this as reproducible pre-jump fixture/support-boundary failure and add only the smallest read-only instrumentation needed to explain acquisition-gate inputs / fixture normalization versus native Create contact. Do not patch gameplay physics from that CI failure.
+4. If attempt2 reacquires owner and reaches jump/airborne, inspect genuine same-owner Phase131 support reacquisition and owner-relative continuity; do not trust generic `onGround` landing alone.
+5. If bounded native `aiStep` continues and genuine support still never returns in a valid owner-acquired jump, inspect the exact Create grounding/collision boundary from that artifact before any production patch. Do not extend lifecycle, alter transform math, or add movement writers.
+6. Only after natural landing is GREEN advance to wall/ceiling solidity, then turn/speed-change stability.
 7. Any production patch must be one evidence-backed hypothesis and preserve every FROZEN_GREEN boundary.
 
 ## Finalization policy — HARD USER RUNTIME GATE
@@ -178,7 +198,7 @@ Automated proof can never alone set `FINAL_READY`. A new exact JAR must pass dir
 
 ## Fresh-chat/watchdog protocol
 1. Inspect actual HEAD.
-2. Read this file completely and reconcile ledger basis with actual HEAD; ledger-only/diagnostic commits may advance HEAD without gameplay mutation.
+2. Read this file completely and reconcile implementation basis with actual HEAD; ledger-only/diagnostic commits may advance HEAD without gameplay mutation.
 3. Inspect only latest relevant Actions evidence for active blocker.
 4. Respect FROZEN_GREEN and FAILED_HYPOTHESES.
 5. Execute `next_safe_action`; do not stop at narration.

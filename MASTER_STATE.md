@@ -12,105 +12,122 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only collision workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 gameplay/collision authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- project_state: `ROOT_REDESIGN — PRE-COLLISION EXTERNAL OWNER IS ACTIVE; OBB ZERO-RESPONSE FALSE-POSITIVE VERIFIER UNDER RECHECK`
-- ledger_basis_head: `4c0a15784fd004cf582bfe04617fb2aa411253fe`
+- project_state: `ROOT_REDESIGN — NATURAL JUMP REPRODUCES 21.599-BLOCK AIRBORNE OWNER-LOCAL DRIFT AT TICK 33->34; READ-ONLY EXTERNAL-OWNER DRAG BOUNDARY PROOF ACTIVE`
+- ledger_basis_head: `b87a62b3e26c0ebcd8a77059daa4d90cdca20824`
 - final_ready: `false`
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`
-- user_runtime_validation: historical candidate FAILED; never ask user to retest that SHA.
-- production scheduler patch: `0ce0dfd4f6f29685eb18b6e3a8c14ddc247bbb9b`
-- active verifier-only commit: `4c0a15784fd004cf582bfe04617fb2aa411253fe` (`Accept Create temporal-only OBB responses in frame proof`).
-- current proof workflow: `m1-reference-owner-v2-collision-frame-window-proof`.
-- current proof run: pending Actions registration when this ledger update was written.
-- no gameplay/physics production source changed by the OBB semantics/verifier commits `09e9cea...`, `2c8d765...`, `60dd46ca...`, `c580e0ec...`, `4c0a157...`.
+- user_runtime_validation: historical candidate FAILED; never ask the user to retest that SHA.
+- production scheduler patch: `0ce0dfd4f6f29685eb18b6e3a8c14ddc247bbb9b`.
+- production active-owner Create carry authority patch: `652667e887720509f37618641e231f70e8e689c4`.
+- current diagnostic workflow commit: `b87a62b3e26c0ebcd8a77059daa4d90cdca20824` (`Trace airborne external-owner drag boundary`).
+- current proof workflow: `m1-reference-owner-v2-airborne-drag-boundary-proof`.
+- current proof run: `35044076536` — queued when this ledger was written.
+- current diagnostic is read-only; production gameplay/physics source is unchanged.
 
-## Root architecture proofs
-- `6e079d62d0d30e8508ad825ef80791088fa28e5c`, run `34963733838` SUCCESS: old implementation was contact/lease reanchor, not continuous VS2 reference space.
-- `c364910f3c9419a5b37b41a3c59fa77124a10b02`, run `34969572212` SUCCESS: pinned VS2 native owner lifecycle requires a registered `ShipId`; there is no native public non-Ship owner seam. Fake/proxy ship is forbidden.
-- `abb57fff0d3635f09c9f85aa699df9f88d57abcf`, run `34972926851` SUCCESS: reference-owner redesign boundary mapped.
-- `2eeac3f8222931a56e760f05ec62bbe2131e2c43`, run `34975161200` SUCCESS: LocalPlayer M1 core slice bounded to owner state, body drag, relative packet, server resolution, standing render interpolation, and yaw transform. Create collision geometry remains separate.
-- `ebf4aaf73a0fb401cfeb77e9017f43af3b6f11c9`, run `34977644889` SUCCESS: Create `6.0.9-1` common carriage Entity id + bilateral transform API exists. Pinned Create JAR SHA256 `d9c6cb6116d5caa1174a289ecd7d3cdd463ccef6e8db1249ab0bcfcd8c935870`.
-
-## V1/V2 core implementation
-- V1: `6ef53dab...` -> `655fd1da...` -> `59e75959...` -> `4aeaf9f5...`; run `34984299770` SUCCESS.
-- V1 proved generalized non-Ship owner state + Entity-id resolver + VS2 EntityDragger lifecycle; acquisition intentionally disabled; historical Phase83/205 reanchor excluded when external owner active.
-- V2 implementation `5f687aca0af43ca4783fb915c3aea1651da74dc1`; composefix `ea546f83f3549736aa4ac0dfad23b82005a63cd0`; proof `a3f37d8e8c896dc05eca1e4b74759a25100a34bc`; run `34994353308` SUCCESS.
-- V2 structurally proved selected Create carriage acquisition, bounded owner lifetime, dedicated `PacketPlayerReferenceMotion`, same-owner client/server/render/yaw path, no fake ship, old Phase83/205 reanchor authority removed, Fabric compile GREEN.
-
-## Historical exact-JAR user runtime failure — overrides old CI GREEN
-Exact SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef` FAILED direct user runtime:
+## Historical direct-user runtime gate — authoritative regression evidence
+Exact JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef` FAILED:
 - floor hard/solid PASS;
 - grounded walking PASS;
 - walls soft FAIL;
 - jump/airborne dragged player backward ~2–4 carriages FAIL;
 - turns swept player/camera and could throw player outside FAIL;
 - behavior did not feel like a stable VS2 moving base FAIL.
-This remains authoritative regression evidence and blocks `FINAL_READY`.
+This blocks `FINAL_READY` regardless of old automated GREEN.
 
-## Initial V2 real-train body-continuity failure
-- gate commit `b1464506b6e0f3635c4d50ecb7615913a87d5ba9`, run `34997330399` FAILURE.
-- carriage/train, owner acquisition, grounded walk, vanilla jump request/airborne/landing all appeared, but body continuity failed catastrophically (~93.48 blocks owner-relative horizontal drift; ~51.83 max one-tick step).
-- artifact showed Create contact carry and VS2 external-owner body transform both writing player movement.
+## Root architecture proofs
+- `6e079d62...`, run `34963733838` SUCCESS: old implementation was contact/lease reanchor, not continuous VS2 reference space.
+- `c364910f...`, run `34969572212` SUCCESS: pinned VS2 native owner lifecycle requires registered `ShipId`; no native public non-Ship owner seam. Fake/proxy ship forbidden.
+- `abb57fff...`, run `34972926851` SUCCESS: reference-owner redesign boundary mapped.
+- `2eeac3f...`, run `34975161200` SUCCESS: M1 core slice bounded to owner state/body drag/relative packet/server resolution/standing render/yaw; Create collision stays separate.
+- `ebf4aaf...`, run `34977644889` SUCCESS: Create `6.0.9-1` carriage Entity id + bilateral transforms available. Pinned Create JAR SHA256 `d9c6cb6116d5caa1174a289ecd7d3cdd463ccef6e8db1249ab0bcfcd8c935870`.
 
-## Scheduler lifecycle root — FROZEN requirement, old placement superseded
-- runtime proved external owner must enter VS2 EntityDragger lifecycle; `f81507dd...`, run `35008163064` SUCCESS. This lifecycle requirement is FROZEN_GREEN.
-- run `35025200849` later proved old scheduling order was `CREATE_COLLISION_HEAD -> CREATE_COLLISION_RETURN -> VS2_DRAG_BEFORE -> VS2_DRAG_AFTER` on all 14 complete same-owner ticks.
-- therefore exact old postTick placement is not protected.
-- production commit `0ce0dfd4f6f29685eb18b6e3a8c14ddc247bbb9b` moves only external-owner LocalPlayer drag immediately after `ClientLevel.tick(...)`, before Create client collision; native VS2 ship scheduling remains native.
-- no setPos chase, synthetic velocity, gravity, collision clamp, camera mutation, fake ship, or Create geometry takeover is added.
+## V1/V2 implementation
+- V1 chain through run `34984299770` SUCCESS: generalized non-Ship owner state + Entity-id resolver + VS2 EntityDragger lifecycle; acquisition disabled; old reanchor excluded under external owner.
+- V2 implementation `5f687aca...`, composefix `ea546f83...`, proof `a3f37d8e...`, run `34994353308` SUCCESS: selected Create carriage owner, bounded lifetime, dedicated `PacketPlayerReferenceMotion`, same-owner client/server/render/yaw path, no fake ship, old Phase83/205 authority removed.
+- Initial V2 real-train run `34997330399` FAILURE: jump existed but owner-relative airborne drift ~`93.48251` blocks / max one-tick ~`51.82845`; Create contact carry and VS2 owner body both wrote movement.
 
-## Active-owner Create contact-carry authority — FROZEN_GREEN
-- production authority fix `652667e887720509f37618641e231f70e8e689c4`.
-- proof `07dbd852712c3c3d81b4d405e253befd4b34ac65`, run `35017634522` SUCCESS.
-- exact-owner suppressions `18`, sibling suppressions `3`, no collision-response writer overlap; conclusion `single_reference_body_writer_proven`.
-- scope is narrow: LocalPlayer only + valid active external owner + Create ordinal-1 contact carry only. Create OBB, grounding, damage, floor/wall/ceiling geometry and first collision response remain authoritative.
-- do not broaden without new direct runtime evidence.
+## Scheduler / authority — protected production boundaries
+- External-owner EntityDragger lifecycle is required: `f81507dd...`, run `35008163064` SUCCESS. This lifecycle requirement is FROZEN_GREEN.
+- Runtime order run `35025200849` proved old order on 14 complete ticks was `CREATE_COLLISION_HEAD -> CREATE_COLLISION_RETURN -> VS2_DRAG_BEFORE -> VS2_DRAG_AFTER`.
+- Production scheduler `0ce0dfd4...` moves ONLY external-owner LocalPlayer drag to immediately after `ClientLevel.tick(...)`, before Create client collision. Native VS2 Ship postTick scheduling stays native. No setPos chase, synthetic velocity, gravity, clamp, camera mutation, fake ship, or Create geometry takeover.
+- Active-owner Create ordinal-1 carry authority production `652667e...`; proof `07dbd852...`, run `35017634522` SUCCESS: exact-owner suppressions `18`, sibling suppressions `3`, no collision-response writer overlap; conclusion `single_reference_body_writer_proven`.
+- Authority scope is narrow: LocalPlayer + valid active external owner + Create ordinal-1 material carry only. Create OBB, grounding, damage, floor/wall/ceiling and first collision-response writer remain authoritative.
 
-## Authority-fixed real-train retest
-Run `35020203661`:
-- composition/compile/fixture/assets passed; runtime timed out waiting for jump.
-- train moving, external owner acquisition, bounded forward walk, native backward and right strafe passed.
-- jump was never requested because fresh floor/native-contact prerequisite disappeared; this is NOT jump-input evidence.
-- turn seam showed carriage frame/support continuity collapse; no gravity/input/camera workaround is authorized.
+## Authority-fixed real-train retest / transform proof
+- Run `35020203661`: train moving, owner acquisition, forward walk, backward, right strafe passed; jump never requested because floor/native-contact prerequisite had gone stale. Turn seam showed reference/support continuity collapse; this was NOT jump-input evidence.
+- Same-point transform commit `7bf93e0...`, run `35023234306` SUCCESS: `SAME_POINT_TRANSFORM_MATCHES_NATIVE_POINT_TIMING_DIFFERS`, exact same-point/current-point mismatch `0.000000`.
+- Therefore do NOT change resolver prev/current transform, yaw, partial-tick transform, or point-vs-vector semantics without new direct contrary evidence.
 
-## Same-point transform — FROZEN_GREEN
-- commit `7bf93e0b8b9c8c9eac56f6f9a5aff2df9394a20d`, run `35023234306` SUCCESS.
-- exact result `SAME_POINT_TRANSFORM_MATCHES_NATIVE_POINT_TIMING_DIFFERS`; same-point/current-point mismatches were `0.000000`.
-- do NOT patch resolver previous/current transform math, yaw, partial-tick transform semantics, or point-vs-vector math without contrary evidence.
+## Camera / free-look — FROZEN_GREEN
+- `08742d7e...`, run `35033671863` SUCCESS: `PLAYER_OWNER_RENDER_WIRED_CAMERA_OWNER_UNWIRED`.
+- `127d85af...`, run `35034983734` SUCCESS: `EXTERNAL_OWNER_CAMERA_SPATIAL_FOLLOWS_PLAYER_LOOK_REMAINS_UNCOUPLED`.
+- Standing render follows external owner spatially; direct external camera rotation is absent. This is desired free-look. Do NOT add camera counter-rotation/direct camera transform.
 
-## Camera / free-look boundary — FROZEN_GREEN
-- `08742d7e...`, run `35033671863` SUCCESS: `PLAYER_OWNER_RENDER_WIRED_CAMERA_OWNER_UNWIRED`; standing render follows external owner spatially while camera owner remains unwired.
-- `127d85af...`, run `35034983734` SUCCESS: `EXTERNAL_OWNER_CAMERA_SPATIAL_FOLLOWS_PLAYER_LOOK_REMAINS_UNCOUPLED`; external packet/server yaw resolution exists, standing render has external position transform but no direct external rotation tokens; camera stays ship-mount-only.
-- this is desired free-look architecture. Do NOT add camera counter-rotation/direct camera transform.
+## OBB support-loss proof chain — FROZEN_GREEN
+Source runtime run `35031106237`:
+- exact external owner/carriage 7 remains matched ticks 24–39;
+- physical support true through tick 33, false from 34 onward;
+- owner-local Y remains ~`2.0001` through ticks 34–39;
+- exact Create owner callback continues; collision-response authority remains preserved.
 
-## Exact pre-collision owner / OBB runtime evidence
-Source runtime run `35031106237`, artifact `reference-owner-v2-owner-obb-support-log`, digest `sha256:20182d039abb98dd4d52cef1d93d1f9f4899e1d5a824d0c7926d90167f1ea009`:
-- exact owner/carriage 7 remains matched ticks 24–39.
-- physical support is true through tick 33, false from tick 34 onward.
-- owner-local Y remains essentially fixed around `2.0001` through ticks 34–39 despite `on_ground=false`.
-- exact Create owner callback continues through ticks 34–39.
-- Create active-owner ordinal-1 carry remains suppressed with collision response preserved.
-- landing/turn/wall/ceiling are still unproven in this artifact.
+Semantics chain:
+- run `35036337486` originally FAILED `ACTIVE_OWNER_CREATE_OBB_RESPONSE_ZERO_ONLY`; criterion was later proven overstrict.
+- run `35037369180` SUCCESS: ticks34–39 response zero but finite descriptors, temporal `0.001275510..0.255244919`.
+- run `35037534677` SUCCESS: exact Create bytecode/result semantics mapped.
+- run `35039049624` SUCCESS: explicit ZERO producer path + normalized independent consumer.
+- run `35040491258` SUCCESS: `CREATE_OBB_SUPPORTS_TEMPORAL_ONLY_SOLVED_RESPONSE`.
+- verifier-only `4c0a157...`; run `35041914462` SUCCESS:
+  `ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_TEMPORAL_ONLY`, owner ticks 32–39, airborne 34–39, local_y_spread `0`, 6 temporal-only rows, unresolved_zero_rows `0`, temporal `0.001275510..0.255244919`.
+- Conclusion: `surface=true + collisionResponse=ZERO` with `0 < temporal < 1` is valid Create temporal-only resolution. OBB response is NOT the active blocker and must not be patched.
 
-## OBB support-loss proof chain — ZERO RESPONSE IS NOT ITSELF A FAILURE
-- `0afa038e...`, run `35036337486` originally FAILED with `ACTIVE_OWNER_CREATE_OBB_RESPONSE_ZERO_ONLY`: ticks 34–39 had continuous external owner, stable owner-local Y, `surface=true`, but zero collision response. This failure criterion is now superseded as overstrict.
-- `09e9cea...`, run `35037369180` SUCCESS: exact ticks 34–39 all have zero collision response but finite descriptors, positive temporal values `0.001275510..0.255244919`, and nonzero vector magnitude `0.0002`; classification `ACTIVE_OWNER_OBB_ZERO_RESPONSE_POSITIVE_TEMPORAL_VALID_NORMAL`.
-- `2c8d765...`, run `35037534677` SUCCESS: exact Create bytecode exposes `CollisionResponse` fields and consumer-side normalization; the `0.0002` vector is not proof of a broken unit normal.
-- `60dd46ca...`, run `35039049624` SUCCESS: `CREATE_OBB_ZERO_RESPONSE_HAS_EXPLICIT_PRODUCER_PATH_AND_NORMALIZED_CONSUMER`; producer has an explicit ZERO response path and consumer independently reads response/normal/temporal/surface.
-- `c580e0ec...`, run `35040491258` SUCCESS: `CREATE_OBB_SUPPORTS_TEMPORAL_ONLY_SOLVED_RESPONSE`; Create has both a default no-collision path and a dynamic solved path, independently tests `collisionResponse != ZERO` and `temporalResponse != 1`, and computes temporal motion before transforming/consuming collision response.
-- exact runtime ticks 34–39 satisfy `0 < temporal < 1`; therefore zero `collisionResponse` there is compatible with Create's legitimate temporal-only solved path and does NOT authorize a gameplay/collider patch.
-- verifier-only commit `4c0a157...` updates `m1-reference-owner-v2-collision-frame-window-proof` to accept continuous temporal-only solved responses while still rejecting missing callback, missing airborne window, owner discontinuity, local-Y drift, missing surface, or unresolved zero-temporal descriptors.
+## Natural airborne landing proof — DIRECT CURRENT FAILURE
+Workflow `.github/workflows/m1-reference-owner-v2-natural-landing-proof.yml`:
+- initial commit `d3d0f885...`, run `35042229755`: invalid workflow/YAML, zero jobs, no gameplay evidence.
+- YAML repair commit `b9faf4e25e986328eefacb9d39e7531ee40f4bb4`.
+- run `35042299917`, job `104624575166`: composition PASS, fixture-only jump admission PASS, compile PASS, verified r0v3 save PASS, assets PASS, runtime proof FAILURE.
+- artifact `reference-owner-v2-natural-landing-log`, artifact id `10425533703`, digest `sha256:9b3a9596b03e31625e7aeadc194b7e2faf21e2d6e9fef45a1329ddd370c07e39`.
+- exact verifier failure: `owner-relative airborne drift too large: 21.599091`.
+
+Jump / local-frame evidence:
+- jump REQUESTED tick `30`, on_ground=true, walk_confirmed_tick=30;
+- AIRBORNE tick `30`, native vertical delta `+0.3331999936` after vanilla jump path;
+- harness emitted LANDED tick `37`, but this is NOT carriage landing proof because owner-carriage broadphase/support was already lost; workflow correctly failed before accepting it.
+- external owner acquisition stays carriage `7` through ticks 24–29; no new owner acquisition during the failing jump window.
+- carriage-7 local feet:
+  - tick30 `(4.104064, 2.41999999, 0.006096)`;
+  - tick31 `(4.040693, 2.75319998, 0.239880)`;
+  - tick32 `(0.990514, 3.00133598, 0.477216)`;
+  - tick33 `(-1.282011, 3.16610926, 0.598605)`;
+  - tick34 `(23.707201, 3.24918708, 0.684483)` — catastrophic discontinuity begins here;
+  - tick35 `(25.689206, 3.25220334, 0.782232)`;
+  - tick37 `(24.541961, 3.17675928, 1.087566)` with broadphase false.
+- selected Create support/collision candidate switches from carriage `7` to carriage `5` at tick34 while persistent external owner remains `7`.
+- tick33 Phase205 read-only state for carriage7 still shows exact baseline, airborne native lease, native-frame eligible, external-frame lease, collision eligible, broadphase true.
+- tick34 candidate carriage5 has no native/external-frame lease; owner7 is no longer the selected support candidate.
+- Phase171 same-point telemetry had zero residual on carriage7 at ticks32–33. No carriage7 Phase171 row exists ticks34–43; when carriage7 reappears at tick44 its frame/contact values diverge materially.
+- This is direct gameplay failure evidence. It authorizes root-boundary diagnosis, NOT an OBB/gravity/camera/generic-lease workaround.
+
+## Active root question / current read-only proof
+At tick33->34 one of these boundaries must be distinguished before a production patch:
+1. persistent external owner 7 remained active but its VS2 body drag was not actually applied at the turn boundary;
+2. external-owner drag executed, but owner7 previous->current transform itself contains the large discontinuity for this tick;
+3. drag executed but actual player displacement diverges from the owner transform; or
+4. articulated carriage/reference ownership requires a transition seam not yet represented by the single persistent owner.
+
+Commit `b87a62b3e26c0ebcd8a77059daa4d90cdca20824` adds `m1-reference-owner-v2-airborne-drag-boundary-proof` only. It instruments the exact pre-Create external-owner scheduler call read-only, logging owner id/age, player world position, previous-owner-local -> current-world expected transform, and actual drag delta around the reproduced jump. It does not mutate gameplay/physics. Run `35044076536` is the active proof.
 
 ## FROZEN_GREEN / protected
-- bootstrap/Kotlin packaging repair `f3d1335c9fc89283d936af039eba34aa9778bd05`.
-- Create train + VS2 coexistence.
-- Steam 'n' Rails + Copycats preservation.
-- V1 infrastructure run `34984299770`.
-- V2 structural/core run `34994353308` except body-continuity assumptions disproved by runtime.
-- external-owner EntityDragger lifecycle requirement from run `35008163064`.
-- active-owner ordinal-1 authority boundary `652667e...` / run `35017634522`.
-- same-point transform equivalence run `35023234306`.
-- free-look/camera uncoupled boundary runs `35033671863` and `35034983734`.
-- historical user-proven floor solidity and grounded walking remain protected behavioral criteria, not current completion proof.
+- bootstrap/Kotlin packaging `f3d1335...`;
+- Create train + VS2 coexistence;
+- Steam 'n' Rails + Copycats preservation;
+- V1 infrastructure run `34984299770`;
+- V2 structural/core run `34994353308` except runtime body-continuity assumptions already disproved;
+- external-owner EntityDragger lifecycle requirement run `35008163064`;
+- active-owner ordinal-1 authority boundary `652667e...` / run `35017634522`;
+- same-point transform equivalence run `35023234306`;
+- camera/free-look boundary runs `35033671863`, `35034983734`;
+- OBB temporal-only support-loss slice run `35041914462`;
+- historical user-proven floor solidity and grounded walking are protected behavioral criteria, not current completion proof.
 
 ## FAILED_HYPOTHESES / anti-loop
 Do not reintroduce without new direct evidence:
@@ -118,25 +135,27 @@ Do not reintroduce without new direct evidence:
 - generic frame lease/replay/carry extension;
 - synthetic carry velocity / inertia compensation;
 - fake gravity;
-- manual floor/wall clamps or floor-only collision workaround;
+- manual floor/wall clamps or floor-only workaround;
 - per-tick teleport/setPos chase/reanchor architecture;
 - direct camera forcing/rotation compensation;
 - jump/input timing tuning without input-specific evidence;
-- sprint/reverse/strafe tuning as a reference-frame fix;
-- unscoped/global collider suppression, ownerless broad suppression, or suppression of Create's collision-response writer;
+- sprint/reverse/strafe tuning as reference-frame fix;
+- unscoped/global collider suppression or suppression of Create collision-response writer;
 - duplicate Create/VS2 gameplay/collision authority;
 - fake/proxy VS2 ship solely for lifecycle;
 - harness mutation used to manufacture GREEN;
 - resolver prev/current/yaw/point semantic changes after run `35023234306` absent contrary evidence;
-- treating `surface=true + collisionResponse=ZERO` alone as a collision failure after runs `35039049624` and `35040491258`.
+- treating `surface=true + collisionResponse=ZERO` alone as a collision failure after runs `35039049624`, `35040491258`, `35041914462`.
 
 ## next_safe_action
-1. Inspect the Actions run triggered by verifier-only commit `4c0a15784fd004cf582bfe04617fb2aa411253fe`.
-2. If queued/in_progress: HOLD; stack no gameplay patch.
-3. If verifier/fixture mechanics fail: repair only the verifier/harness.
-4. If the exact source artifact now classifies `ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_TEMPORAL_ONLY`, freeze this support-loss collision-frame slice as GREEN; do not patch OBB response.
-5. Then advance to the smallest runtime proof that is still genuinely unproven: natural airborne landing continuity first, then wall/ceiling solidity, then turn/speed-change stability. Preserve free-look camera boundary.
-6. Any production gameplay patch requires direct new failure evidence from the next unproven criterion; CI/verifier failure alone is insufficient.
+1. Inspect run `35044076536` first.
+2. If queued/in_progress: HOLD and stack no additional hypothesis.
+3. If compile/instrumentation/verifier mechanics fail before useful runtime evidence: repair only this proof harness.
+4. If `EXTERNAL_OWNER_DRAG_CALL_EXECUTED_BUT_BODY_STEP_MISSED`: inspect/patch only the proven external-owner EntityDragger branch/lifecycle boundary, then run the same smallest jump proof.
+5. If `EXTERNAL_OWNER_DRAG_APPLIED_OWNER_TRANSFORM_DISCONTINUITY`: do NOT change transform math blindly; map owner7 transform lifecycle versus articulated Create carriage identity at tick33->34, read-only first.
+6. If `EXTERNAL_OWNER_DRAG_APPLIED_BUT_DIVERGES_FROM_OWNER_TRANSFORM`: instrument the exact EntityDragger external-owner calculation/writer before a production patch.
+7. Only after natural airborne landing continuity is GREEN advance to wall/ceiling solidity, then turn/speed-change stability. Preserve free-look camera boundary.
+8. Any production patch must be one evidence-backed hypothesis and must preserve FROZEN_GREEN subsystems.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 Automated proof may advance candidate build/verify but can never alone set `FINAL_READY`. A new exact JAR must pass direct user runtime for stable standing, forward/back/strafe/sprint, jump+airborne+natural landing, floor/walls/ceiling, turns, acceleration/deceleration/speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look. Watchdog local SHA gate must match that exact accepted JAR.

@@ -70,14 +70,13 @@ jobs:
               'self.tickCount >= vs2$strafeStartTick + 15',
               'vs2.productionFixtureJumpFloorSupportNow',
               'vs2.phase170NativeContactApplicationTick',
+              'inserted = new + new_window + helper + field_replacement',
+              'if forbidden in inserted:',
+              'natural landing harness introduced forbidden movement mutation:',
           ]
           for token in required_harness:
               if token not in harness:
-                  raise SystemExit('current harness lost admission anchor: ' + token)
-          forbidden = ['self.setPos(', 'self.setDeltaMovement(']
-          for token in forbidden:
-              if token in harness:
-                  raise SystemExit('natural landing harness unexpectedly contains direct motion mutation: ' + token)
+                  raise SystemExit('current harness lost admission/safety anchor: ' + token)
 
           def load(attempt):
               p = Path(f'evidence/{attempt}/reference-owner-v2-natural-landing-v2.log')

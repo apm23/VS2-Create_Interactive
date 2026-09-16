@@ -65,5 +65,20 @@ new = r'''    if gate_start < 0:
 if old not in text:
     raise SystemExit("composefix could not find the exact V2 Phase83 boundary block")
 patched = text.replace(old, new, 1)
+
+# Evidence-backed lifecycle correction: run 35048427002 proved that the old grounded-expiry
+# predicate clears an otherwise valid external owner on the first native jump tick because
+# Minecraft still reports onGround=true while native vertical motion is already upward.
+# Keep the owner only through that genuine native upward transition; no synthetic velocity,
+# reanchor, collision override, or extra body writer is introduced.
+old_lifetime = '''                val groundedContactExpired = entity.onGround() && entityDraggingInformation.ticksSinceExternalReferenceOwner > 2
+'''
+new_lifetime = '''                val nativeUpwardMotion = entity.deltaMovement.y > 1.0E-5
+                val groundedContactExpired = entity.onGround() && !nativeUpwardMotion && entityDraggingInformation.ticksSinceExternalReferenceOwner > 2
+'''
+if patched.count(old_lifetime) != 1:
+    raise SystemExit(f"composefix expected one grounded lifecycle expiry predicate, found {patched.count(old_lifetime)}")
+patched = patched.replace(old_lifetime, new_lifetime, 1)
+
 compile(patched, str(SOURCE), "exec")
 exec(compile(patched, str(SOURCE), "exec"), {"__name__": "__main__", "__file__": str(SOURCE)})

@@ -42,7 +42,6 @@ jobs:
           python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
           python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
           python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
-
           PROBE=upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
           AUTH=upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinExternalReferenceOwnerCreateCarry.java
           FIXTURE=upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java
@@ -59,7 +58,6 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
-
           p=Path('upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java')
           s=p.read_text(encoding='utf-8')
           pattern=re.compile(r'    @Unique\n    private boolean vs2\$jumpArmReady\(LocalPlayer self\) \{.*?\n    \}', re.S)
@@ -69,24 +67,26 @@ jobs:
           old=m.group(0)
           if 'vs2.productionFixtureJumpFloorSupportNow' not in old or 'vs2.phase170NativeContactApplicationTick' not in old:
               raise SystemExit('landing proof refused to replace an unexpected jump admission boundary')
-          new='''    @Unique
-    private boolean vs2$jumpArmReady(LocalPlayer self) {
-        if (vs2$jumpStartTick != Integer.MIN_VALUE) return !vs2$jumpLandedLogged;
-        if (!vs2$fixtureWalkSeen(self) || !self.onGround()) return false;
-        if (!Boolean.getBoolean("vs2.productionFixtureJumpFloorSupportNow")) return false;
-        String floorTickRaw = System.getProperty("vs2.productionFixtureJumpFloorSupportTick");
-        String nativeTickRaw = System.getProperty("vs2.phase170NativeContactApplicationTick");
-        if (floorTickRaw == null || nativeTickRaw == null) return false;
-        try {
-            int floorTick = Integer.parseInt(floorTickRaw);
-            int nativeTick = Integer.parseInt(nativeTickRaw);
-            boolean floorFresh = floorTick == self.tickCount || floorTick == self.tickCount - 1;
-            boolean nativeFresh = nativeTick == self.tickCount || nativeTick == self.tickCount - 1;
-            return floorFresh && nativeFresh;
-        } catch (NumberFormatException ignored) {
-            return false;
-        }
-    }'''
+          new="\n".join([
+              '    @Unique',
+              '    private boolean vs2$jumpArmReady(LocalPlayer self) {',
+              '        if (vs2$jumpStartTick != Integer.MIN_VALUE) return !vs2$jumpLandedLogged;',
+              '        if (!vs2$fixtureWalkSeen(self) || !self.onGround()) return false;',
+              '        if (!Boolean.getBoolean("vs2.productionFixtureJumpFloorSupportNow")) return false;',
+              '        String floorTickRaw = System.getProperty("vs2.productionFixtureJumpFloorSupportTick");',
+              '        String nativeTickRaw = System.getProperty("vs2.phase170NativeContactApplicationTick");',
+              '        if (floorTickRaw == null || nativeTickRaw == null) return false;',
+              '        try {',
+              '            int floorTick = Integer.parseInt(floorTickRaw);',
+              '            int nativeTick = Integer.parseInt(nativeTickRaw);',
+              '            boolean floorFresh = floorTick == self.tickCount || floorTick == self.tickCount - 1;',
+              '            boolean nativeFresh = nativeTick == self.tickCount || nativeTick == self.tickCount - 1;',
+              '            return floorFresh && nativeFresh;',
+              '        } catch (NumberFormatException ignored) {',
+              '            return false;',
+              '        }',
+              '    }',
+          ])
           for forbidden in ['setPos(', 'setDeltaMovement(', '.move(', '.teleport(', 'setVelocity(', 'cir.setReturnValue(']:
               if forbidden in new:
                   raise SystemExit('landing fixture introduced forbidden movement mutation: '+forbidden)
@@ -94,7 +94,6 @@ jobs:
           p.write_text(s, encoding='utf-8')
           print('REFERENCE_OWNER_V2_LANDING_HARNESS fixture_only=true vanilla_jump=true fresh_floor=true fresh_native_contact=true gameplay_physics_mutation=false')
           PY
-
           FIXTURE=upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java
           grep -q 'if (vs2\$jumpStartTick != Integer.MIN_VALUE) return !vs2\$jumpLandedLogged;' "$FIXTURE"
           grep -q 'boolean floorFresh = floorTick == self.tickCount || floorTick == self.tickCount - 1;' "$FIXTURE"
@@ -156,27 +155,23 @@ jobs:
           rm -f "$LOG" "$XVFB_LOG"
           rm -rf fabric/run/crash-reports
           rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
-
           export DISPLAY=:99
           Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > "$XVFB_LOG" 2>&1 &
           XVFB_PID=$!
           sleep 2
           ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v2-natural-landing' > "$LOG" 2>&1 &
           CLIENT_PID=$!
-
           cleanup() {
             if kill -0 "$CLIENT_PID" 2>/dev/null; then kill "$CLIENT_PID" 2>/dev/null || true; fi
             if kill -0 "$XVFB_PID" 2>/dev/null; then kill "$XVFB_PID" 2>/dev/null || true; fi
           }
           trap cleanup EXIT
-
           fatal_state() {
             grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Caused by:.*(NoClassDefFoundError|ClassNotFoundException|NoSuchMethodError|NoSuchFieldError|LinkageError)|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' "$LOG" \
               || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
               || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
               || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
           }
-
           READY=0
           for i in $(seq 1 900); do
             CARRIAGE=0; MOVED=0; ACQUIRED=0; WALK=0; REQUESTED=0; AIRBORNE=0; LANDED=0
@@ -195,11 +190,9 @@ jobs:
           done
           test "$READY" -eq 1
           sleep 2
-
           if grep -q 'GATE_E_PHASE83_CONTACT_REFRESH' "$LOG"; then echo 'legacy Phase83 reanchor executed'; exit 1; fi
           if grep -q 'GATE_E_PHASE205_PRE_COLLISION_REANCHOR' "$LOG"; then echo 'legacy Phase205 reanchor executed'; exit 1; fi
           if grep -q 'GATE_E_PHASE205_DUPLICATE_CONTACT_CARRY_SUPPRESSED' "$LOG"; then echo 'legacy Phase205 suppression executed'; exit 1; fi
-
           python3 - "$LOG" <<'PY'
           import math,re,sys
           text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
@@ -210,20 +203,18 @@ jobs:
           r_tick=int(req.group(1)); a_tick=int(air.group(1)); l_tick=int(land.group(1)); rise_delta=float(air.group(2))
           if not (r_tick <= a_tick < l_tick): raise SystemExit(f'invalid jump ordering request={r_tick} airborne={a_tick} landed={l_tick}')
           if l_tick-r_tick > 40: raise SystemExit(f'landing took too long: {l_tick-r_tick} ticks')
-
           acquisitions=[(int(t),int(c)) for t,c in re.findall(r'REFERENCE_OWNER_V2_ACQUIRE[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)',text)]
           prior=[x for x in acquisitions if x[0] <= r_tick]
           if not prior: raise SystemExit('no external owner acquisition before jump')
           owner_tick,owner_id=max(prior)
           changed=[(t,c) for t,c in acquisitions if r_tick <= t <= l_tick and c != owner_id]
           if changed: raise SystemExit(f'external owner changed during jump owner={owner_id} changes={changed[:8]}')
-
           local_re=re.compile(r'GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)')
           samples=[]
           for m in local_re.finditer(text):
-            tick,cid=int(m.group(1)),int(m.group(2))
-            if r_tick-1 <= tick <= l_tick+2 and cid==owner_id:
-              samples.append((tick,float(m.group(3)),float(m.group(4)),float(m.group(5))))
+              tick,cid=int(m.group(1)),int(m.group(2))
+              if r_tick-1 <= tick <= l_tick+2 and cid==owner_id:
+                  samples.append((tick,float(m.group(3)),float(m.group(4)),float(m.group(5))))
           samples.sort()
           jump_samples=[s for s in samples if r_tick <= s[0] <= l_tick]
           if len(jump_samples)<3: raise SystemExit(f'insufficient same-owner jump samples owner={owner_id} count={len(jump_samples)}')
@@ -232,22 +223,16 @@ jobs:
           max_step=max([math.hypot(b[1]-a[1],b[3]-a[3]) for a,b in zip(jump_samples,jump_samples[1:])] or [0.0])
           if max_drift>1.5: raise SystemExit(f'owner-relative airborne drift too large: {max_drift:.6f}')
           if max_step>0.75: raise SystemExit(f'owner-relative one-tick step too large: {max_step:.6f}')
-
           baseline=min(samples,key=lambda s:abs(s[0]-r_tick))[2]
           peak=max(s[2] for s in jump_samples)
           final=min(samples,key=lambda s:abs(s[0]-l_tick))[2]
-          if peak < baseline+0.10 and rise_delta <= 0.05:
-            raise SystemExit(f'no natural upward arc baseline={baseline:.6f} peak={peak:.6f} delta={rise_delta:.6f}')
-          if abs(final-baseline)>0.35:
-            raise SystemExit(f'landing local Y did not return near floor baseline={baseline:.6f} final={final:.6f}')
-
+          if peak < baseline+0.10 and rise_delta <= 0.05: raise SystemExit(f'no natural upward arc baseline={baseline:.6f} peak={peak:.6f} delta={rise_delta:.6f}')
+          if abs(final-baseline)>0.35: raise SystemExit(f'landing local Y did not return near floor baseline={baseline:.6f} final={final:.6f}')
           support=[(int(t),int(c),v=='true') for t,c,v in re.findall(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=(\d+) physical_support=(true|false)',text)]
           reacquire=[(t,c) for t,c,v in support if v and c==owner_id and l_tick <= t <= l_tick+3]
           if not reacquire: raise SystemExit(f'no same-owner physical support reacquired after landing owner={owner_id} landed={l_tick}')
-
           suppressed=re.findall(r'REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED[^\n]*owner_id=(\d+)',text)
           if not suppressed: raise SystemExit('active-owner authority suppression never executed')
-
           print('REFERENCE_OWNER_V2_NATURAL_LANDING_PROOF '
                 f'classification=SAME_OWNER_NATIVE_JUMP_NATURAL_LANDING_CONTINUOUS owner={owner_id} acquired_tick={owner_tick} '
                 f'request_tick={r_tick} airborne_tick={a_tick} landed_tick={l_tick} duration={l_tick-r_tick} '
@@ -255,7 +240,6 @@ jobs:
                 f'baseline_local_y={baseline:.6f} peak_local_y={peak:.6f} final_local_y={final:.6f} support_reacquire={reacquire[:3]} '
                 'fixture_only_jump_admission=true synthetic_motion=false final_ready=false')
           PY
-
           grep -E 'REFERENCE_OWNER_V2_(ACQUIRE|CREATE_CONTACT_CARRY_SUPPRESSED|NATURAL_LANDING_PROOF)|GATE_E_M1_NATIVE_JUMP_(REQUESTED|AIRBORNE|LANDED)|GATE_E_PHASE131_SUPPORT_SOURCE' "$LOG" | tail -260 || true
 
       - name: Upload natural landing diagnostics

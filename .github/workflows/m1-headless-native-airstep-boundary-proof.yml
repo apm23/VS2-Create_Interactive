@@ -1,0 +1,81 @@
+name: m1-headless-native-airstep-boundary-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-headless-native-airstep-boundary-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  map-headless-native-airstep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Compose exact current production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+
+      - name: Map generated native aiStep headless seam
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          hits=[]
+          for p in Path('upstream').rglob('*'):
+              if not p.is_file() or p.suffix not in {'.java','.kt'}:
+                  continue
+              try:
+                  s=p.read_text(encoding='utf-8')
+              except Exception:
+                  continue
+              if 'runNativeAiStepWhenHeadlessTickSkippedIt' in s:
+                  hits.append((p,s))
+          if len(hits)!=1:
+              raise SystemExit(f'expected exactly one composed headless native aiStep seam, found {len(hits)}')
+
+          p,s=hits[0]
+          pos=s.index('runNativeAiStepWhenHeadlessTickSkippedIt')
+          start=max(0,pos-5000); end=min(len(s),pos+8000)
+          context=s[start:end]
+          print('REFERENCE_OWNER_V2_HEADLESS_AISTEP_SOURCE file='+str(p))
+          print('--- HEADLESS_AISTEP_CONTEXT_BEGIN ---')
+          print(context)
+          print('--- HEADLESS_AISTEP_CONTEXT_END ---')
+
+          # Structural facts only; no gameplay mutation.
+          has_airstep='.aiStep(' in context or 'super.aiStep(' in context or 'aiStep();' in context
+          has_headless_gate=('productionSmoke' in context or 'fixture' in context.lower() or 'headless' in context.lower())
+          has_landed_marker='GATE_E_M1_NATIVE_JUMP_LANDED' in s
+          method_mentions_landed='jumpLanded' in context or 'LANDED' in context
+          method_mentions_onground='onGround()' in context
+          print('REFERENCE_OWNER_V2_HEADLESS_AISTEP_BOUNDARY_PROOF composed=true read_only=true gameplay_mutation=false '
+                f'has_native_airstep_call={str(has_airstep).lower()} '
+                f'has_headless_or_fixture_gate={str(has_headless_gate).lower()} '
+                f'generated_source_has_landed_marker={str(has_landed_marker).lower()} '
+                f'local_context_mentions_landed={str(method_mentions_landed).lower()} '
+                f'local_context_mentions_on_ground={str(method_mentions_onground).lower()} final_ready=false')
+          PY

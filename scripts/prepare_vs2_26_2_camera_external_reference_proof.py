@@ -42,6 +42,11 @@ import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
  * camera position the production reference-frame branch would have produced from
  * the vanilla-aligned camera point. That continuation is observation-only: it does
  * not restore ownership and writes no camera/player/look/collision/input/train state.
+ *
+ * Active-owner proof rows and post-release hypothetical rows intentionally use
+ * different markers. The workflow classifier must never treat a branch that did
+ * not execute in production as evidence that the active production camera branch
+ * is misaligned.
  */
 @Mixin(Camera.class)
 public abstract class MixinCameraExternalReferenceFrameProof {
@@ -116,9 +121,12 @@ public abstract class MixinCameraExternalReferenceFrameProof {
             this.position.x - expectedCurrent.x(),
             this.position.z - expectedCurrent.z()
         );
+        final String rowMarker = activeExternalOwner && currentOwnerId != null
+            ? "REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF"
+            : "REFERENCE_OWNER_V2_CAMERA_POST_RELEASE_HYPOTHETICAL";
 
         VS2_CAMERA_REFERENCE_LOGGER.info(
-            "REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample={} player_tick={} owner_id={} partial={} " +
+            rowMarker + " sample={} player_tick={} owner_id={} partial={} " +
             "camera_x={} camera_y={} camera_z={} expected_x={} expected_y={} expected_z={} " +
             "horizontal_error={} owner_heading={} owner_age={} on_ground={} active_external={} " +
             "current_owner_id={} expected_basis={} tracked_after_release={} read_only=true",
@@ -147,4 +155,4 @@ if "MixinCameraExternalReferenceFrameProof" not in client:
     client.append("MixinCameraExternalReferenceFrameProof")
 mixin_json.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
-print("CAMERA_EXTERNAL_REFERENCE_PROOF installed=true injection=Camera.update_tail read_only=true horizon=4096 post_release_last_owner_tracking=true")
+print("CAMERA_EXTERNAL_REFERENCE_PROOF installed=true injection=Camera.update_tail read_only=true horizon=4096 post_release_last_owner_tracking=true active_marker_isolated=true")

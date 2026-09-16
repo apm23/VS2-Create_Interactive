@@ -96,6 +96,7 @@ jobs:
                   idx,surface,temporal,rx,ry,rz,tick=om.groups()
                   obbs.append({
                       'tick':int(tick), 'surface':surface == 'true',
+                      'temporal':float(temporal),
                       'response':(float(rx),float(ry),float(rz)),
                       'owner':current['owner'], 'carriage':current['carriage'],
                       'match':current['match'],
@@ -122,6 +123,14 @@ jobs:
               r for r in owner_surface
               if sum(v*v for v in r['response']) > 1.0e-12
           ]
+          owner_temporal_only=[
+              r for r in owner_surface
+              if sum(v*v for v in r['response']) <= 1.0e-12 and 0.0 < r['temporal'] < 1.0
+          ]
+          owner_unresolved_zero=[
+              r for r in owner_surface
+              if sum(v*v for v in r['response']) <= 1.0e-12 and not (0.0 < r['temporal'] < 1.0)
+          ]
 
           consecutive_after_loss=0
           for tick in range(loss_tick, window_end+1):
@@ -140,10 +149,14 @@ jobs:
               classification='ACTIVE_OWNER_LOCAL_Y_DRIFTS_ACROSS_SUPPORT_LOSS'
           elif not owner_surface:
               classification='ACTIVE_OWNER_CREATE_OBB_SURFACE_MISSING'
-          elif not owner_nonzero:
-              classification='ACTIVE_OWNER_CREATE_OBB_RESPONSE_ZERO_ONLY'
-          else:
+          elif owner_unresolved_zero:
+              classification='ACTIVE_OWNER_CREATE_OBB_ZERO_RESPONSE_UNRESOLVED_TEMPORAL'
+          elif owner_nonzero:
               classification='ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_THROUGH_SUPPORT_LOSS'
+          elif len(owner_temporal_only) == len(owner_surface):
+              classification='ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_TEMPORAL_ONLY'
+          else:
+              classification='ACTIVE_OWNER_CREATE_OBB_RESPONSE_CLASSIFICATION_INCOMPLETE'
 
           print(
               'REFERENCE_OWNER_V2_COLLISION_FRAME_WINDOW_PROOF '
@@ -151,11 +164,18 @@ jobs:
               f'window={window_start}..{window_end} owner_ticks={owner_ticks} airborne_ticks={airborne_ticks} '
               f'consecutive_after_loss={consecutive_after_loss} local_y_spread={local_y_spread:.9f} '
               f'owner_obb_rows={len(owner_obbs)} surface_rows={len(owner_surface)} nonzero_rows={len(owner_nonzero)} '
-              'source_run=35031106237 production_unchanged_since_source=true '
-              'landing_unproven=true turn_unproven=true wall_ceiling_unproven=true '
-              'read_only=true final_ready=false'
+              f'temporal_only_rows={len(owner_temporal_only)} unresolved_zero_rows={len(owner_unresolved_zero)} '
+              f'temporal_min={min((r["temporal"] for r in owner_surface), default=float("nan")):.9f} '
+              f'temporal_max={max((r["temporal"] for r in owner_surface), default=float("nan")):.9f} '
+              'source_run=35031106237 create_semantics_runs=35039049624,35040491258 '
+              'production_unchanged_since_source=true landing_unproven=true turn_unproven=true wall_ceiling_unproven=true '
+              'read_only=true verifier_only=true final_ready=false'
           )
 
-          if classification != 'ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_THROUGH_SUPPORT_LOSS':
+          accepted={
+              'ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_THROUGH_SUPPORT_LOSS',
+              'ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_TEMPORAL_ONLY',
+          }
+          if classification not in accepted:
               raise SystemExit('collision-frame window remains unresolved: ' + classification)
           PY

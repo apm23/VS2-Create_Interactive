@@ -1,0 +1,86 @@
+name: m1-reference-owner-v2-lifecycle-expiry-proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  lifecycle-expiry-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Download exact airborne boundary artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: reference-owner-v2-airborne-drag-boundary-v3-log
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: apm23/VS2-Create_Interactive
+          run-id: 35044312977
+
+      - name: Prove exact lifetime clear reason from source and runtime ordering
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          source=Path('scripts/prepare_vs2_26_2_reference_owner_v2.py').read_text(encoding='utf-8')
+          log=Path('evidence/reference-owner-v2-airborne-drag-boundary-v3.log').read_text(encoding='utf-8',errors='replace')
+
+          required_source=[
+              'entityDraggingInformation.ticksSinceExternalReferenceOwner += 1',
+              'val groundedContactExpired = entity.onGround() && entityDraggingInformation.ticksSinceExternalReferenceOwner > 2',
+              'if (!ownerStillResolvable || groundedContactExpired || ownerExpired) {',
+              'entityDraggingInformation.clearExternalReferenceOwner()',
+          ]
+          for token in required_source:
+              if token not in source:
+                  raise SystemExit('current V2 lifecycle source lost expected boundary: '+token)
+
+          jump=re.search(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick=(\d+).*?delta_y=([-+0-9.eE]+) on_ground=(true|false).*?vertical_arc=(true|false)',log)
+          if not jump:
+              raise SystemExit('exact source artifact has no native airborne marker')
+          tick=int(jump.group(1)); dy=float(jump.group(2)); jump_ground=jump.group(3)=='true'; arc=jump.group(4)=='true'
+
+          entry_re=re.compile(r'REFERENCE_OWNER_V2_AIRBORNE_DRAG_ENTRY player_tick=(\d+) owner_id=(\d+|null) owner_age=(\d+) active=(true|false)')
+          entries={int(m.group(1)):(m.group(2),int(m.group(3)),m.group(4)=='true') for m in entry_re.finditer(log)}
+          if tick not in entries or tick+1 not in entries:
+              raise SystemExit('missing owner entry rows around native jump tick')
+          owner,age,active=entries[tick]
+          next_owner,next_age,next_active=entries[tick+1]
+
+          jump_pos=log.find(jump.group(0))
+          entry_match=re.search(r'REFERENCE_OWNER_V2_AIRBORNE_DRAG_ENTRY player_tick='+str(tick)+r'[^\n]*',log)
+          if not entry_match:
+              raise SystemExit('missing same-tick scheduler entry')
+          ordered=jump_pos < entry_match.start()
+
+          age_after_increment=age+1
+          grounded_expired=jump_ground and age_after_increment>2
+          next_cleared=(next_owner=='null' and not next_active)
+
+          if active and owner!='null' and dy>0 and arc and ordered and grounded_expired and next_cleared:
+              classification='EXTERNAL_OWNER_CLEARED_BY_GROUNDED_CONTACT_EXPIRY_ON_NATIVE_JUMP_TICK'
+          else:
+              classification='EXTERNAL_OWNER_LIFETIME_CLEAR_REASON_UNRESOLVED'
+
+          print('REFERENCE_OWNER_V2_LIFECYCLE_EXPIRY_PROOF classification='+classification+
+                ' source_run=35044312977 jump_tick='+str(tick)+
+                ' owner_id='+owner+' owner_age_before_drag='+str(age)+
+                ' owner_age_after_increment='+str(age_after_increment)+
+                ' jump_delta_y='+str(dy)+' jump_on_ground='+str(jump_ground).lower()+
+                ' vertical_arc='+str(arc).lower()+' jump_marker_before_scheduler='+str(ordered).lower()+
+                ' grounded_contact_expired='+str(grounded_expired).lower()+
+                ' next_tick_owner='+next_owner+' next_tick_active='+str(next_active).lower()+
+                ' source_only_policy_check=true runtime_artifact_exact=true production_unchanged=true final_ready=false')
+
+          if classification!='EXTERNAL_OWNER_CLEARED_BY_GROUNDED_CONTACT_EXPIRY_ON_NATIVE_JUMP_TICK':
+              raise SystemExit(1)
+          PY

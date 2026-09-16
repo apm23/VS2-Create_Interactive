@@ -1,0 +1,111 @@
+name: m1-natural-landing-postmove-arbitration-boundary-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-natural-landing-postmove-arbitration-boundary-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  postmove-arbitration-boundary-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Verify pinned runs and artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api() {
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$1"
+          }
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/runs/35062245886 | jq -r '.head_sha')" = 'cb03574bd11d39ba21ef07e18ddfe7fc87c714ce'
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/runs/35071527097 | jq -r '.head_sha')" = 'ff07454329a214a27485c3e4c317c7dadd7818d6'
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10434807961 | jq -r '.digest')" = 'sha256:ee7da59e8eebd01e017c023175e1845db04ed5ffd0dca8ab8d4720c98d4a236a'
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10439801138 | jq -r '.digest')" = 'sha256:6d6f6a3eb2e1683f7599c5466716e03db01897dedfc5a8daa5bdcb97bafc78b0'
+          test "$(git hash-object scripts/prepare_vs2_26_2_natural_landing_harness_v2.py)" = 'f8aad6e7425a37251f670f5e15c79b82c56e5472'
+
+      - name: Download exact artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          download_artifact() {
+            local id="$1" dest="$2"
+            mkdir -p "$dest"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/$id/zip" -o "$dest/artifact.zip"
+            unzip -q "$dest/artifact.zip" -d "$dest"
+            rm "$dest/artifact.zip"
+          }
+          download_artifact 10434807961 evidence/admitted
+          download_artifact 10439801138 evidence/current
+
+      - name: Prove first normalization is identical and divergence is post-move arbitration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(root):
+              matches=list(Path(root).rglob('reference-owner-v2-natural-landing-v2.log'))
+              if len(matches) != 1:
+                  raise SystemExit(f'expected one exact log under {root}, got {matches}')
+              return re.sub(r'\x1b\[[0-9;]*[mK]', '', matches[0].read_text(encoding='utf-8', errors='replace'))
+
+          def require(pattern, text, label):
+              m=re.search(pattern, text)
+              if not m:
+                  raise SystemExit('missing ' + label)
+              return m
+
+          admitted=load('evidence/admitted')
+          current=load('evidence/current')
+
+          start_pattern=(
+              r'GATE_D_CARRIAGE_PRESENT type=create:carriage_contraption '
+              r'pos=-63\.5,-59\.0,120\.5 '
+              r'gate_e_player_pos=-70\.83485950551926,-53\.0318619052056,102\.01718905716098 '
+              r'gate_e_carriage_box=-84\.0,-59\.0,100\.0 -> -43\.0,-53\.0,141\.0')
+          for label,text in [('admitted',admitted),('current',current)]:
+              require(start_pattern,text,label+' identical initial fixture carriage')
+              require(r'GATE_D_GATE_E_CONTACT_START top_delta=-0\.03186190520560217 horizontal_inside=true',text,label+' initial contact')
+              require(r'GATE_D_TRAIN_MOVED displacement_sq=3\.600505942368514',text,label+' train moved marker')
+              require(r'GATE_E_CARRIAGE_SELECTION player_tick=3 selected_id=2 selected_center_d2=431\.03313663297234 on_ground=false',text,label+' tick3 selection')
+              require(r'GATE_E_CARRIAGE_CANDIDATES player_tick=3[^\n]*id=2;pos=-63\.5,-59\.0,120\.5;center_d2=431\.03313663297234;[^\n]*blocks=313',text,label+' tick3 carriage2 geometry')
+              require(r'GATE_E_CARRIAGE_SELECTION player_tick=13 selected_id=2 selected_center_d2=58\.29266163921939',text,label+' tick13 pre-divergence selection')
+
+          admitted14=require(r'GATE_E_CARRIAGE_SELECTION player_tick=14 selected_id=8 selected_center_d2=198\.7049754720281[^\n]*candidate_count=5',admitted,'admitted tick14 arbitration')
+          require(r'GATE_E_CARRIAGE_CANDIDATES player_tick=14[^\n]*id=8;pos=-56\.73728537559509,-59\.0,120\.5;center_d2=198\.7049754720281;[^\n]*blocks=382',admitted,'admitted tick14 selected geometry')
+          current14=require(r'GATE_E_CARRIAGE_SELECTION player_tick=14 selected_id=2 selected_center_d2=58\.29225455347934[^\n]*candidate_count=6',current,'current tick14 arbitration')
+          require(r'GATE_E_CARRIAGE_CANDIDATES player_tick=14[^\n]*id=2;pos=-55\.8208909034729,-59\.0,120\.5;center_d2=58\.29225455347934;[^\n]*blocks=313',current,'current tick14 selected geometry')
+
+          require(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick=24 carriage_id=8[^\n]*confirmed=true',admitted,'admitted walk on post-move carriage8')
+          require(r'GATE_E_M1_NATIVE_STRAFE_CONFIRMED player_tick=31[^\n]*strict_create_support=true',admitted,'admitted strafe')
+          require(r'GATE_E_M1_NATIVE_JUMP_REQUESTED player_tick=45',admitted,'admitted jump')
+          require(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick=26 carriage_id=2[^\n]*confirmed=true',current,'current walk on persistent carriage2')
+          require(r'GATE_E_M1_NATIVE_STRAFE_REJECTED_NO_CREATE_SUPPORT player_tick=33 motion_tick=32 support_tick=32 support_now=false',current,'current strafe rejection')
+          if re.search(r'GATE_E_M1_NATIVE_JUMP_REQUESTED|GATE_E_M1_NATIVE_JUMP_AIRBORNE',current):
+              raise SystemExit('current artifact unexpectedly reached jump')
+
+          print('M1_NATURAL_LANDING_POSTMOVE_ARBITRATION_BOUNDARY_PROOF '
+                'classification=INITIAL_FIXTURE_CARRIAGE_IDENTICAL_DIVERGENCE_BEGINS_AT_POST_MOVE_CLIENT_CANDIDATE_ARBITRATION'
+                ' harness_blob=f8aad6e7425a37251f670f5e15c79b82c56e5472'
+                ' initial_fixture_pos=-63.5,-59.0,120.5 initial_geometry_blocks=313'
+                ' both_tick3_selected_id=2 both_tick13_selected_id=2'
+                ' admitted_tick14_selected_id=8 admitted_tick14_blocks=382 admitted_jump_tick=45'
+                ' current_tick14_selected_id=2 current_tick14_blocks=313 current_jump_reached=false'
+                ' firstOrNull_initial_selector_not_explanatory=true'
+                ' production_physics_inference=false harness_mutation=false verifier_only=true final_ready=false')
+          PY

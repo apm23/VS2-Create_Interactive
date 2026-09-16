@@ -12,16 +12,16 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- project_state: `ROOT_REDESIGN — JUMP-ARC LIFECYCLE PATCH LANDED; TWO EXACT NATURAL-LANDING REPRO ATTEMPTS BOTH FAIL BEFORE JUMP ADMISSION BECAUSE THE FINITE CI ROUTE EXHAUSTS STRICT CREATE SUPPORT; READ-ONLY ADMISSION-BOUNDARY VERIFIER REPAIRED AND ACTIVE`.
+- project_state: `ROOT_REDESIGN — JUMP-ARC LIFECYCLE PATCH LANDED; TWO EXACT NATURAL-LANDING REPRO ATTEMPTS BOTH FAIL BEFORE JUMP ADMISSION BECAUSE THE FINITE CI ROUTE EXHAUSTS STRICT CREATE SUPPORT; READ-ONLY ADMISSION-BOUNDARY VERIFIER SAFETY GUARD REPAIRED AND ACTIVE`.
 - production implementation basis: `c3e7c51a0751b542bdc7a0b8144880026a0f6fd8` (`Keep reference owner through native jump arc`).
 - proof trigger head: `cb03574bd11d39ba21ef07e18ddfe7fc87c714ce` (`Trigger natural landing proof for lifecycle patch`); this changes only the executable mode of the existing fixture script to satisfy the workflow path trigger and adds no gameplay/harness semantics.
 - admission verifier initial head: `85eaea024912c2a99aa9373002877edc790f41a7` (`Prove repeated pre-jump admission exhaustion`); verifier-only.
-- admission verifier repair heads: `6bf1676a811b296f6f691dc55006527c7152f44c` (download exact artifacts by REST ID) and `806908404709ade11c743c6fa5787e9fda23df02` (repair stale harness anchor); both verifier-only, no production or harness semantics changed.
+- admission verifier repair heads: `6bf1676a811b296f6f691dc55006527c7152f44c` (download exact artifacts by REST ID), `806908404709ade11c743c6fa5787e9fda23df02` (repair stale harness anchor), and `297926e030e64d48cb85772b620485810e1a8f5d` (scope safety check to the generator's inserted-code guard); all verifier-only, no production or harness semantics changed.
 - latest ledger-only commit may advance actual HEAD beyond the verifier head; always reconcile actual HEAD first.
 - final_ready: `false`.
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`; never ask user to retest it.
 - active blocker workflow: `m1-natural-landing-admission-boundary-proof`.
-- active blocker run: `35067647532`, exact verifier head `8069084...`; `in_progress` when this ledger state was written.
+- active blocker run: `35067811102`, exact verifier head `297926e...`; `queued` when this ledger state was written.
 
 ## Historical direct-user runtime gate — authoritative regression evidence
 Exact JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef` FAILED:
@@ -137,8 +137,9 @@ Verifier-only chain:
 - initial commit `85eaea024912c2a99aa9373002877edc790f41a7` created the proof;
 - run `35065737938` failed mechanically because `actions/download-artifact` searched the verifier run rather than the source run;
 - repair `6bf1676a811b296f6f691dc55006527c7152f44c` downloads exact artifacts through the REST artifact-ID endpoint; run `35067319726` then reached the classifier but failed only because one harness-source anchor was stale/over-specific;
-- repair `806908404709ade11c743c6fa5787e9fda23df02` changes that verifier anchor to the stable property-name token only; production and harness semantics remain unchanged;
-- active run `35067647532` is testing the same intended classification: `REPRODUCIBLE_PRE_JUMP_ADMISSION_ROUTE_EXHAUSTS_STRICT_SUPPORT`.
+- repair `806908404709ade11c743c6fa5787e9fda23df02` changed that verifier anchor to the stable property-name token; run `35067647532` then failed only because the verifier globally searched the generator source for forbidden strings that intentionally appear inside the generator's own safety guard;
+- repair `297926e030e64d48cb85772b620485810e1a8f5d` now verifies the generator's scoped `inserted` safety guard instead of globally rejecting its guard literals;
+- active run `35067811102` is testing the same intended classification: `REPRODUCIBLE_PRE_JUMP_ADMISSION_ROUTE_EXHAUSTS_STRICT_SUPPORT`.
 This proof remains verifier-only: no harness mutation, no production physics inference, no gameplay patch authorization.
 
 ## Diagnostic runtime attempts superseded by exact verifier
@@ -185,7 +186,7 @@ Do not reintroduce without new direct evidence:
 - adding/replacing a body-position writer after `35048234680`.
 
 ## next_safe_action
-1. Inspect only `m1-natural-landing-admission-boundary-proof` run `35067647532` first.
+1. Inspect only `m1-natural-landing-admission-boundary-proof` run `35067811102` first.
 2. If queued/in_progress: HOLD and stack no production or harness hypothesis.
 3. If verifier GREEN with `REPRODUCIBLE_PRE_JUMP_ADMISSION_ROUTE_EXHAUSTS_STRICT_SUPPORT`, treat both natural-landing reruns as proof-route non-admission only. Then inspect the smallest fixture/admission boundary needed to obtain a valid strict-support-qualified jump without manufacturing physics success; do not patch production from this verifier.
 4. If verifier fails because an artifact or marker contradicts the proposed classification, inspect only that exact contradiction and repair/verifier-classify it before any harness change.

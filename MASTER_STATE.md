@@ -11,10 +11,17 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Create floor/walls/ceiling remain authoritative solid geometry in that same moving frame.
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
-## Current reconciled state — 2026-09-16
-- `current_head`: `465b517ede2574155a7decbc18e8917de7fe4b9a` immediately before this ledger-only reconciliation commit.
-- project_state: `ROOT_REDESIGN — CURRENT CREATE COLLISION-FRAME CONTINUITY REMAINS PROTECTED. SOURCE MAPPING NOW PROVES CREATE HAS THE AUTHORITATIVE WALL/CEILING RESPONSE WRITERS, AND THE PINNED VALID-JUMP ARTIFACT PROVES ALL OBSERVED HORIZONTAL WALL CONTACTS USE VALID TEMPORAL-ONLY OBB RESOLUTION. THERE IS NO UNRESOLVED ZERO-RESPONSE WALL EVIDENCE AND NO GAMEPLAY WALL PATCH IS AUTHORIZED FROM THOSE ROWS. HOWEVER, THE PINNED ARTIFACT NEVER EXERCISED AN OVERHEAD CEILING CONTACT, DID NOT DIRECTLY CORRELATE THOSE WALL ROWS TO A FINAL CREATE setPos WRITER, AND THE EXTERNAL-OWNER CAMERA POSITIONAL FRAME DURING TURNS REMAINS RUNTIME-UNPROVEN. THE DIRECT USER WALL/TURN/CAMERA REGRESSION STILL REOPENS M1.`
+## Current reconciled state — 2026-09-17
+- `current_head`: `b48dad66de35796bb76375994f39f64122b79078` immediately before this ledger-only reconciliation commit.
+- project_state: `ROOT_REDESIGN — CAMERA OWNER-GATE BOUNDARY IS NOW PROVEN REACHABLE, BUT TURN-POSITIONAL BEHAVIOR IS NOT YET CLOSURE-READY. RUN 35113644070 PROVES Camera.update AFTER vanilla alignWithEntity SEES LocalPlayer + dragging provider + active external owner + non-null owner id + resolvable previous/current transforms. THE SAME READ-ONLY GATE ARTIFACT SHOWS CAMERA-vs-EXPECTED HORIZONTAL DELTAS UP TO ~0.793 BLOCK, BUT THAT RUN DID NOT MEASURE OWNER HEADING/TURN SPAN, SO IT DOES NOT YET AUTHORIZE A CAMERA GAMEPLAY PATCH. THE PREVIOUS TURN VERIFIER PRODUCED ZERO ROWS BECAUSE IT DECIMATED THE ALREADY-SPARSE ACTIVE-OWNER Camera.update CALLBACKS. HEAD b48dad66 REPAIRS ONLY THAT VERIFIER: EVERY ACTIVE-OWNER CAMERA CALLBACK IS SAMPLED AND THE MINIMUM SAMPLE GATE IS REDUCED TO A REALISTIC 4 UNIQUE TICKS. NO CAMERA/PLAYER/LOOK/PHYSICS STATE IS MUTATED. VIDEO IS FORBIDDEN UNTIL THIS BLOCKER IS CLOSURE-READY.`
 - latest gameplay implementation: `9aea12a6114198c33c70d52897eb9d3c29342425` (`Refresh jump owner from exact Create grounded carry contact`).
+- latest camera owner-gate verifier head: `bceeb6ab413f1011cf65cf05a846863adf80c9a4` (`Classify camera external-owner gate after acquisition`).
+- camera owner-gate workflow `m1-camera-owner-gate-runtime-proof`, run `35113644070`, SUCCESS; artifact `10454120245`, zip SHA256 `24ba034f1ab60db6a2c1264ba925293ab7a104d2b129d6b4aa3b4e37abecd32f`.
+- exact owner-gate result: `CAMERA_EXTERNAL_OWNER_GATE_REACHED`; acquisitions `16`, native contacts `22`, 5 post-acquire camera/player/provider/external-active/owner-nonnull/transform/frame rows; telemetry-only and production unchanged.
+- owner-gate frame samples include horizontal camera-vs-expected deltas `0.792871621`, `0.086648547`, `0.000004373`, `0.141226609`, `0.223163582`; these are not yet classified as turn failure because heading span was not recorded in that proof.
+- previous camera-turn verifier head `604e01945c99e9e33c40be67f0dda28772a1d75c`, run `35110832310`, produced `NO_CAMERA_OWNER_ROWS` despite acquisitions; that zero-row result is superseded as a verifier sampling/gating limitation by run `35113644070` proving the camera owner gate is reachable.
+- latest camera-turn sampling verifier head: `b48dad66de35796bb76375994f39f64122b79078` (`Measure every active-owner camera turn sample`).
+- active camera-turn workflow: `m1-camera-turn-positional-runtime-proof`, run `35117703635`, exact head `b48dad66de35796bb76375994f39f64122b79078`, IN_PROGRESS at this reconciliation point.
 - latest source-map verifier head: `094218f888702665f337443bedd544dbee6fc04d` (`Map wall ceiling and camera response seams`).
 - latest pinned contact classifier head: `c5267cc6b82da1e6be2723bc341c3ab887b1e8c4` (`Classify pinned wall and ceiling OBB contacts`).
 - latest wall temporal-response verifier head: `465b517ede2574155a7decbc18e8917de7fe4b9a` (`Classify pinned wall temporal response path`).
@@ -24,12 +31,11 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - corrected current-frame proof remains workflow `m1-current-create-frame-continuity-proof`, run `35100081357`, SUCCESS.
 - final_ready: `false`.
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`; never ask user to retest it.
-- active blocker: directly instrument/measure the still-unproven overhead-ceiling response and player-vs-camera positional reference frame during carriage turns. Preserve Create collision authority and free look. Wall temporal-only rows are no longer an authorization source for a gameplay patch.
-- no relevant blocker workflow is active at this ledger point.
+- active blocker: finish the exact player-vs-camera positional reference-frame measurement during a real carriage turn, then close it only if data is valid; overhead-ceiling response remains the next independent blocker. Preserve Create collision authority and free look. No video while camera proof is still debugging/correction/proving.
 - known invalid workflow noise: `.github/workflows/m1-reference-owner-v2-airborne-drag-boundary-proof-v2.yml` emits instant zero-job failures; ignore it.
 
 ## Historical direct-user runtime gate — authoritative regression evidence
-Exact JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef` FAILED:
+Exact JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083dad7ed420dcd7ef` FAILED:
 - floor hard/solid PASS and grounded walking PASS;
 - walls soft FAIL;
 - jump/airborne dragged player backward ~2–4 carriages FAIL;
@@ -60,6 +66,7 @@ This direct runtime evidence overrides automated M1 green and blocks `FINAL_READ
 - body writer verifier `35048234680` over `35046701119`: existing VS2 boundingBox/setPos writer applies its calculated step exactly; do not add or replace a body-position writer.
 - corrected current-frame run `35100081357`: current Create collision-frame coordinates remain continuous through observed jump-arc rotation updates; resolver patch is not authorized from the old partial-0 mismatch.
 - source-map run `35101691613`: Create current-world-to-local OBB path, horizontal wall-axis clipping, vertical Y clipping, response `setPos`, and surface contact-motion writer are present; legacy Phase205 duplicate authority is removed; external-owner render interpolation is present; camera owner files remain absent (`camera_owner_files=0`).
+- camera owner-gate run `35113644070`: immediately after vanilla `Camera.alignWithEntity`, LocalPlayer camera can observe the active external owner and resolve previous/current transforms. This freezes only the reachability/gate boundary; it does NOT freeze positional alignment through turns.
 
 ## OBB / collision semantics — FROZEN_GREEN for the proven boundary
 - runtime `35031106237`: owner/carriage matched through support loss and Create callbacks continued.
@@ -126,6 +133,7 @@ This does not negate the user's wall/turn/camera failure. It only prevents a fal
 - fixture arbitration boundaries `35084762923`, `35085286003`;
 - current Create collision-frame continuity across observed jump-arc rotations `35100081357`;
 - pinned wall temporal-only response semantics `35104523803`;
+- camera external-owner gate reachability after `alignWithEntity` `35113644070`;
 - historical user-proven floor solidity and grounded walking.
 
 ## FAILED_HYPOTHESES / anti-loop
@@ -154,15 +162,23 @@ Do not reintroduce without new direct evidence:
 - changing the server `firstOrNull` initial fixture carriage selector from the admitted/current divergence.
 
 ## next_safe_action
-1. Preserve the proven external-owner lifecycle, resolver prev/current pairing, native drag gate, existing VS2 body writer, Create collision authority, and the newly proven pinned wall temporal-only semantics.
-2. Do not patch horizontal wall OBB response from the pinned rows: run `35104523803` proves all seven observed wall-direction contacts are valid temporal-only and none is unresolved-zero.
-3. Add the smallest read-only runtime instrumentation/harness that genuinely exercises an overhead ceiling contact in Create's current `worldToLocalPos` frame. Record OBB normal/response/surface/temporal, final `collide` result, and the final Create position/motion writer with player tick. Do not mutate position, motion, onGround, collision, input, timing, gravity, or train state.
-4. Separately instrument the player-vs-camera positional frame during carriage yaw/turn at `Camera.update` immediately after vanilla `alignWithEntity`, while preserving mouse/look orientation. Compare camera position against the external-owner player render/reference position; do not counter-rotate or force camera state.
-5. If wall behavior must be revisited later, first add tick-bearing final Create `setPos` correlation; the current pinned artifact has all seven wall rows near `collide` consumption but no direct final Create `setPos` neighborhood proof.
-6. Only a direct current-frame invariance failure, missing/incorrect Create ceiling response, or measured player-camera positional-frame mismatch may authorize one gameplay hypothesis. One commit = one hypothesis.
-7. If a gameplay patch regresses any frozen-green criterion, revert before stacking another workaround.
-8. After ceiling and turn/camera are genuinely green, rerun wall solidity with final-writer correlation plus natural landing / movement proof, then proceed toward M1 completion.
-9. Automated proof alone can never set `FINAL_READY`; exact final JAR still requires direct user runtime acceptance.
+1. Preserve the proven external-owner lifecycle, resolver prev/current pairing, native drag gate, existing VS2 body writer, Create collision authority, free-look boundary, and pinned wall temporal-only semantics.
+2. Inspect only camera-turn run `35117703635` first. It is the smallest relevant proof and samples every sparse active-owner camera callback while measuring owner heading and camera-vs-external-owner expected position.
+3. If the run measures `CAMERA_POSITIONAL_OWNER_MISMATCH_MEASURED` during actual turn rows, use those exact rows to identify the smallest ownership/transform integration boundary. Do not counter-rotate/force camera and do not extend a generic lease.
+4. If it reports `CAMERA_POSITIONAL_OWNER_ALIGNED_WITHIN_0_05` with a real heading span and no open correction, the camera blocker becomes closure-ready for ONE exact-head short visual-close smoke. Do not record video before that point. Stop for joint video review before freezing the subsystem.
+5. If it reports insufficient turn/sampling/owner change, repair only read-only verifier/fixture observation; do not mutate gameplay to manufacture the proof.
+6. After the camera blocker is visually approved/frozen, add the smallest read-only runtime instrumentation/harness that genuinely exercises an overhead ceiling contact in Create's current `worldToLocalPos` frame. Record OBB normal/response/surface/temporal, final `collide` result, and final Create position/motion writer with player tick.
+7. If wall behavior must be revisited later, first add tick-bearing final Create `setPos` correlation; current pinned artifact has all seven wall rows near `collide` consumption but no direct final Create `setPos` neighborhood proof.
+8. Only a direct current-frame invariance failure, missing/incorrect Create ceiling response, or measured player-camera positional-frame mismatch may authorize one gameplay hypothesis. One commit = one hypothesis.
+9. If a gameplay patch regresses any frozen-green criterion, revert before stacking another workaround.
+10. Automated proof alone can never set `FINAL_READY`; exact final JAR still requires direct user runtime acceptance.
+
+## Video validation gate — blocker closure only
+- Video is NOT a debugging tool and is forbidden on ordinary runs, failed runs, instrumentation/correction loops, compile checks, hypothesis tests, and intermediate telemetry green.
+- One short visual-close capture is allowed only after the active blocker is closure-ready from exact data/runtime proof and no correction remains open.
+- Use exact same proof HEAD/build, real exercised event, existing Xvfb path plus minimal FFmpeg; do not alter gameplay/fixture/timing to help capture.
+- One narrow media-infrastructure repair maximum. No screenshot hunting or media-tool loop.
+- A subsystem becomes FROZEN_GREEN only after user + assistant approve the exact-head closing video. Visible failure overrides telemetry green.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 Automated proof can never alone set `FINAL_READY`. A new exact JAR must pass direct user runtime for stable standing, forward/back/strafe/sprint, jump+airborne+natural landing, floor/walls/ceiling, turns, acceleration/deceleration/speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look. The watchdog local SHA gate must match that exact accepted JAR.

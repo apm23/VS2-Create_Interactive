@@ -64,18 +64,24 @@ jobs:
           support=[]
           for m in re.finditer(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=5 physical_support=(true|false) vertical_gap=([-+0-9.eE]+)',log):
               support.append((int(m.group(1)),m.group(2)=='true',float(m.group(3))))
-          plateau=[x for x in support if not x[1] and 0.15 <= x[2] <= 0.35]
-          if not plateau:
-              raise SystemExit('missing owner5 support-miss plateau')
-          plateau_start=min(x[0] for x in plateau)
+          candidates=[x for x in support if not x[1] and 0.15 <= x[2] <= 0.35]
+          if not candidates:
+              raise SystemExit('missing owner5 support-miss candidates')
+          # Plateau means at least three consecutive ticks at effectively the same gap.
+          plateau_start=None
+          for i in range(len(candidates)-2):
+              a,b,c=candidates[i:i+3]
+              if b[0]==a[0]+1 and c[0]==b[0]+1 and max(abs(a[2]-b[2]),abs(b[2]-c[2]),abs(a[2]-c[2])) <= 1.0E-9:
+                  plateau_start=a[0]
+                  break
+          if plateau_start is None:
+              raise SystemExit('missing stable owner5 support-miss plateau')
 
           fallback_last=max(fallback)
           move_last=max(move_ticks)
           after_landed=[t for t in fallback if t>landed_tick]
           post_landed_jump_false=all(not fallback_jump[t] for t in after_landed)
           fallback_kept_by_strafe=all(fallback_strafe[t] for t in after_landed)
-          no_fallback_after_cutoff=not any(t>fallback_last for t in fallback)
-          no_move_after_cutoff=not any(t>move_last for t in move_ticks)
           cutoff_matches_plateau=(fallback_last==move_last==plateau_start)
 
           if landed_tick < fallback_last and post_landed_jump_false and fallback_kept_by_strafe and cutoff_matches_plateau:
@@ -86,7 +92,7 @@ jobs:
           print('REFERENCE_OWNER_V2_HEADLESS_FALSE_LANDING_CORRELATION classification='+classification+
                 ' source_run=35049968486 landed_marker_tick='+str(landed_tick)+
                 ' fallback_first='+str(min(fallback))+' fallback_last='+str(fallback_last)+
-                ' localplayer_move_last='+str(move_last)+' support_plateau_start='+str(plateau_start)+
+                ' localplayer_move_last='+str(move_last)+' stable_support_plateau_start='+str(plateau_start)+
                 ' post_landed_fallback_ticks='+str(after_landed)+
                 ' post_landed_jump_window_false='+str(post_landed_jump_false).lower()+
                 ' post_landed_strafe_window_true='+str(fallback_kept_by_strafe).lower()+

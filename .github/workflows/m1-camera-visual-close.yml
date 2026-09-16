@@ -58,15 +58,145 @@ jobs:
           python3 scripts/prepare_vs2_26_2_reference_owner_v2_camera_fix.py
           grep -q 'REFERENCE_OWNER_V2_CAMERA_POSITIONAL_FRAME' upstream/common/src/main/java/org/valkyrienskies/mod/mixin/client/MixinCamera.java
 
-      - name: Apply exact unchanged harness and proof telemetry
+      - name: Apply unchanged harness proof and CI-only framebuffer recorder
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/prepare_vs2_26_2_natural_landing_harness_v2.py
           python3 scripts/prepare_vs2_26_2_camera_external_reference_proof.py
-          grep -q 'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinCameraExternalReferenceFrameProof.java
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('upstream')
+          java=root/'fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinVisualFramebufferCapture.java'
+          mixin=root/'fabric/src/main/resources/vs2-create-compat.mixins.json'
+          java.parent.mkdir(parents=True,exist_ok=True)
+          java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
 
-      - name: Compile exact proven composition
+          import java.nio.ByteBuffer;
+          import java.nio.channels.FileChannel;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.nio.file.StandardOpenOption;
+          import net.minecraft.client.DeltaTracker;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.renderer.GameRenderer;
+          import org.apache.logging.log4j.LogManager;
+          import org.apache.logging.log4j.Logger;
+          import org.lwjgl.BufferUtils;
+          import org.lwjgl.opengl.GL11;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.Unique;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+          import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
+
+          /** CI-only observational recorder for headless/offscreen client rendering. */
+          @Mixin(GameRenderer.class)
+          public abstract class MixinVisualFramebufferCapture {
+              @Unique private static final Logger VS2_CAPTURE_LOGGER = LogManager.getLogger("VS2-VisualFramebufferCapture");
+              @Unique private static final long VS2_FRAME_NS = 100_000_000L; // 10 fps
+              @Unique private static final long VS2_DURATION_NS = 15_000_000_000L;
+              @Unique private static boolean vs2$started;
+              @Unique private static boolean vs2$finished;
+              @Unique private static long vs2$startNs;
+              @Unique private static long vs2$lastFrameNs;
+              @Unique private static int vs2$width;
+              @Unique private static int vs2$height;
+              @Unique private static int vs2$frames;
+              @Unique private static Path vs2$rawPath;
+              @Unique private static FileChannel vs2$channel;
+              @Unique private static ByteBuffer vs2$buffer;
+
+              @Inject(method = "render", at = @At("TAIL"), require = 1)
+              private void vs2$captureVisualFrame(final DeltaTracker deltaTracker, final boolean renderLevel, final CallbackInfo ci) {
+                  if (!Boolean.getBoolean("vs2.visualFramebufferCapture") || vs2$finished) return;
+                  final Minecraft mc = Minecraft.getInstance();
+                  if (mc.player == null || mc.level == null) return;
+                  if (!vs2$started) {
+                      if (!(mc.player instanceof IEntityDraggingInformationProvider provider)) return;
+                      if (!provider.getDraggingInformation().isEntityBeingDraggedByExternalReference()) return;
+                      try {
+                          vs2$width = mc.getWindow().getWidth();
+                          vs2$height = mc.getWindow().getHeight();
+                          if (vs2$width <= 0 || vs2$height <= 0) return;
+                          final String configured = System.getProperty("vs2.visualFramebufferPath");
+                          if (configured == null || configured.isBlank()) return;
+                          vs2$rawPath = Path.of(configured).toAbsolutePath();
+                          if (vs2$rawPath.getParent() != null) Files.createDirectories(vs2$rawPath.getParent());
+                          vs2$channel = FileChannel.open(vs2$rawPath,
+                              StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+                          vs2$buffer = BufferUtils.createByteBuffer(vs2$width * vs2$height * 3);
+                          vs2$startNs = System.nanoTime();
+                          vs2$lastFrameNs = 0L;
+                          vs2$started = true;
+                          VS2_CAPTURE_LOGGER.info(
+                              "VS2_VISUAL_FRAME_CAPTURE_STARTED width={} height={} fps=10 duration_seconds=15 path={} read_buffer={} direct_framebuffer=true observational_only=true",
+                              vs2$width, vs2$height, vs2$rawPath, GL11.glGetInteger(GL11.GL_READ_BUFFER));
+                      } catch (Throwable t) {
+                          VS2_CAPTURE_LOGGER.error("VS2_VISUAL_FRAME_CAPTURE_START_FAILED", t);
+                          vs2$finished = true;
+                          return;
+                      }
+                  }
+
+                  final long now = System.nanoTime();
+                  if (now - vs2$startNs >= VS2_DURATION_NS) {
+                      vs2$finishCapture();
+                      return;
+                  }
+                  if (vs2$lastFrameNs != 0L && now - vs2$lastFrameNs < VS2_FRAME_NS) return;
+                  vs2$lastFrameNs = now;
+                  try {
+                      vs2$buffer.clear();
+                      GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
+                      GL11.glReadPixels(0, 0, vs2$width, vs2$height, GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, vs2$buffer);
+                      final int glError = GL11.glGetError();
+                      if (glError != GL11.GL_NO_ERROR) {
+                          VS2_CAPTURE_LOGGER.warn("VS2_VISUAL_FRAME_CAPTURE_GL_ERROR frame={} error={}", vs2$frames, glError);
+                      }
+                      vs2$buffer.position(0);
+                      vs2$buffer.limit(vs2$width * vs2$height * 3);
+                      while (vs2$buffer.hasRemaining()) vs2$channel.write(vs2$buffer);
+                      vs2$frames++;
+                  } catch (Throwable t) {
+                      VS2_CAPTURE_LOGGER.error("VS2_VISUAL_FRAME_CAPTURE_FRAME_FAILED frame={}", vs2$frames, t);
+                      vs2$finishCapture();
+                  }
+              }
+
+              @Unique
+              private static void vs2$finishCapture() {
+                  if (vs2$finished) return;
+                  vs2$finished = true;
+                  try {
+                      if (vs2$channel != null) vs2$channel.close();
+                      if (vs2$rawPath != null) {
+                          Files.writeString(Path.of(vs2$rawPath.toString() + ".meta"),
+                              "width=" + vs2$width + "\n" +
+                              "height=" + vs2$height + "\n" +
+                              "fps=10\n" +
+                              "frames=" + vs2$frames + "\n" +
+                              "duration_seconds=15\n");
+                      }
+                      VS2_CAPTURE_LOGGER.info(
+                          "VS2_VISUAL_FRAME_CAPTURE_FINISHED width={} height={} fps=10 frames={} path={} observational_only=true",
+                          vs2$width, vs2$height, vs2$frames, vs2$rawPath);
+                  } catch (Throwable t) {
+                      VS2_CAPTURE_LOGGER.error("VS2_VISUAL_FRAME_CAPTURE_FINISH_FAILED", t);
+                  }
+              }
+          }
+          ''',encoding='utf-8')
+          data=json.loads(mixin.read_text(encoding='utf-8'))
+          client=data.setdefault('client',[])
+          if 'MixinVisualFramebufferCapture' not in client: client.append('MixinVisualFramebufferCapture')
+          mixin.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          grep -q 'MixinVisualFramebufferCapture' upstream/fabric/src/main/resources/vs2-create-compat.mixins.json
+
+      - name: Compile exact proven composition plus recorder
         working-directory: upstream
         shell: bash
         run: |
@@ -100,22 +230,17 @@ jobs:
             sleep $((attempt * 10))
           done
 
-      - name: Ensure narrow visual-capture dependencies
+      - name: Ensure encoder dependency
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg xdotool openbox x11-utils
+          if ! command -v ffmpeg >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y ffmpeg; fi
           ffmpeg -version | head -1
-          command -v xdotool
-          command -v xwininfo
-          openbox --version | head -1
 
-      - name: Record one exact-head active-owner turn
+      - name: Record exact-head turn from Minecraft framebuffer
         working-directory: upstream
         timeout-minutes: 8
         env:
-          JAVA_TOOL_OPTIONS: -Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true
           LIBGL_ALWAYS_SOFTWARE: 'true'
           MESA_LOADER_DRIVER_OVERRIDE: llvmpipe
           MESA_GL_VERSION_OVERRIDE: '4.6'
@@ -126,14 +251,13 @@ jobs:
           set -euo pipefail
           LOG=../camera-visual-close-runtime.log
           XVFB_LOG=../camera-visual-close-xvfb.log
-          WM_LOG=../camera-visual-close-openbox.log
-          WINDOW_TREE=../camera-visual-close-window-tree.txt
-          WINDOW_CANDIDATES=../camera-visual-close-window-candidates.txt
+          RAW=../camera-turn-visual-close.rgb
+          RAW_META=${RAW}.meta
           MP4=../camera-turn-visual-close.mp4
           META=../camera-turn-visual-close-metadata.txt
-          BLACKCHECK=../camera-turn-visual-close-luma.txt
+          LUMA=../camera-turn-visual-close-luma.txt
           FRAMEHASH=../camera-turn-visual-close-framemd5.txt
-          rm -f "$LOG" "$XVFB_LOG" "$WM_LOG" "$WINDOW_TREE" "$WINDOW_CANDIDATES" "$MP4" "$META" "$BLACKCHECK" "$FRAMEHASH"
+          rm -f "$LOG" "$XVFB_LOG" "$RAW" "$RAW_META" "$MP4" "$META" "$LUMA" "$FRAMEHASH"
           rm -rf fabric/run/crash-reports fabric/run/saves/train-v2-camera-visual-close
           rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
           mkdir -p fabric/run/saves
@@ -142,94 +266,68 @@ jobs:
           export DISPLAY=:99
           Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > "$XVFB_LOG" 2>&1 &
           XVFB_PID=$!
-          sleep 1
-          openbox > "$WM_LOG" 2>&1 &
-          WM_PID=$!
-          xsetroot -solid '#303030' || true
+          export JAVA_TOOL_OPTIONS="-Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true -Dvs2.visualFramebufferCapture=true -Dvs2.visualFramebufferPath=$(pwd)/$RAW"
           ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v2-camera-visual-close' > "$LOG" 2>&1 &
           CLIENT_PID=$!
-          cleanup() {
-            kill "$CLIENT_PID" 2>/dev/null || true
-            kill "$WM_PID" 2>/dev/null || true
-            kill "$XVFB_PID" 2>/dev/null || true
-          }
+          cleanup() { kill "$CLIENT_PID" 2>/dev/null || true; kill "$XVFB_PID" 2>/dev/null || true; }
           trap cleanup EXIT
 
           fatal_state() {
-            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Minecraft has crashed|Exception in thread "Render thread"|Game crashed' "$LOG" \
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Minecraft has crashed|Exception in thread "Render thread"|Game crashed|VS2_VISUAL_FRAME_CAPTURE_(START|FRAME|FINISH)_FAILED' "$LOG" \
               || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
               || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
               || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
           }
 
           STARTED=0
+          START_LINE=0
           for i in $(seq 1 180); do
-            if grep -q 'REFERENCE_OWNER_V2_ACQUIRE' "$LOG"; then STARTED=1; break; fi
+            if grep -q 'VS2_VISUAL_FRAME_CAPTURE_STARTED' "$LOG"; then STARTED=1; START_LINE=$(grep -n 'VS2_VISUAL_FRAME_CAPTURE_STARTED' "$LOG" | tail -1 | cut -d: -f1); break; fi
             if fatal_state; then tail -240 "$LOG"; exit 1; fi
             if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -240 "$LOG"; exit 1; fi
             sleep 1
           done
           test "$STARTED" -eq 1
 
-          # Select the largest mapped non-root X11 client window instead of guessing the title.
-          WIN_ID=''
-          BEST_AREA=0
-          for retry in $(seq 1 30); do
-            : > "$WINDOW_CANDIDATES"
-            while read -r wid; do
-              [ -n "$wid" ] || continue
-              INFO=$(xwininfo -id "$wid" 2>/dev/null || true)
-              echo "$INFO" | grep -q 'Map State: IsViewable' || continue
-              W=$(printf '%s\n' "$INFO" | awk '/Width:/{print $2; exit}')
-              H=$(printf '%s\n' "$INFO" | awk '/Height:/{print $2; exit}')
-              [ -n "$W" ] && [ -n "$H" ] || continue
-              AREA=$((W*H))
-              NAME=$(xdotool getwindowname "$wid" 2>/dev/null || true)
-              CLASS=$(xprop -id "$wid" WM_CLASS 2>/dev/null || true)
-              PID=$(xdotool getwindowpid "$wid" 2>/dev/null || true)
-              printf 'id=%s area=%s size=%sx%s pid=%s name=%q class=%q\n' "$wid" "$AREA" "$W" "$H" "$PID" "$NAME" "$CLASS" >> "$WINDOW_CANDIDATES"
-              if [ "$AREA" -gt "$BEST_AREA" ] && [ "$W" -ge 320 ] && [ "$H" -ge 200 ]; then
-                BEST_AREA=$AREA
-                WIN_ID=$wid
-              fi
-            done < <(xdotool search --name '.*' 2>/dev/null | sort -u || true)
-            if [ -n "$WIN_ID" ]; then break; fi
+          FINISHED=0
+          for i in $(seq 1 90); do
+            if grep -q 'VS2_VISUAL_FRAME_CAPTURE_FINISHED' "$LOG"; then FINISHED=1; break; fi
+            if fatal_state; then tail -240 "$LOG"; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -240 "$LOG"; exit 1; fi
             sleep 1
           done
-          xwininfo -root -tree > "$WINDOW_TREE" 2>&1 || true
-          cat "$WINDOW_CANDIDATES" || true
-          test -n "$WIN_ID"
+          test "$FINISHED" -eq 1
+          test -s "$RAW"
+          test -s "$RAW_META"
 
-          xdotool windowmap "$WIN_ID" || true
-          xdotool windowmove "$WIN_ID" 0 0 || true
-          xdotool windowsize "$WIN_ID" 1280 720 || true
-          xdotool windowraise "$WIN_ID" || true
-          xdotool windowactivate --sync "$WIN_ID" || true
-          sleep 2
-          START_LINE=$(wc -l < "$LOG")
+          WIDTH=$(awk -F= '$1=="width"{print $2}' "$RAW_META")
+          HEIGHT=$(awk -F= '$1=="height"{print $2}' "$RAW_META")
+          FPS=$(awk -F= '$1=="fps"{print $2}' "$RAW_META")
+          FRAMES=$(awk -F= '$1=="frames"{print $2}' "$RAW_META")
+          test "$WIDTH" -gt 0
+          test "$HEIGHT" -gt 0
+          test "$FRAMES" -ge 20
+          EXPECTED_BYTES=$((WIDTH*HEIGHT*3*FRAMES))
+          ACTUAL_BYTES=$(stat -c%s "$RAW")
+          test "$ACTUAL_BYTES" -eq "$EXPECTED_BYTES"
 
-          ffmpeg -y -f x11grab -framerate 30 -video_size 1280x720 -i :99.0+0,0 \
-            -t 15 -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p "$MP4"
-
-          if fatal_state; then tail -240 "$LOG"; exit 1; fi
+          ffmpeg -y -f rawvideo -pixel_format rgb24 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "$RAW" \
+            -vf vflip -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p "$MP4"
           test -s "$MP4"
 
-          # Reject all-black and static-desktop captures before telemetry can mark the visual close green.
-          ffmpeg -hide_banner -loglevel error -i "$MP4" -vf 'signalstats,metadata=print' -an -f null - 2> "$BLACKCHECK" || true
-          MAX_Y=$(grep -o 'lavfi.signalstats.YAVG=[0-9.]*' "$BLACKCHECK" | cut -d= -f2 | sort -n | tail -1 || true)
-          BRIGHT_FRAMES=$(awk -F= '/lavfi.signalstats.YAVG=/{if ($2+0 > 20) n++} END{print n+0}' "$BLACKCHECK")
+          ffmpeg -hide_banner -loglevel error -i "$MP4" -vf 'signalstats,metadata=print' -an -f null - 2> "$LUMA" || true
+          MAX_Y=$(grep -o 'lavfi.signalstats.YAVG=[0-9.]*' "$LUMA" | cut -d= -f2 | sort -n | tail -1 || true)
+          BRIGHT_FRAMES=$(awk -F= '/lavfi.signalstats.YAVG=/{if ($2+0 > 20) n++} END{print n+0}' "$LUMA")
           ffmpeg -hide_banner -loglevel error -i "$MP4" -map 0:v:0 -f framemd5 "$FRAMEHASH"
           UNIQUE_FRAMES=$(grep -v '^#' "$FRAMEHASH" | awk -F',' '{gsub(/ /,"",$6); print $6}' | sort -u | wc -l)
           test -n "$MAX_Y"
           awk -v y="$MAX_Y" 'BEGIN{exit !(y>20)}'
-          test "$BRIGHT_FRAMES" -ge 30
+          test "$BRIGHT_FRAMES" -ge 10
           test "$UNIQUE_FRAMES" -ge 10
 
           python3 - "$LOG" "$START_LINE" <<'PY'
           import math,re,sys
-          path=sys.argv[1]; start=int(sys.argv[2])
-          lines=open(path,encoding='utf-8',errors='replace').read().splitlines()[start:]
-          text='\n'.join(lines)
+          text='\n'.join(open(sys.argv[1],encoding='utf-8',errors='replace').read().splitlines()[max(0,int(sys.argv[2])-1):])
           rx=re.compile(r'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample=(\d+) player_tick=(\d+) owner_id=(-?\d+).*?horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
           groups={}
           for s,t,o,e,h in rx.findall(text): groups.setdefault(int(o),[]).append((int(t),float(e),float(h)))
@@ -242,7 +340,7 @@ jobs:
                   un.append(un[-1]+d); prev=h
               span=max(un)-min(un); maxerr=max(e for _,e,_ in rows)
               if span>=0.01 and maxerr<=0.05: valid.append((span,maxerr,owner,len(rows)))
-          if not valid: raise SystemExit('visual capture interval did not contain proven active-owner turn')
+          if not valid: raise SystemExit('framebuffer capture interval did not contain proven active-owner turn')
           span,maxerr,owner,count=max(valid)
           print(f'CAMERA_VISUAL_CLOSE_INTERVAL_OK owner={owner} rows={count} heading_span_rad={span:.9f} max_horizontal_error={maxerr:.9f}')
           PY
@@ -256,18 +354,21 @@ jobs:
             echo "visual_run=$GITHUB_RUN_ID"
             echo "workflow_definition_head=$GITHUB_SHA"
             echo 'scenario=active_external_owner_real_carriage_turn'
-            echo 'capture_seconds=15'
+            echo 'capture_source=opengl_framebuffer_direct'
             echo 'source_checkout_verified=true'
             echo 'visual_nonblack_verified=true'
             echo 'visual_dynamic_verified=true'
-            echo "capture_window_id=$WIN_ID"
-            echo "capture_window_area=$BEST_AREA"
+            echo "width=$WIDTH"
+            echo "height=$HEIGHT"
+            echo "fps=$FPS"
+            echo "frames=$FRAMES"
             echo "max_luma=$MAX_Y"
             echo "bright_frames=$BRIGHT_FRAMES"
             echo "unique_frames=$UNIQUE_FRAMES"
             echo 'jar_sha256=n/a_not_final_candidate'
             echo "mp4_sha256=$MP4_SHA"
           } > "$META"
+          rm -f "$RAW"
 
       - name: Upload camera closure video
         if: always()
@@ -279,9 +380,7 @@ jobs:
             camera-turn-visual-close-metadata.txt
             camera-turn-visual-close-luma.txt
             camera-turn-visual-close-framemd5.txt
+            camera-turn-visual-close.rgb.meta
             camera-visual-close-runtime.log
             camera-visual-close-xvfb.log
-            camera-visual-close-openbox.log
-            camera-visual-close-window-tree.txt
-            camera-visual-close-window-candidates.txt
           if-no-files-found: warn

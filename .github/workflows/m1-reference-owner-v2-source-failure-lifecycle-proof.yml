@@ -1,0 +1,177 @@
+name: m1-reference-owner-v2-source-failure-lifecycle-proof
+
+on:
+  push:
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-source-failure-lifecycle-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-failure-lifecycle-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream-pinned
+
+      - name: Download exact strict-support airborne failure artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: reference-owner-v2-natural-landing-v2-log
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: apm23/VS2-Create_Interactive
+          run-id: 35057564114
+
+      - name: Prove false-grounded lifecycle clear reopens Create carry
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import math, re
+
+          source_run = 35057564114
+          source_head = '45b0d9dd09cac507165bb5669df25d5a3cfebb44'
+          artifact_id = 10431157630
+          artifact_digest = 'sha256:006da4712f88e960567ee16f5de835956850fecf064c9fbaba4a3c6cccd35671'
+
+          v2 = Path('scripts/prepare_vs2_26_2_reference_owner_v2.py').read_text(encoding='utf-8')
+          compose = Path('scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py').read_text(encoding='utf-8')
+          schedule = Path('scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py').read_text(encoding='utf-8')
+          authority = Path('scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py').read_text(encoding='utf-8')
+          pinned_state = Path('upstream-pinned/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDraggingInformation.kt').read_text(encoding='utf-8')
+          log_path = Path('evidence/reference-owner-v2-natural-landing-v2.log')
+          if not log_path.exists():
+              raise SystemExit('missing exact natural-landing source log')
+          log = log_path.read_text(encoding='utf-8', errors='replace')
+          log = re.sub(r'\x1b\[[0-9;]*[mK]', '', log)
+
+          required_v2 = [
+              'ticksSinceExternalReferenceOwner = 0',
+              'entityDraggingInformation.ticksSinceExternalReferenceOwner += 1',
+              'val ownerStillResolvable = ownerId != null && ExternalReferenceFrameResolver.resolveOwner(entity.level(), ownerId) != null',
+              'val ownerExpired = entityDraggingInformation.ticksSinceExternalReferenceOwner >= EntityDraggingInformation.TICKS_TO_DRAG_ENTITIES',
+              'if (!ownerStillResolvable || groundedContactExpired || ownerExpired) {',
+              'entityDraggingInformation.clearExternalReferenceOwner()',
+              'referenceProvider.getDraggingInformation().refreshExternalReferenceOwner(carriage.getId());',
+          ]
+          for token in required_v2:
+              if token not in v2:
+                  raise SystemExit('current V2 source lost lifecycle anchor: ' + token)
+
+          required_compose = [
+              'val nativeUpwardMotion = entity.deltaMovement.y > 1.0E-5',
+              'val groundedContactExpired = entity.onGround() && !nativeUpwardMotion && entityDraggingInformation.ticksSinceExternalReferenceOwner > 2',
+          ]
+          for token in required_compose:
+              if token not in compose:
+                  raise SystemExit('current composefix lost grounded-expiry predicate: ' + token)
+
+          required_schedule = [
+              'vs2$applyExternalReferenceOwnerBeforeCreateCollision',
+              'shift = At.Shift.AFTER',
+              'java.util.Collections.singletonList(referencePlayer)',
+              'EntityDragger.INSTANCE.dragEntitiesWithShips(',
+              'renderedEntity != referencePlayer',
+          ]
+          for token in required_schedule:
+              if token not in schedule:
+                  raise SystemExit('current scheduler lost ordering anchor: ' + token)
+
+          required_authority = [
+              'ordinal = 1',
+              'boolean activeExternalOwner = dragging.isEntityBeingDraggedByExternalReference()',
+              'if (!activeExternalOwner) {',
+              'entity.setPos(x, y, z);',
+              'REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED',
+          ]
+          for token in required_authority:
+              if token not in authority:
+                  raise SystemExit('current authority gate lost expected branch: ' + token)
+
+          cap = re.search(r'const val TICKS_TO_DRAG_ENTITIES\s*=\s*(\d+)', pinned_state)
+          if not cap:
+              raise SystemExit('missing pinned drag lifetime cap')
+          drag_cap = int(cap.group(1))
+          if drag_cap != 25:
+              raise SystemExit(f'unexpected pinned drag cap {drag_cap}')
+
+          def one(pattern, label):
+              m = re.search(pattern, log)
+              if not m:
+                  raise SystemExit('missing ' + label)
+              return m
+
+          jump = one(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick=(47)[^\n]*delta_y=([-+0-9.eE]+) on_ground=(true|false)[^\n]*vertical_arc=(true|false)', 'tick47 airborne marker')
+          if not (float(jump.group(2)) > 0 and jump.group(3) == 'true' and jump.group(4) == 'true'):
+              raise SystemExit('tick47 is not the expected genuine native upward jump')
+
+          drag46 = one(r'GATE_E_LOCALPLAYER_SET_POS[^\n]*player_tick=46[^\n]*EntityDragger#dragEntitiesWithShips', 'tick46 EntityDragger writer')
+          acq46 = one(r'REFERENCE_OWNER_V2_ACQUIRE player_tick=46 carriage_id=7[^\n]*physical_support=true[^\n]*recent_native_contact=true', 'tick46 owner7 refresh')
+          if not drag46.start() < acq46.start():
+              raise SystemExit('tick46 refresh did not occur after the scheduler writer')
+          if re.search(r'REFERENCE_OWNER_V2_ACQUIRE player_tick=(47|48|49)\b', log):
+              raise SystemExit('owner unexpectedly refreshed during tick47-49 jump window')
+
+          for tick in (47, 48):
+              one(rf'GATE_E_LOCALPLAYER_SET_POS[^\n]*player_tick={tick}[^\n]*EntityDragger#dragEntitiesWithShips', f'tick{tick} EntityDragger writer')
+              one(rf'REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED player_tick={tick} carriage_id=7 owner_id=7[^\n]*active_external_owner=true', f'tick{tick} owner7 authority suppression')
+
+          if re.search(r'GATE_E_LOCALPLAYER_SET_POS[^\n]*player_tick=49[^\n]*EntityDragger#dragEntitiesWithShips', log):
+              raise SystemExit('tick49 unexpectedly retained EntityDragger body writer')
+          if re.search(r'REFERENCE_OWNER_V2_CREATE_CONTACT_CARRY_SUPPRESSED player_tick=49\b', log):
+              raise SystemExit('tick49 unexpectedly retained external-owner carry suppression')
+
+          move49 = one(r'GATE_E_LOCALPLAYER_ENTITY_MOVE_HEAD[^\n]*player_tick=49[^\n]*requested=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)[^\n]*on_ground=(true|false)', 'tick49 native move state')
+          final_grounded = move49.group(4) == 'true'
+          vertical_motion = float(move49.group(2))
+          if not final_grounded or abs(vertical_motion) > 1.0e-8:
+              raise SystemExit('tick49 does not expose false-grounded zero-Y state')
+
+          support49 = one(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=49[^\n]*physical_support=(true|false)', 'tick49 strict support state')
+          if support49.group(1) != 'false':
+              raise SystemExit('tick49 unexpectedly has genuine strict Create support')
+          one(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=56 carriage_id=7 physical_support=true', 'genuine owner7 landing support tick56')
+
+          # Tick46 refresh is after that tick's scheduler writer, so it leaves age=0 for the next scheduler.
+          # With no refresh on ticks47-49, the single pre-Create scheduler advances age to 1,2,3.
+          age47, age48, age49 = 1, 2, 3
+          owner_resolvable = bool(re.search(r'GATE_E_CARRIAGE_CANDIDATES player_tick=49[^\n]*@id=7;', log))
+          native_upward = vertical_motion > 1.0e-5
+          grounded_expired = final_grounded and not native_upward and age49 > 2
+          owner_expired = age49 >= drag_cap
+          if not owner_resolvable:
+              raise SystemExit('owner7 is not resolvable/present on tick49')
+          if not grounded_expired or owner_expired:
+              raise SystemExit('tick49 lifecycle predicate does not isolate grounded expiry')
+
+          phase = one(r'GATE_E_PHASE170_NATIVE_CONTACT_APPLICATION player_tick=49 carriage_id=7 motion=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)', 'tick49 Create contact motion')
+          writer = one(r'GATE_E_LOCALPLAYER_SET_POS[^\n]*player_tick=49[^\n]*delta=([-+0-9.eE]+),([-+0-9.eE]+),([-+0-9.eE]+)[^\n]*singleReferenceOwnerCarryWriter', 'tick49 ordinal-1 carry writer')
+          contact = tuple(float(phase.group(i)) for i in range(1, 4))
+          written = tuple(float(writer.group(i)) for i in range(1, 4))
+          residual = math.sqrt(sum((a-b)*(a-b) for a,b in zip(contact, written)))
+          magnitude = math.sqrt(sum(v*v for v in written))
+          if residual > 1.0e-9 or magnitude <= 0.75:
+              raise SystemExit('tick49 material Create writer does not exactly match contact motion')
+
+          classification = 'EXACT_FAILURE_FALSE_GROUNDED_EXPIRY_REOPENS_CREATE_CARRY'
+          print('REFERENCE_OWNER_V2_SOURCE_FAILURE_LIFECYCLE_PROOF classification=' + classification +
+                f' source_run={source_run} source_head={source_head} artifact_id={artifact_id} artifact_digest={artifact_digest}' +
+                f' owner=7 refresh_tick=46 derived_age47={age47} derived_age48={age48} derived_age49={age49}' +
+                f' tick49_on_ground={str(final_grounded).lower()} tick49_vertical_motion={vertical_motion}' +
+                f' strict_support_tick49=false genuine_support_tick56=true owner_resolvable={str(owner_resolvable).lower()}' +
+                f' grounded_expired={str(grounded_expired).lower()} owner_expired={str(owner_expired).lower()} drag_cap={drag_cap}' +
+                f' create_writer_magnitude={magnitude} writer_residual={residual}' +
+                ' verifier_only=true production_unchanged=true final_ready=false')
+          PY

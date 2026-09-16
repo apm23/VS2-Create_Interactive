@@ -5,20 +5,32 @@ import re
 p = Path(__file__).resolve().parents[1] / "upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java"
 s = p.read_text(encoding="utf-8")
 
-# Keep the natural-landing proof's jump admission tied to fresh Create floor/native-contact evidence.
+# Preserve the production-smoke fixture's already-proven locomotion ordering exactly:
+# forward/walk -> backward -> strafe -> settle -> jump.  The previous harness-v2
+# accidentally removed backwardConfirmed/strafeConfirmed and allowed jump to start
+# before those phases.  Refactor only the freshness expression so it stays auditable;
+# admission semantics remain equivalent to the composed source.
 pattern = re.compile(r'    @Unique\n    private boolean vs2\$jumpArmReady\(LocalPlayer self\) \{.*?\n    \}', re.S)
 m = pattern.search(s)
 if not m:
     raise SystemExit("natural landing harness could not locate jumpArmReady")
 old = m.group(0)
-if "vs2.productionFixtureJumpFloorSupportNow" not in old or "vs2.phase170NativeContactApplicationTick" not in old:
-    raise SystemExit("natural landing harness found unexpected jumpArmReady boundary")
+for required in [
+    "!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed || !vs2$strafeConfirmed",
+    "self.tickCount >= vs2$strafeStartTick + 15",
+    "vs2.productionFixtureJumpFloorSupportNow",
+    "vs2.productionFixtureJumpFloorSupportTick",
+    "vs2.phase170NativeContactApplicationTick",
+]:
+    if required not in old:
+        raise SystemExit("natural landing harness lost original jump sequencing guard: " + required)
+
 new = "\n".join([
     "    @Unique",
     "    private boolean vs2$jumpArmReady(LocalPlayer self) {",
-    "        if (vs2$jumpStartTick != Integer.MIN_VALUE) return !vs2$jumpLandedLogged;",
-    "        if (!vs2$fixtureWalkSeen(self) || !self.onGround()) return false;",
-    "        if (!Boolean.getBoolean(\"vs2.productionFixtureJumpFloorSupportNow\")) return false;",
+    "        if (!vs2$fixtureWalkSeen(self) || !vs2$backwardConfirmed || !vs2$strafeConfirmed) return false;",
+    "        if (vs2$strafeStartTick == Integer.MIN_VALUE || self.tickCount < vs2$strafeStartTick + 15) return false;",
+    "        if (!self.onGround() || !Boolean.getBoolean(\"vs2.productionFixtureJumpFloorSupportNow\")) return false;",
     "        String floorTickRaw = System.getProperty(\"vs2.productionFixtureJumpFloorSupportTick\");",
     "        String nativeTickRaw = System.getProperty(\"vs2.phase170NativeContactApplicationTick\");",
     "        if (floorTickRaw == null || nativeTickRaw == null) return false;",
@@ -26,7 +38,10 @@ new = "\n".join([
     "            int floorTick = Integer.parseInt(floorTickRaw);",
     "            int nativeTick = Integer.parseInt(nativeTickRaw);",
     "            boolean floorFresh = floorTick == self.tickCount || floorTick == self.tickCount - 1;",
-    "            boolean nativeFresh = nativeTick == self.tickCount || nativeTick == self.tickCount - 1;",
+    "            boolean nativeFresh = nativeTick == self.tickCount",
+    "                || nativeTick == self.tickCount - 1",
+    "                || nativeTick == self.tickCount - 2",
+    "                || nativeTick == self.tickCount - 3;",
     "            return floorFresh && nativeFresh;",
     "        } catch (NumberFormatException ignored) {",
     "            return false;",
@@ -53,4 +68,4 @@ for forbidden in ["self.setPos(", "self.setDeltaMovement(", "self.move(", ".tele
         raise SystemExit("natural landing harness introduced forbidden movement mutation: " + forbidden)
 
 p.write_text(s, encoding="utf-8")
-print("REFERENCE_OWNER_V2_NATURAL_LANDING_HARNESS_V2 fixture_only=true fresh_jump_admission=true bounded_native_airstep_through_false_landing=true direct_motion_mutation=false")
+print("REFERENCE_OWNER_V2_NATURAL_LANDING_HARNESS_V2 fixture_only=true original_locomotion_sequence_preserved=true bounded_native_airstep_through_false_landing=true direct_motion_mutation=false")

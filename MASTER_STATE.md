@@ -12,14 +12,15 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- `current_head`: `ff07454329a214a27485c3e4c317c7dadd7818d6` when this ledger was written.
-- project_state: `ROOT_REDESIGN — ATTEMPT3 ADMITTED A VALID NATIVE JUMP; EXACT VERIFIERS PROVE THE ORDINARY 25-TICK OWNER CAP EXPIRES TWO TICKS BEFORE SAME-OWNER NATIVE CREATE LANDING AND CAUSES EXACT CARRIAGE-RELATIVE LAG; ONE NARROW JUMP-LANDING OWNER-LIFETIME PATCH LANDED; CURRENT-HEAD NATURAL-LANDING PROOF ACTIVE`.
+- `current_head`: `15d02abcc80f76c98a0fab7fcf0fdda731983a9c` immediately before this ledger-only reconciliation commit.
+- project_state: `ROOT_REDESIGN — THE JUMP-LANDING OWNER-LIFETIME PRODUCTION PATCH d6e55e2 REMAINS THE ONLY LIVE GAMEPLAY HYPOTHESIS, BUT THE CURRENT NATURAL-LANDING RUN NEVER EXERCISED ITS JUMP SEAM. EXACT ARTIFACT + SOURCE PROOFS SHOW THE PRE-JUMP ADMISSION DIVERGENCE IS A FIXTURE CHAIN: POST-MOVE NEAREST-CENTER CARRIAGE ARBITRATION FEEDS THE FIRST CONTACT BASELINE, AND PHASE154 WALKS THAT BASELINE. INITIAL SERVER FIXTURE CARRIAGE IS IDENTICAL BETWEEN ADMITTED/CURRENT RUNS. NO NEW GAMEPLAY PATCH IS AUTHORIZED.`
 - production implementation basis: `d6e55e2912d863e831ce088d26785b534a4b200d` (`Keep jump owner through native Create landing`).
-- proof-trigger head: `ff07454329a214a27485c3e4c317c7dadd7818d6` (`Trigger natural landing proof for jump owner landing patch`); workflow/test wiring only after the production commit.
+- production proof trigger basis: `ff07454329a214a27485c3e4c317c7dadd7818d6` (`Trigger natural landing proof for jump owner landing patch`).
+- latest verifier/source-map head: `15d02abcc80f76c98a0fab7fcf0fdda731983a9c` (`Prove natural landing fixture baseline arbitration chain`).
 - final_ready: `false`.
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`; never ask user to retest it.
-- active blocker workflow: `m1-reference-owner-v2-natural-landing-proof-v2`.
-- active blocker run: `35071527097`, exact head `ff074543...`; `queued` when this ledger state was written.
+- active blocker: deterministic natural-landing fixture admission sufficient to exercise the already-landed `d6e55e2...` jump/landing seam without manufacturing physics success.
+- no relevant blocker workflow is active at this ledger point; latest exact proof `35085286003` completed SUCCESS.
 - known invalid workflow noise: `.github/workflows/m1-reference-owner-v2-airborne-drag-boundary-proof-v2.yml` emits instant zero-job failures; ignore it.
 
 ## Historical direct-user runtime gate — authoritative regression evidence
@@ -149,10 +150,46 @@ Implementation in `prepare_vs2_26_2_reference_owner_v2_composefix.py`:
 - if native contact ceases, ordinary grounded expiry again releases the owner quickly; generic shore-release behavior is preserved.
 No synthetic motion, gravity, setPos chase/reanchor, collision override, transform math change, camera mutation, native drag gate change, or new body writer.
 
-## Active current-head proof
-- workflow `m1-reference-owner-v2-natural-landing-proof-v2` now includes the composefix path so a production lifecycle change automatically runs the exact fixture.
-- active run `35071527097`, exact head `ff07454329a214a27485c3e4c317c7dadd7818d6`.
-- The workflow's historical final classifier still uses Phase131 `physical_support=true` as the landing predicate; attempt3 proved that predicate can false-negative at a real native Create landing. Therefore, if this run reaches runtime and fails only with the same `no genuine Create support reacquisition` message, do NOT infer production failure or success from that message alone: inspect the exact artifact for owner continuity, `REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH`, native Create landing markers, and carriage-relative drift before changing gameplay again.
+## Current natural-landing proof classification — PRE-JUMP FIXTURE BOUNDARY
+Run `35071527097`, exact head `ff07454329a214a27485c3e4c317c7dadd7818d6`, artifact `10439801138`, digest `sha256:6d6f6a3eb2e1683f7599c5466716e03db01897dedfc5a8daa5bdcb97bafc78b0`:
+- composition/compile/runtime reached native locomotion but not the jump seam;
+- walk confirmed on carriage2, reverse confirmed, right-strafe lost strict Create support at motion tick32 / rejection tick33;
+- no `GATE_E_M1_NATIVE_JUMP_REQUESTED` or `GATE_E_M1_NATIVE_JUMP_AIRBORNE` occurred;
+- therefore this run does not test or refute `d6e55e2...` jump-owner lifetime semantics.
+
+### Runway-selection boundary — READ-ONLY GREEN
+Commit `c1904d3e90733c864563ad4269065fe2a44505a7`, workflow `m1-natural-landing-runway-selection-proof`, run `35079785697` SUCCESS:
+`IDENTICAL_HARNESS_ADMISSION_DIVERGES_BY_SELECTED_CARRIAGE_RUNWAY`.
+- admitted attempt3 walks carriage8 and reaches jump tick45;
+- current run walks carriage2 and loses support at strafe; no jump;
+- harness blob is identical, so rerunning the same fixture blindly is not useful.
+
+Commit `68305886cd19fbe735291f75d6894f0f9229e658`, workflow `m1-natural-landing-runway-candidate-trace`, run `35083426168` SUCCESS:
+- read-only candidate telemetry only; selector unchanged;
+- server-side initial selector sees id2 first plus another carriage candidate;
+- this trace did not authorize choosing by entity id, block count, span, or other guessed geometry.
+
+### Post-move arbitration boundary — READ-ONLY GREEN
+Commit `68f19ad8c9e5ba4995a371e378cc31faddeb8d37`, workflow `m1-natural-landing-postmove-arbitration-boundary-proof`, run `35084762923` SUCCESS:
+`INITIAL_FIXTURE_CARRIAGE_IDENTICAL_DIVERGENCE_BEGINS_AT_POST_MOVE_CLIENT_CANDIDATE_ARBITRATION`.
+Pinned result:
+- admitted/current artifacts start from the same physical server fixture carriage at `pos=-63.5,-59.0,120.5`, same bounding box/contact and same train-moved marker;
+- both client runs select carriage2 at tick3 and still select carriage2 at tick13;
+- at tick14 admitted switches to carriage8 while current remains carriage2;
+- therefore server `firstOrNull` initial carriage choice does not explain the admitted/current divergence and must not be patched from this evidence.
+
+### Fixture baseline arbitration chain — SOURCE + ARTIFACT GREEN
+Commit `15d02abcc80f76c98a0fab7fcf0fdda731983a9c`, workflow `m1-natural-landing-fixture-baseline-chain-proof`, run `35085286003` SUCCESS:
+`NEAREST_CENTER_SELECTED_CARRIAGE_FEEDS_CONTACT_BASELINE_THEN_FIXTURE_WALK`.
+Source chain:
+- Phase55 computes `carriage` from `carriageCandidates.stream().min(distanceToSqr(player))` and labels it `arbitration=nearest_entity_center`;
+- Phase71 captures `carryBaselineCarriageId = carriage.getId()` only when that selected carriage reports Create contact and LocalPlayer is onGround;
+- Phase154 resolves `client.level.getEntity(carryBaselineCarriageId)` and starts the fixture walk on that captured baseline.
+Pinned artifact result:
+- admitted: nearest selection diverges to id8, first carry baseline=id8, Phase154 walk=id8, then valid jump is reached;
+- current: nearest remains id2, first carry baseline=id2, Phase154 walk=id2, strafe loses support and jump is never reached;
+- neither artifact rebases the captured baseline afterward.
+Conclusion: current pre-jump divergence is inside fixture admission/telemetry arbitration. It is not evidence for another production physics patch. A fixture selector change is not yet authorized until a deterministic native-support/placement criterion is proven; entity IDs or geometry-size guesses are forbidden.
 
 ## FROZEN_GREEN / protected
 - bootstrap/Kotlin packaging `f3d1335...`;
@@ -167,6 +204,10 @@ No synthetic motion, gravity, setPos chase/reanchor, collision override, transfo
 - native drag gate `35045444238`;
 - exact existing VS2 body writer `35048234680` over `35046701119`;
 - ordinary descent support-miss lifecycle `35051781646`;
+- admission route classification `35067811102`;
+- owner-cap lag proof `35071088843`;
+- initial-vs-postmove runway boundary `35084762923`;
+- fixture baseline arbitration source/artifact chain `35085286003`;
 - historical user-proven floor solidity and grounded walking.
 
 ## FAILED_HYPOTHESES / anti-loop
@@ -189,18 +230,20 @@ Do not reintroduce without new direct evidence:
 - treating temporal-only zero collisionResponse as failure;
 - patching `isDraggable`/`vs$shouldDrag` after `35045444238`;
 - adding/replacing a body-position writer after `35048234680`;
-- changing Phase64 grounding/Y-clip behavior merely because the source-map workflow located it.
+- changing Phase64 grounding/Y-clip behavior merely because the source-map workflow located it;
+- hardcoding a carriage entity id, block count, span, or guessed geometry to reproduce attempt3;
+- changing the server `firstOrNull` initial fixture carriage selector from the admitted/current divergence; run `35084762923` proves both runs begin on the same physical carriage.
 
 ## next_safe_action
-1. Inspect only current-head natural-landing run `35071527097` first.
-2. If queued/in_progress: HOLD; stack no gameplay, harness, transform, collision, or verifier hypothesis.
-3. If compile/composition fails: repair only the current jump-landing lifecycle patch mechanics; do not change physics semantics from a compile failure.
-4. If runtime reaches a valid strict-support-qualified jump: inspect the exact artifact before any further gameplay change.
-5. If `REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH` occurs at same-owner native landing and owner-relative continuity remains within proof thresholds through landing, create/repair only the exact artifact verifier as needed; do not stack a second gameplay hypothesis because the historical Phase131 landing predicate is known false-negative.
-6. If owner authority still drops before same-owner native landing or material carriage-relative drift remains, classify the exact lifecycle/authority marker sequence before any second gameplay patch.
+1. Treat `35071527097` as pre-jump non-admission only; do not rerun it blindly and do not infer `d6e55e2...` production success/failure from it.
+2. Source-map the exact fixture path that sets `vs2.productionNativePlacementCarriageId` / authoritative placement target and determine whether that target is independently grounded in native Create contact/support or merely inherits the same nearest-center `carryBaselineCarriageId` arbitration.
+3. If placement/baseline selection still inherits nearest-center arbitration, add the smallest read-only candidate support/contact instrumentation at that decision seam. Do not change production physics.
+4. Only if exact evidence identifies a deterministic native-support criterion may the fixture admission selector be changed. The criterion must be support/contact/placement based, never hardcoded entity id, geometry size/span, timing shortening, or a route designed solely to recreate attempt3.
+5. After any justified fixture-only selector repair, rerun the exact natural-landing workflow on current production and require a valid native jump before judging `d6e55e2...`.
+6. If a valid jump occurs, inspect owner continuity, `REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH`, same-owner Create native landing/contact, owner-relative drift/step through landing, and owner handoff before any gameplay change.
 7. Revert `d6e55e2...` before stacking a workaround if a valid runtime proves it regresses a FROZEN_GREEN criterion.
 8. Only after natural landing is genuinely GREEN advance to smallest wall/ceiling solidity proof, then turns/speed changes.
-9. Do not alter transform math, native drag gate, VS2 body writer, OBB semantics, camera, gravity, Phase64 grounding/Y-clip, or Create collision-response authority from this lifecycle seam without new direct evidence.
+9. Do not alter transform math, native drag gate, VS2 body writer, OBB semantics, camera, gravity, Phase64 grounding/Y-clip, or Create collision-response authority without new direct evidence.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 Automated proof can never alone set `FINAL_READY`. A new exact JAR must pass direct user runtime for stable standing, forward/back/strafe/sprint, jump+airborne+natural landing, floor/walls/ceiling, turns, acceleration/deceleration/speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look. The watchdog local SHA gate must match that exact accepted JAR.

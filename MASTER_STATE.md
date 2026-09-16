@@ -12,14 +12,16 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- project_state: `ROOT_REDESIGN — NATIVE DRAG GATE AND VS2 BODY WRITER ARE GREEN; ACTIVE BLOCKER IS EXTERNAL-OWNER LIFECYCLE CLEAR / ARTICULATED CARRIAGE HANDOFF DURING NATIVE JUMP`.
-- ledger_basis_head: `cbda22c1b7caa63f32fec6a21dafb920467f35da` (`Dispatch lifecycle expiry proof`).
+- project_state: `ROOT_REDESIGN — UPWARD-JUMP OWNER CLEAR FIXED; OWNER-RELATIVE JUMP CONTINUITY MATERIALLY IMPROVED; OWNER REMAINS ACTIVE THROUGH DESCENT; HEADLESS FALSE-LANDING AISTEP CUTOFF PROVEN; HARNESS-ONLY REAL-SUPPORT NATURAL-LANDING REPROOF ACTIVE`.
+- ledger_basis_head: `618da46f8cffe9ed34a3502e4e4080bb0fc4f4b1` (`Repair headless natural landing proof boundary`).
 - final_ready: `false`.
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`; never ask user to retest it.
 - production scheduler patch: `0ce0dfd4f6f29685eb18b6e3a8c14ddc247bbb9b`.
 - production active-owner Create carry authority patch: `652667e887720509f37618641e231f70e8e689c4`.
-- current diagnostic: verifier-only `m1-reference-owner-v2-lifecycle-expiry-proof`, created at `67090464871845e8a25e14a1a38267ac6a4c03ca`; dispatcher `35048420489` was queued/in_progress when this ledger was written.
-- diagnostic reuses exact runtime artifact from run `35044312977`; production gameplay/physics is unchanged.
+- production upward-jump lifecycle correction: `a14260cc76b61e5c6be0de38e634abe9ee7f0800`.
+- active proof workflow: `m1-reference-owner-v2-natural-landing-proof-v2`.
+- active proof run: `35052376394`, exact proof head `618da46f...`; in progress when this ledger was written.
+- proof-only harness commit changes fixture/native-aiStep scheduling and verification only; production physics/gameplay source is unchanged relative to `a14260c...`.
 
 ## Historical direct-user runtime gate — authoritative regression evidence
 Exact JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef` FAILED:
@@ -58,83 +60,118 @@ This blocks `FINAL_READY` regardless of automated GREEN.
 - verifier-only run `35041914462` SUCCESS: `ACTIVE_OWNER_CREATE_COLLISION_FRAME_CONTINUOUS_TEMPORAL_ONLY`.
 - `surface=true + collisionResponse=ZERO + 0<temporal<1` is valid Create behavior. OBB is not the active blocker.
 
-## Natural airborne proof — DIRECT GAMEPLAY FAILURE
+## Natural airborne root chain
+### Original direct gameplay failure
 Run `35042299917` reached a real vanilla jump and FAILED `owner-relative airborne drift too large: 21.599091`.
 Artifact id `10425533703`, digest `sha256:9b3a9596b03e31625e7aeadc194b7e2faf21e2d6e9fef45a1329ddd370c07e39`.
-- jump REQUESTED/AIRBORNE tick30 with vertical delta `+0.3331999936`.
-- carriage7 owner-local continuity is reasonable through tick33 then catastrophically jumps at tick34 from local X `-1.282011` to `23.707201`.
-- selected Create candidate switches 7 -> 5 at the seam while the reference-owner lifecycle is under investigation.
-- apparent LANDED tick37 is not accepted carriage landing because support/broadphase was already lost.
-This authorizes root-boundary diagnosis, not OBB/gravity/camera/input tuning.
+- jump REQUESTED/AIRBORNE tick30, delta Y `+0.3331999936`.
+- carriage7 owner-local continuity reasonable through tick33, catastrophic jump at tick34.
+- selected Create candidate switched 7 -> 5 at seam.
 
-## Native drag gate — FROZEN_GREEN
-Run `35045444238` workflow conclusion was failure only because verifier expected gate rejection. Useful runtime classification:
-`EXTERNAL_OWNER_NATIVE_GATE_NOT_REJECTING` with `rejected=0`, `airborne_rejected=0`; rows show `shipyard=false provider=true should_drag=true result=true` across grounded and airborne ticks.
-Do not patch `isDraggable` / `vs$shouldDrag`.
+### Native drag gate — FROZEN_GREEN
+Run `35045444238`: `EXTERNAL_OWNER_NATIVE_GATE_NOT_REJECTING`; rejected=0, airborne_rejected=0, `should_drag=true result=true` through airborne ticks. Do not patch native gate.
 
-## Exact VS2 body writer — FROZEN_GREEN
-Proof runtime run `35046701119` produced 15 PRE/POST writer pairs but its original verifier falsely required `on_ground=false`, while native jump markers already showed a real vertical arc with `on_ground=true`.
-Verifier-only v2 run `35048234680` SUCCESS reclassified the exact same runtime artifact:
-`REFERENCE_OWNER_V2_DRAG_APPLY_RECHECK classification=EXTERNAL_OWNER_BODY_WRITER_APPLIES_CALCULATED_STEP source_run=35046701119 request_tick=22 airborne_tick=22 landing_marker_tick=24 vertical_delta=0.33319999363422365 jump_material_pairs=3 missed_jump_material=0 max_jump_movement=3.6026309728622437 max_writer_residual=0.0 verifier_only=true production_unchanged=true final_ready=false`.
-Pairs ticks22–24 all have residual exactly `0.0`.
-Conclusion: when external-owner movement reaches the existing VS2 apply guard, boundingBox/setPos applies the calculated step exactly. Do not patch/add another body writer.
+### Exact VS2 body writer — FROZEN_GREEN
+Verifier-only v2 run `35048234680` over source run `35046701119`:
+`EXTERNAL_OWNER_BODY_WRITER_APPLIES_CALCULATED_STEP`, jump material pairs=3, missed=0, max writer residual=0.0.
+Conclusion: existing boundingBox/setPos writer applies the calculated step exactly when reached. Do not add/replace a body writer.
 
-## Active lifecycle question
-Current V2 lifetime source does, before the drag branch on non-preTick calls:
-- increment `ticksSinceExternalReferenceOwner`;
-- compute `groundedContactExpired = entity.onGround() && ticksSinceExternalReferenceOwner > 2`;
-- call `clearExternalReferenceOwner()` if resolver fails, groundedContactExpired, or native max lifetime expires.
-Acquisition/refresh requires selected exact Create carriage + physical support + `player.onGround()` + recent native Create contact.
+### Lifecycle false clear — PROVEN + FIXED
+Verifier-only run `35048427002` SUCCESS:
+`EXTERNAL_OWNER_CLEARED_BY_GROUNDED_CONTACT_EXPIRY_ON_NATIVE_JUMP_TICK`.
+Exact evidence from source run `35044312977`: jump tick23, owner7 age3 -> 4, deltaY `+0.33319999363422365`, vertical arc true while `onGround=true`, then next tick owner null.
+Production commit `a14260c...` changes only grounded expiry policy:
+- derives `nativeUpwardMotion = entity.deltaMovement.y > 1.0E-5`;
+- grounded stale-contact expiry cannot clear owner while genuine upward native movement is active.
+No movement vector, reanchor, writer, gravity, collision or camera authority was added.
 
-Exact older read-only boundary artifact run `35044312977` gives the relevant seam:
-- genuine native jump at player tick23 with `delta_y=+0.33319999363422365`, `vertical_arc=true`, while the marker still reports `on_ground=true`;
-- scheduler entry tick23 still has owner7 active with owner_age=3 and expected owner-frame step ~`+5.088284254` X;
-- owner is null/inactive on the next tick;
-- selected Create candidate is already sibling carriage5 around the jump seam.
-This strongly suggests the grounded-contact expiry policy can falsely clear the owner on the first native jump tick because Minecraft has not yet flipped `onGround` even though upward motion is real. The active verifier-only proof must confirm this exact code-path implication before any production patch.
+### Post-fix natural run — materially improved but not accepted landing
+Run `35049968486`, job `104647999042`, exact head `d74f32b...`, runtime/compile succeeded; verifier failed before valid landing acceptance.
+Artifact id `10428701383`, digest `sha256:8d14cea93417daaf5ea0940a69bc9870f9e889609de097fb9a92c881a189bdfe`.
+- owner5 acquired tick20; jump REQUESTED/AIRBORNE tick23.
+- horizontal owner-relative continuity through early jump improved to about `0.783534` total drift and `0.205107` max one-tick step instead of the prior multi-carriage failure.
+- generic fixture `LANDED` marker tick31 was false: Create physical support had not returned.
+- owner5 descent reached a stable support-miss plateau around local Y `2.218572`, gap `~0.218572`, while X/Z remained inside.
+- no natural-landing GREEN may be inferred from the generic `onGround` marker.
+
+### Descent lifecycle — FROZEN_GREEN for this boundary
+Read-only workflow commit `55d9033...`, run `35051781646` SUCCESS:
+`EXTERNAL_OWNER_ACTIVE_THROUGH_DESCENT_SUPPORT_MISS_MAX_AGE_EXPIRES_AFTERWARD`.
+- owner5 acquire tick20; pinned drag cap 25; predicted expiry tick45.
+- EntityDragger writer continuous ticks21..44.
+- support-miss plateau begins tick36 and owner remains actively dragged through tick44.
+Conclusion: lifecycle does NOT cause the initial hover/support miss; do not extend lifecycle generically.
+
+## Headless fixture false-landing boundary — PROVEN HARNESS ISSUE
+Static composed-source workflow `m1-headless-native-airstep-boundary-proof`, run `35051955516` SUCCESS, mapped the exact fixture method `vs2$runNativeAiStepWhenHeadlessTickSkippedIt`.
+Its old jump fallback was gated by `!vs2$jumpLandedLogged`, so a false generic `onGround` landing marker could disarm headless native `aiStep` before Create support actually returned.
+
+Correlation verifier repaired at commit `3f31a629...`; run `35052085653` SUCCESS:
+`HEADLESS_FALSE_LANDING_DISARMS_JUMP_FALLBACK_AT_STRAFE_END_BEFORE_REAL_SUPPORT`.
+Exact source run `35049968486`:
+- false landed marker tick31;
+- fallback ticks continue 32..36 only because strafe window remains true;
+- jump_window=false after false marker;
+- fallback last tick36;
+- LocalPlayer move last tick36;
+- stable support-miss plateau starts tick36.
+Conclusion: the post-tick36 stall in that CI run is a headless fixture scheduling artifact, not production physics evidence.
+
+## Active real-support landing repro
+Commit `618da46f8cffe9ed34a3502e4e4080bb0fc4f4b1` is one harness-only hypothesis:
+- adds `scripts/prepare_vs2_26_2_natural_landing_harness_v2.py`;
+- adds `.github/workflows/m1-reference-owner-v2-natural-landing-proof-v2.yml`;
+- keeps existing native `aiStep` fallback alive for a bounded 40-tick jump arc despite a false generic landing marker;
+- adds no direct `setPos`, `setDeltaMovement`, move, gravity, teleport or `setOnGround` mutation;
+- landing verifier no longer trusts generic `onGround` marker; it requires genuine same-owner Phase131 `physical_support=true` reacquisition;
+- preserves exact verified r0v3 world SHA `e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556`.
+Active run: `35052376394`.
 
 ## FROZEN_GREEN / protected
 - bootstrap/Kotlin packaging `f3d1335...`;
 - Create train + VS2 coexistence;
 - Steam 'n' Rails + Copycats preservation;
 - V1 infrastructure run `34984299770`;
-- V2 structural/core run `34994353308` except disproved body-continuity assumptions;
+- V2 structural/core run `34994353308` except disproved runtime body-continuity assumptions;
 - external-owner lifecycle requirement run `35008163064`;
 - active-owner ordinal-1 authority run `35017634522`;
 - same-point transform run `35023234306`;
 - camera/free-look runs `35033671863`, `35034983734`;
 - OBB temporal-only support-loss run `35041914462`;
 - native drag gate open run `35045444238`;
-- exact existing VS2 body writer application run `35048234680` over source run `35046701119`;
+- exact existing VS2 body writer run `35048234680` over source run `35046701119`;
+- owner lifecycle active through descent support miss run `35051781646`;
 - historical user-proven floor solidity and grounded walking as protected behavioral criteria.
 
 ## FAILED_HYPOTHESES / anti-loop
 Do not reintroduce without new direct evidence:
 - `EXACT_SHAPES_LOCALPLAYER_0fa4aa`;
 - generic frame lease/replay/carry extension;
+- generic lifecycle extension beyond evidence;
 - synthetic carry velocity / inertia compensation;
 - fake gravity;
 - manual floor/wall clamps or floor-only workaround;
 - per-tick teleport/setPos chase/reanchor architecture;
 - direct camera forcing/rotation compensation;
-- jump/input timing tuning without input-specific evidence;
+- jump/input timing tuning as a production reference-frame fix;
 - sprint/reverse/strafe tuning as reference-frame fix;
 - unscoped/global collider suppression or suppression of Create collision-response writer;
 - duplicate Create/VS2 gameplay/collision authority;
 - fake/proxy VS2 ship;
-- harness mutation used to manufacture GREEN;
+- harness mutation used to manufacture physics GREEN;
 - resolver prev/current/yaw/point semantic changes after run `35023234306` absent contrary evidence;
 - treating temporal-only zero collisionResponse as failure;
 - patching `isDraggable`/`vs$shouldDrag` after run `35045444238`;
-- adding/replacing a body-position writer after run `35048234680` proved the existing writer exact when reached.
+- adding/replacing a body-position writer after run `35048234680`.
 
 ## next_safe_action
-1. Inspect dispatcher `35048420489`, then the dispatched `m1-reference-owner-v2-lifecycle-expiry-proof` run.
-2. If queued/in_progress: HOLD; no gameplay patch.
-3. If proof resolves `EXTERNAL_OWNER_CLEARED_BY_GROUNDED_CONTACT_EXPIRY_ON_NATIVE_JUMP_TICK`, one production hypothesis is authorized: make grounded expiry distinguish a genuine upward native jump from grounded support staleness without synthetic velocity/reanchor/extra authority, then rerun the smallest natural-jump continuity proof.
-4. If unresolved, instrument the exact lifecycle clear reason at runtime; do not patch transform math or writer.
-5. Only after natural airborne landing continuity is GREEN advance to wall/ceiling solidity, then turn/speed-change stability.
-6. Any production patch must preserve every FROZEN_GREEN boundary above.
+1. Inspect only active natural-landing-v2 run `35052376394` first.
+2. If queued/in_progress: HOLD; stack no production or harness hypothesis.
+3. If compile/workflow/harness mechanics fail before useful runtime evidence: repair only this proof harness.
+4. If runtime reaches genuine same-owner Phase131 support reacquisition and verifier prints `natural_landing_real_support_green`: freeze natural landing criterion for automated M1 proof and advance to wall/ceiling solidity; do not claim FINAL_READY.
+5. If runtime still has no genuine Create support reacquisition while bounded native aiStep continues: inspect the exact Create grounding/collision boundary from that new artifact before any gameplay patch. Do not extend lifecycle, alter transform math, or add movement writers.
+6. Only after natural landing is GREEN advance to wall/ceiling, then turn/speed-change stability.
+7. Any production patch must be one evidence-backed hypothesis and preserve every FROZEN_GREEN boundary.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 Automated proof can never alone set `FINAL_READY`. A new exact JAR must pass direct user runtime for stable standing, forward/back/strafe/sprint, jump+airborne+natural landing, floor/walls/ceiling, turns, acceleration/deceleration/speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look. Watchdog local SHA gate must match that exact accepted JAR.
@@ -144,7 +181,7 @@ Automated proof can never alone set `FINAL_READY`. A new exact JAR must pass dir
 2. Read this file completely and reconcile ledger basis with actual HEAD; ledger-only/diagnostic commits may advance HEAD without gameplay mutation.
 3. Inspect only latest relevant Actions evidence for active blocker.
 4. Respect FROZEN_GREEN and FAILED_HYPOTHESES.
-5. Execute next_safe_action; do not stop at narration.
+5. Execute `next_safe_action`; do not stop at narration.
 6. HOLD only for genuinely queued/in-progress relevant proof/evidence.
 7. No failure evidence = no symptom gameplay patch.
 8. One gameplay commit = one evidence-backed hypothesis.

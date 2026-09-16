@@ -9,7 +9,7 @@ dragger = dragger_file.read_text(encoding="utf-8")
 # external owner and the scheduler calls EntityDragger at the jump tick, while the authoritative
 # resolver expects a material owner-frame step and EntityDragger applies zero displacement. This trace
 # distinguishes rejection by VS2's native isDraggable/vs$shouldDrag gate from a later external-owner
-# resolver/application failure. It must not change the return value or any movement/collision state.
+# resolver failure. It must not change the return value or any movement/collision state.
 old_gate = '''    @JvmStatic
     fun isDraggable(entity: Entity): Boolean {
         return !VSEntityManager.isShipyardEntity(entity) && entity is IEntityDraggingInformationProvider && (entity as IEntityDraggingInformationProvider).`vs$shouldDrag`()
@@ -60,30 +60,16 @@ if dragger.count(resolver_anchor) != 1:
     raise SystemExit(f"expected exactly one external-owner resolver branch, found {dragger.count(resolver_anchor)}")
 dragger = dragger.replace(resolver_anchor, resolver_trace, 1)
 
-apply_anchor = '''            if (dragTheEntity) {
-'''
-apply_trace = '''            if (entity is LocalPlayer && entityDraggingInformation.isEntityBeingDraggedByExternalReference()) {
-                println("REFERENCE_OWNER_V2_DRAG_APPLY_GATE player_tick=${entity.tickCount}" +
-                    " drag_the_entity=$dragTheEntity movement_nonnull=${addedMovement != null}" +
-                    " movement=${addedMovement ?: Vector3d()} pre_tick=$preTick read_only=true")
-            }
-            if (dragTheEntity) {
-'''
-if dragger.count(apply_anchor) != 1:
-    raise SystemExit(f"expected exactly one EntityDragger application gate, found {dragger.count(apply_anchor)}")
-dragger = dragger.replace(apply_anchor, apply_trace, 1)
-
 for forbidden in [
     "setPos(", "setDeltaMovement(", "teleportTo(", "setNoGravity(", "setOnGround(",
     "getContactPointMotion(", "reanchorEntityWithExternalFrame(",
 ]:
-    if forbidden in new_gate + resolver_trace + apply_trace:
+    if forbidden in new_gate + resolver_trace:
         raise SystemExit("drag-gate trace introduced forbidden mutation token: " + forbidden)
 
 for token in [
     "REFERENCE_OWNER_V2_DRAG_GATE",
     "REFERENCE_OWNER_V2_DRAG_EXTERNAL_BRANCH",
-    "REFERENCE_OWNER_V2_DRAG_APPLY_GATE",
     "return result",
 ]:
     if token not in dragger:

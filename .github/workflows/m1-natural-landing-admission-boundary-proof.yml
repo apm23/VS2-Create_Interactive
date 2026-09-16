@@ -39,6 +39,7 @@ jobs:
           path: evidence/attempt1
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: apm23/VS2-Create_Interactive
+          run-id: '35062245886'
 
       - name: Download attempt2 exact artifact
         uses: actions/download-artifact@v5
@@ -47,6 +48,7 @@ jobs:
           path: evidence/attempt2
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: apm23/VS2-Create_Interactive
+          run-id: '35062245886'
 
       - name: Prove repeated pre-jump admission exhaustion
         shell: bash
@@ -108,8 +110,6 @@ jobs:
           a1 = load('attempt1')
           a2 = load('attempt2')
 
-          # Attempt1: reverse+strafe are genuinely support-qualified, but the +15 jump settle gate
-          # occurs after strict support on that owner has already ended.
           one(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick=20 carriage_id=5[^\n]*confirmed=true', a1, 'attempt1 walk')
           one(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick=25 support_tick=24 strict_create_support=true', a1, 'attempt1 reverse confirmation')
           sr1 = one(r'GATE_E_M1_NATIVE_STRAFE_REQUESTED player_tick=(25)[^\n]*direction=right', a1, 'attempt1 strafe request')
@@ -127,8 +127,6 @@ jobs:
               raise SystemExit(f'attempt1 boundary mismatch last_true={last_true1} first_false={first_false1} earliest_jump={earliest_jump1}')
           one(r'GATE_E_M1_JUMP_ARM_PREDICATES player_tick=35[^\n]*backward_confirmed=true[^\n]*strafe_confirmed=true[^\n]*floor_property=false[^\n]*final_jump_arm_ready=false', a1, 'attempt1 post-support jump gate')
 
-          # Attempt2: reverse is support-qualified, but support drops exactly on strafe start,
-          # so strafe can never qualify and therefore jump admission is impossible before the route is gone.
           one(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick=38 carriage_id=10[^\n]*confirmed=true', a2, 'attempt2 walk')
           one(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick=43 support_tick=42 strict_create_support=true', a2, 'attempt2 reverse confirmation')
           sr2 = one(r'GATE_E_M1_NATIVE_STRAFE_REQUESTED player_tick=(43)[^\n]*direction=right', a2, 'attempt2 strafe request')

@@ -66,13 +66,15 @@ if old not in text:
     raise SystemExit("composefix could not find the exact V2 Phase83 boundary block")
 patched = text.replace(old, new, 1)
 
-# Exact source-failure proof run 35062047086 over runtime artifact 35057564114 proves a second
-# lifecycle seam: after a genuine native upward jump, Minecraft can return onGround=true with Y=0
-# before Create has genuinely reacquired support. The old upward-only exception therefore clears the
-# valid owner at age 3 and reopens Create's ordinal-1 carry writer. Preserve a bounded jump-arc latch:
-# it is armed only by the already-proven native upward transition, reset only by genuine Create
-# support acquisition, and still bounded by the native 25-tick owner cap. No movement vector,
-# gravity, reanchor, collision override, camera mutation, or additional body writer is introduced.
+# Exact source-failure proof run 35062047086 over runtime artifact 35057564114 proves the first
+# jump-lifecycle seam: false vanilla grounding can clear a valid external owner before Create has
+# genuinely reacquired the carriage. Attempt3 owner-cap proof run 35071088843 proves the second seam:
+# the ordinary 25-tick owner cap expires at tick68 while the same carriage's native Create landing is
+# only reached at tick70, producing exactly 0.330086470 blocks of missed carriage-frame motion.
+# Keep the ordinary external-owner cap unchanged, but give an already-armed native jump a bounded
+# 40-tick safety window. As soon as the existing owner receives same-owner grounded native Create
+# contact, refresh it back into the ordinary lifecycle. No movement vector, gravity, reanchor,
+# collision override, transform change, camera mutation, or additional body writer is introduced.
 old_state = '''    var ticksSinceExternalReferenceOwner: Int = 0
     var serverRelativeExternalPosition: Vector3dc? = null
 '''
@@ -83,6 +85,24 @@ new_state = '''    var ticksSinceExternalReferenceOwner: Int = 0
 if patched.count(old_state) != 1:
     raise SystemExit(f"composefix expected one external-owner age state anchor, found {patched.count(old_state)}")
 patched = patched.replace(old_state, new_state, 1)
+
+old_drag_gate = '''    fun isEntityBeingDraggedByExternalReference(): Boolean {
+        return externalReferenceOwnerEntityId != null &&
+            ticksSinceExternalReferenceOwner < TICKS_TO_DRAG_ENTITIES && !mountedToEntity
+    }
+'''
+new_drag_gate = '''    fun externalReferenceOwnerLifetimeLimit(): Int {
+        return if (externalReferenceOwnerJumpActive) 40 else TICKS_TO_DRAG_ENTITIES
+    }
+
+    fun isEntityBeingDraggedByExternalReference(): Boolean {
+        return externalReferenceOwnerEntityId != null &&
+            ticksSinceExternalReferenceOwner < externalReferenceOwnerLifetimeLimit() && !mountedToEntity
+    }
+'''
+if patched.count(old_drag_gate) != 1:
+    raise SystemExit(f"composefix expected one external-owner drag gate, found {patched.count(old_drag_gate)}")
+patched = patched.replace(old_drag_gate, new_drag_gate, 1)
 
 old_refresh = '''    fun refreshExternalReferenceOwner(ownerEntityId: Int) {
         if (externalReferenceOwnerEntityId != ownerEntityId) {
@@ -132,14 +152,63 @@ if patched.count(old_lifetime) != 1:
     raise SystemExit(f"composefix expected one grounded lifecycle expiry predicate, found {patched.count(old_lifetime)}")
 patched = patched.replace(old_lifetime, new_lifetime, 1)
 
+old_owner_expiry = '''                val ownerExpired = entityDraggingInformation.ticksSinceExternalReferenceOwner >= EntityDraggingInformation.TICKS_TO_DRAG_ENTITIES
+'''
+new_owner_expiry = '''                val ownerExpired = entityDraggingInformation.ticksSinceExternalReferenceOwner >= entityDraggingInformation.externalReferenceOwnerLifetimeLimit()
+'''
+if patched.count(old_owner_expiry) != 1:
+    raise SystemExit(f"composefix expected one owner-cap predicate, found {patched.count(old_owner_expiry)}")
+patched = patched.replace(old_owner_expiry, new_owner_expiry, 1)
+
+old_acquisition_tail = '''                LOGGER.info("REFERENCE_OWNER_V2_ACQUIRE player_tick={} carriage_id={} physical_support=true recent_native_contact=true owner_key=entity_id",
+                    player.tickCount, carriage.getId());
+            }
+
+'''
+new_acquisition_tail = '''                LOGGER.info("REFERENCE_OWNER_V2_ACQUIRE player_tick={} carriage_id={} physical_support=true recent_native_contact=true owner_key=entity_id",
+                    player.tickCount, carriage.getId());
+            }
+
+            if (phase83ExactBaselineCarriage
+                && !phase81PhysicalSupport
+                && player.onGround()
+                && phase83RecentNativeApplication) {
+                org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider referenceProvider =
+                    (org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider) (Object) player;
+                Integer activeOwnerId = referenceProvider.getDraggingInformation().getExternalReferenceOwnerEntityId();
+                boolean sameOwner = activeOwnerId != null && activeOwnerId == carriage.getId();
+                boolean jumpLandingAfterOrdinaryCap = sameOwner
+                    && referenceProvider.getDraggingInformation().getExternalReferenceOwnerJumpActive()
+                    && referenceProvider.getDraggingInformation().getTicksSinceExternalReferenceOwner()
+                        >= org.valkyrienskies.mod.common.util.EntityDraggingInformation.TICKS_TO_DRAG_ENTITIES;
+                boolean settledSameOwnerNativeContact = sameOwner
+                    && !referenceProvider.getDraggingInformation().getExternalReferenceOwnerJumpActive();
+                if (jumpLandingAfterOrdinaryCap || settledSameOwnerNativeContact) {
+                    referenceProvider.getDraggingInformation().refreshExternalReferenceOwner(carriage.getId());
+                    LOGGER.info("REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH player_tick={} carriage_id={} jump_landing_after_ordinary_cap={} settled_same_owner_contact={} physical_support=false recent_native_contact=true owner_key=entity_id",
+                        player.tickCount, carriage.getId(), jumpLandingAfterOrdinaryCap, settledSameOwnerNativeContact);
+                }
+            }
+
+'''
+if patched.count(old_acquisition_tail) != 1:
+    raise SystemExit(f"composefix expected one strict acquisition tail, found {patched.count(old_acquisition_tail)}")
+patched = patched.replace(old_acquisition_tail, new_acquisition_tail, 1)
+
 for required in [
     "externalReferenceOwnerJumpActive: Boolean = false",
     "externalReferenceOwnerJumpActive = true",
+    "externalReferenceOwnerLifetimeLimit(): Int",
+    "if (externalReferenceOwnerJumpActive) 40 else TICKS_TO_DRAG_ENTITIES",
     "!entityDraggingInformation.externalReferenceOwnerJumpActive",
     "entityDraggingInformation.ticksSinceExternalReferenceOwner > 2",
+    "entityDraggingInformation.externalReferenceOwnerLifetimeLimit()",
+    "REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH",
+    "jumpLandingAfterOrdinaryCap",
+    "settledSameOwnerNativeContact",
 ]:
     if required not in patched:
-        raise SystemExit("composefix lost jump-arc lifecycle anchor: " + required)
+        raise SystemExit("composefix lost jump-landing lifecycle anchor: " + required)
 
 compile(patched, str(SOURCE), "exec")
 exec(compile(patched, str(SOURCE), "exec"), {"__name__": "__main__", "__file__": str(SOURCE)})

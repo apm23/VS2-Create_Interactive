@@ -12,15 +12,15 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity, synthetic carry velocity/inertia, manual floor/wall clamps, floor-only workarounds, per-tick teleport/setPos chase/reanchor architecture, duplicate Create/VS2 authority, direct camera forcing/rotation compensation, fake/proxy VS2 ships, or workaround chains hiding double ownership.
 
 ## Current reconciled state — 2026-09-16
-- project_state: `ROOT_REDESIGN — JUMP-ARC LIFECYCLE PATCH LANDED; ADMISSION VERIFIER GREEN PROVES ATTEMPTS1/2 ARE PRE-JUMP ROUTE EXHAUSTION ONLY; EXACT HARNESS BLOB MATCHES THE PRIOR STRICT-SUPPORT JUMP-ADMIT RUN; NATURAL-LANDING ATTEMPT3 ACTIVE`.
-- production implementation basis: `c3e7c51a0751b542bdc7a0b8144880026a0f6fd8` (`Keep reference owner through native jump arc`).
-- proof trigger head: `cb03574bd11d39ba21ef07e18ddfe7fc87c714ce` (`Trigger natural landing proof for lifecycle patch`); this changes only the executable mode of the existing fixture script to satisfy the workflow path trigger and adds no gameplay/harness semantics.
-- admission verifier final head: `297926e030e64d48cb85772b620485810e1a8f5d`; verifier-only, no production or harness semantics changed.
-- latest ledger-only commit may advance actual HEAD beyond the proof head; always reconcile actual HEAD first.
+- `current_head`: `ff07454329a214a27485c3e4c317c7dadd7818d6` when this ledger was written.
+- project_state: `ROOT_REDESIGN — ATTEMPT3 ADMITTED A VALID NATIVE JUMP; EXACT VERIFIERS PROVE THE ORDINARY 25-TICK OWNER CAP EXPIRES TWO TICKS BEFORE SAME-OWNER NATIVE CREATE LANDING AND CAUSES EXACT CARRIAGE-RELATIVE LAG; ONE NARROW JUMP-LANDING OWNER-LIFETIME PATCH LANDED; CURRENT-HEAD NATURAL-LANDING PROOF ACTIVE`.
+- production implementation basis: `d6e55e2912d863e831ce088d26785b534a4b200d` (`Keep jump owner through native Create landing`).
+- proof-trigger head: `ff07454329a214a27485c3e4c317c7dadd7818d6` (`Trigger natural landing proof for jump owner landing patch`); workflow/test wiring only after the production commit.
 - final_ready: `false`.
 - exact historical failed user JAR SHA256: `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`; never ask user to retest it.
 - active blocker workflow: `m1-reference-owner-v2-natural-landing-proof-v2`.
-- active blocker run: `35062245886`, attempt3, exact proof head `cb03574...`; `in_progress` when this ledger state was written.
+- active blocker run: `35071527097`, exact head `ff074543...`; `queued` when this ledger state was written.
+- known invalid workflow noise: `.github/workflows/m1-reference-owner-v2-airborne-drag-boundary-proof-v2.yml` emits instant zero-job failures; ignore it.
 
 ## Historical direct-user runtime gate — authoritative regression evidence
 Exact JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef` FAILED:
@@ -44,7 +44,6 @@ This blocks `FINAL_READY` regardless of automated GREEN.
 - External-owner EntityDragger lifecycle requirement run `35008163064` remains protected.
 - Production scheduler `0ce0dfd4...` applies only external-owner LocalPlayer drag after `ClientLevel.tick` and before Create collision; native VS2 ship scheduling remains separate.
 - Historical active-owner ordinal-1 authority proof `35017634522` remains valid for its tested boundary.
-- Run `35057564114` reopened only the lifecycle-transition seam: Create's ordinal-1 `singleReferenceOwnerCarryWriter` materially wrote the LocalPlayer after external-owner authority was cleared during the jump arc.
 - Create OBB/grounding/floor/walls/ceiling remain authoritative. Do not suppress Create's first collision-response writer or global Create collision behavior.
 
 ## Transform / camera / look — FROZEN_GREEN
@@ -64,108 +63,96 @@ This blocks `FINAL_READY` regardless of automated GREEN.
 - Verifier run `35048234680` over source run `35046701119`: `EXTERNAL_OWNER_BODY_WRITER_APPLIES_CALCULATED_STEP`, missed=0, max writer residual=0.0. Existing VS2 boundingBox/setPos writer applies its calculated frame step exactly when reached. Do not add or replace a body writer.
 
 ## Lifecycle evidence
-### First false clear — PROVEN + previous production correction
+### First false clear — PROVEN + corrected
 - Verifier run `35048427002`: `EXTERNAL_OWNER_CLEARED_BY_GROUNDED_CONTACT_EXPIRY_ON_NATIVE_JUMP_TICK`.
 - Production commit `a14260c...` prevented grounded expiry while `deltaMovement.y > 1.0E-5`.
-- It added no movement vector, gravity, reanchor, collision override, camera mutation, or body writer.
 
-### Descent support-miss boundary — FROZEN_GREEN for that exact boundary
+### Ordinary descent support-miss — FROZEN_GREEN
 - Run `35051781646`: `EXTERNAL_OWNER_ACTIVE_THROUGH_DESCENT_SUPPORT_MISS_MAX_AGE_EXPIRES_AFTERWARD`.
-- This disproved a generic lifecycle extension for ordinary support-loss plateaus. Do not reinterpret the new jump-specific latch as a generic lease extension.
+- This disproved a generic lifecycle/lease extension. The current patch is jump-active/same-owner-native-contact specific; do not reinterpret it as a generic extension.
 
-## Headless fixture false-landing boundary — PROVEN HARNESS ISSUE
-- Static run `35051955516` mapped the headless native-aiStep fallback.
-- Correlation run `35052085653`: `HEADLESS_FALSE_LANDING_DISARMS_JUMP_FALLBACK_AT_STRAFE_END_BEFORE_REAL_SUPPORT`.
-- Commit `618da46...` keeps native aiStep alive for a bounded 40-tick jump arc and requires genuine Phase131 support reacquisition; fixture only.
-- Commit `d284e7a...` restored intended locomotion sequencing.
-- Verifier-only `b32ec95...` / `f2cbeaf...` and fixture commit `45b0d9d...` require strict Create support for reverse/strafe acceptance.
-
-## Exact strict-support airborne failure — authoritative automated failure evidence
+### Exact strict-support airborne failure — authoritative automated failure
 Run `35057564114`, job `104670818465`, exact head `45b0d9d...`, artifact `10431157630`, digest `sha256:006da4712f88e960567ee16f5de835956850fecf064c9fbaba4a3c6cccd35671`:
 - jump REQUESTED/AIRBORNE tick47, native deltaY `+0.33319999363422365`;
 - intended owner carriage7, no owner handoff before genuine landing;
 - genuine same-owner support reacquisition tick56;
 - owner-relative airborne drift FAIL `12.328706`;
-- VS2 EntityDragger and authority suppression are active through tick48;
-- tick49 Create contact motion and the direct ordinal-1 writer both apply exactly `(-5.002450315428566, 0.0, -4.299231054387661)`, magnitude about `6.59605`, while no external-owner suppression remains.
+- owner authority active through tick48;
+- tick49 owner cleared and Create ordinal-1 writer applies `(-5.002450315428566,0,-4.299231054387661)`, magnitude ~`6.59605`.
 
-## Exact source-failure lifecycle proof — GREEN
-Verifier-only commit `df90ce5a44e92c3afe43905dfd9a5ee0e1743912`, workflow `m1-reference-owner-v2-source-failure-lifecycle-proof`, run `35062047086` SUCCESS.
-Classification:
+### Exact false-grounded lifecycle proof — GREEN
+Verifier-only run `35062047086`, commit `df90ce5...`:
 `EXACT_FAILURE_FALSE_GROUNDED_EXPIRY_REOPENS_CREATE_CARRY`.
-Pinned evidence:
-- source run `35057564114`, source head `45b0d9d...`, artifact id `10431157630`, exact digest above;
-- owner7 refresh tick46 occurs after that tick's scheduler writer, leaving owner age 0;
-- no owner refresh ticks47–49; single scheduler progression derives ages 1,2,3;
-- tick49 `onGround=true`, vertical motion `0.0`, strict Create support=false, genuine support only returns tick56;
-- owner7 is still resolvable and age3 is far below the pinned VS2 drag cap `25`;
-- current production predicate therefore sets `grounded_expired=true`, `owner_expired=false` and clears the owner;
-- authority then falls through and the exact 6.59605-block Create ordinal-1 carry writer is applied with writer residual `0.0`.
-This classification authorizes only a narrowly scoped jump-arc lifecycle correction, not transform/collision/camera changes or generic lease extension.
+This authorized only the bounded jump-arc lifecycle correction `c3e7c51...`.
 
-## Current production hypothesis — `c3e7c51...`
-`prepare_vs2_26_2_reference_owner_v2_composefix.py` now composes one bounded jump-arc lifecycle state:
-- `externalReferenceOwnerJumpActive` defaults false;
-- genuine native upward motion (`deltaMovement.y > 1.0E-5`) arms it while the external owner is active;
-- genuine Create owner refresh resets it false and age to 0;
-- explicit owner clear also resets it false;
-- grounded-contact expiry is disabled only while this jump latch is active;
-- the existing `TICKS_TO_DRAG_ENTITIES = 25` hard cap remains unchanged and still bounds ownership if genuine support never returns.
-No synthetic carry vector, gravity, teleport/reanchor, collision override, camera mutation, transform-math change, native-drag-gate change, or additional body writer is introduced.
+## Previous production hypothesis — `c3e7c51...`
+`c3e7c51a0751b542bdc7a0b8144880026a0f6fd8` added `externalReferenceOwnerJumpActive`:
+- arm only on genuine native upward motion;
+- suppress false-grounded age-3 expiry while jump-active;
+- reset on owner refresh/clear;
+- ordinary hard cap remained 25.
+No motion vector, gravity, teleport/reanchor, collision override, camera mutation, transform change, native-drag-gate change, or body writer was added.
 
-## Natural-landing repro after jump-arc patch
-Run `35062245886`, exact proof head `cb03574...`.
-### Attempt1 — PRE-JUMP NON-ADMISSION; no gameplay inference
-Artifact `10433880714`, digest `sha256:2bf9e1598489ea73cefaa87627345a20b9087ae397ef1c69a6488b8c4530b370`:
-- production composition, harness composition, compile, world reconstruction and runtime launch all succeeded;
-- owner/carriage5: walk confirmed tick20; backward confirmed at player tick25 for strict support tick24; strafe requested tick25 and confirmed tick26 for strict support tick25;
-- strict Phase131 support for owner5 remained true through tick33 and becomes false at tick34;
-- current jump admission requires `self.tickCount >= vs2$strafeStartTick + 15`, so earliest possible jump is tick40;
-- jump request/airborne markers are absent; the route loses strict support before jump eligibility;
-- therefore attempt1 never exercised the patched jump lifecycle and cannot classify production physics success/failure.
-### Attempt2 — PRE-JUMP NON-ADMISSION; no gameplay inference
-Artifact `10433634322`, digest `sha256:9f36a7b465de1f3d4b8776c02806c1ef43e751ef4e47032fbf9073863177d96d`:
-- production composition, harness composition, compile, world reconstruction and runtime launch all succeeded;
-- owner/carriage10: walk confirmed tick38; backward confirmed player tick43 for strict support tick42; right-strafe requested tick43;
-- strict Phase131 support is true through tick42 and false from tick43; strafe confirmation never occurs and repeated `GATE_E_M1_NATIVE_STRAFE_REJECTED_NO_CREATE_SUPPORT` begins at player tick44 for motion/support tick43;
-- jump request/airborne markers are absent; jump gate cannot open because support is already gone at strafe admission;
-- therefore attempt2 also never exercised the patched jump lifecycle and cannot classify production physics success/failure.
-### Attempt3 — ACTIVE
-- exact same-head rerun of natural-landing job requested after the admission verifier became GREEN;
-- same run id `35062245886`, run attempt3, exact head `cb03574...`;
-- no production or harness semantics changed for this retry;
-- `in_progress` when this ledger state was written.
-
-## Repeated pre-jump admission boundary verifier — GREEN
-Verifier-only chain:
-- initial commit `85eaea024912c2a99aa9373002877edc790f41a7` created the proof;
-- run `35065737938` failed mechanically because `actions/download-artifact` searched the verifier run rather than the source run;
-- repair `6bf1676a811b296f6f691dc55006527c7152f44c` downloads exact artifacts through the REST artifact-ID endpoint;
-- repair `806908404709ade11c743c6fa5787e9fda23df02` changed a stale harness anchor to a stable property-name token;
-- repair `297926e030e64d48cb85772b620485810e1a8f5d` scoped the verifier safety guard to generated insertion semantics;
-- run `35067811102` SUCCESS.
-Classification:
+## Natural-landing run `35062245886` on `c3e7c51...`
+### Attempts1/2 — PRE-JUMP NON-ADMISSION ONLY
+Admission verifier run `35067811102` SUCCESS:
 `REPRODUCIBLE_PRE_JUMP_ADMISSION_ROUTE_EXHAUSTS_STRICT_SUPPORT`.
+- attempt1 artifact `10433880714`, digest `sha256:2bf9e1598489ea73cefaa87627345a20b9087ae397ef1c69a6488b8c4530b370`;
+- attempt2 artifact `10433634322`, digest `sha256:9f36a7b465de1f3d4b8776c02806c1ef43e751ef4e47032fbf9073863177d96d`;
+- neither reached jump; no production physics inference.
+- harness blob is exactly the same `f8aad6e7425a37251f670f5e15c79b82c56e5472` as historical strict-support jump-admit run `35057564114`, so `+15` settle timing is not a dead path and must not be shortened merely to manufacture admission.
+
+### Attempt3 — VALID JUMP, OWNER-CAP FAILURE BOUNDARY
+Run `35062245886` attempt3, artifact `10434807961`, digest `sha256:ee7da59e8eebd01e017c023175e1845db04ed5ffd0dca8ab8d4720c98d4a236a`:
+- jump REQUESTED/AIRBORNE tick45, deltaY `+0.33319999363422365`;
+- owner8 final pre-jump refresh tick43;
+- external-owner authority remains active through tick67;
+- ordinary 25-tick owner cap expires tick68;
+- native Create landing boundary for same owner8 occurs tick70;
+- original natural-landing verifier failed `no genuine Create support reacquisition owner=8` because Phase131 heuristic reports `physical_support=false` at tick70 with vertical gap `0.062619575477541`, slightly above its hard `0.05` threshold.
+
+Verifier-only run `35069183590` SUCCESS classified:
+`HEADLESS_ARC_REACHES_OWNER_CAP_BEFORE_NATIVE_CREATE_LANDING_PHASE131_GAP_FALSE_NEGATIVE`.
+Pinned tick70 landing evidence:
+- Create OBB surface=true and LocalPlayer onGround=true;
+- native Create contact application owner8 motion `(+0.16304755210876465,0,0)`;
+- Create setOnGround requested/applied true;
+- local owner state remains settled through ticks70–75 despite Phase131's false-negative threshold.
+
+## Exact owner-cap frame-lag proof — GREEN
+Verifier-only commit `e103a7ca5aa63f2d12571d93957ac963d293d255`, workflow `m1-natural-landing-owner-cap-lag-proof`, run `35071088843` SUCCESS.
+Classification:
+`OWNER_CAP_EXPIRES_BEFORE_NATIVE_CREATE_LANDING_AND_CAUSES_EXACT_FRAME_RELATIVE_LAG`.
 Pinned result:
-- attempt1: strafe start 25, last strict support 33, first false 34, earliest jump 40;
-- attempt2: strafe start 43, last strict support 42, first false 43, hypothetical earliest jump 58;
-- neither attempt reached jump;
-- `production_physics_inference=false`, `verifier_only=true`, `harness_mutation=false`.
-This freezes the interpretation of attempts1/2 as proof-route non-admission only; they do not prove the lifecycle patch good or bad.
+- owner8 refresh tick43; generic cap=25; expiry tick68; last authority tick67;
+- carriage8 frame step tick68 + tick69 totals `0.330086470` blocks;
+- owner-local X lag from tick67 to tick69 is exactly `0.330086470` blocks; residual `0.000000000`;
+- native same-owner Create landing/contact begins tick70;
+- therefore the two-tick loss of VS2 owner authority directly causes the exact carriage-relative lag. This is production failure evidence, not verifier noise.
 
-## Harness admission feasibility — PROVEN
-- The natural-landing harness blob at current HEAD and at strict-support airborne failure head `45b0d9d...` is exactly the same blob: `f8aad6e7425a37251f670f5e15c79b82c56e5472`.
-- Historical run `35057564114` on that exact harness admitted a strict-support-qualified native jump at tick47, so the `+15` settle gate is not an impossible/dead fixture path.
-- Commit `d284e7a0377600b865ed29d520ad1107bf35083c` explicitly preserves the already-proven `forward/walk -> backward -> strafe -> settle -> jump` ordering and the `strafeStartTick + 15` gate. Do not shorten this settle period merely to manufacture admission.
-- Production patch `c3e7c51...` arms its new jump latch only after genuine upward motion begins, so no direct evidence currently attributes attempts1/2 pre-jump route exhaustion to the lifecycle patch.
-- Therefore the smallest safe next proof is an exact same-head rerun, not input-timing relaxation or production modification.
+## Grounding/source map — READ-ONLY GREEN
+Commit `699247d89734a3473a566ac919fa75497ecc8f66`, run `35069989978` SUCCESS:
+`EXISTING_GROUNDING_GUARD_AND_FINAL_MOTION_WRITES_LOCATED`.
+- Phase64 owns the existing Create `setOnGround` guard and grounded negative-Y final-motion clip.
+- This source map alone does NOT authorize modifying Phase64; no Phase64 gameplay patch was made.
 
-## Diagnostic runtime attempts superseded by exact verifier
-Read-only trace commit `b675e45...`, run `35058550331`:
-- attempt1 reached a different healthy owner10 jump route and did not reproduce the material leak;
-- attempt2 timed out before jump because strict-support fixture acceptance repeatedly rejected reverse movement;
-- neither attempt authorized gameplay changes.
-The exact source-failure verifier `35062047086` replaces nondeterministic reruns as the causal proof for this specific seam.
+## Current production hypothesis — `d6e55e2...`
+One hypothesis only: **an already-armed jump owner must remain authoritative until same-owner native Create landing, then return immediately to the ordinary grounded lifecycle.**
+Implementation in `prepare_vs2_26_2_reference_owner_v2_composefix.py`:
+- ordinary external-owner lifetime remains `TICKS_TO_DRAG_ENTITIES = 25` when not jump-active;
+- jump-active lifetime has a separate bounded safety limit of 40 ticks;
+- both `isEntityBeingDraggedByExternalReference()` and lifecycle expiry use the same state-derived lifetime limit, so drag eligibility and expiry cannot disagree;
+- strict Phase81 support remains required for new acquisition/handoff;
+- when strict support is false, only an already-existing same owner can refresh from native Create contact;
+- during jump-active state, that fallback is admitted only after the ordinary 25-tick boundary, preventing early false-grounded contact from disarming the jump latch;
+- after native grounded same-owner refresh, jumpActive resets false; subsequent same-owner grounded native Create contacts may refresh the existing owner even when Phase131's `0.05` heuristic is false-negative;
+- if native contact ceases, ordinary grounded expiry again releases the owner quickly; generic shore-release behavior is preserved.
+No synthetic motion, gravity, setPos chase/reanchor, collision override, transform math change, camera mutation, native drag gate change, or new body writer.
+
+## Active current-head proof
+- workflow `m1-reference-owner-v2-natural-landing-proof-v2` now includes the composefix path so a production lifecycle change automatically runs the exact fixture.
+- active run `35071527097`, exact head `ff07454329a214a27485c3e4c317c7dadd7818d6`.
+- The workflow's historical final classifier still uses Phase131 `physical_support=true` as the landing predicate; attempt3 proved that predicate can false-negative at a real native Create landing. Therefore, if this run reaches runtime and fails only with the same `no genuine Create support reacquisition` message, do NOT infer production failure or success from that message alone: inspect the exact artifact for owner continuity, `REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH`, native Create landing markers, and carriage-relative drift before changing gameplay again.
 
 ## FROZEN_GREEN / protected
 - bootstrap/Kotlin packaging `f3d1335...`;
@@ -201,22 +188,26 @@ Do not reintroduce without new direct evidence:
 - resolver prev/current/yaw/point semantic changes after `35023234306` absent contrary evidence;
 - treating temporal-only zero collisionResponse as failure;
 - patching `isDraggable`/`vs$shouldDrag` after `35045444238`;
-- adding/replacing a body-position writer after `35048234680`.
+- adding/replacing a body-position writer after `35048234680`;
+- changing Phase64 grounding/Y-clip behavior merely because the source-map workflow located it.
 
 ## next_safe_action
-1. Inspect only `m1-reference-owner-v2-natural-landing-proof-v2` run `35062245886` attempt3 first.
-2. If queued/in_progress: HOLD and stack no production or harness hypothesis.
-3. If attempt3 reaches a valid strict-support-qualified jump and `natural_landing_real_support_green`: freeze the strict-support natural-landing criterion, update this ledger, then advance to the smallest wall/ceiling solidity proof. Do not declare M1 complete or FINAL_READY from CI.
-4. If attempt3 reaches a valid strict-support-qualified jump but owner-relative drift remains, inspect exact owner lifecycle/authority markers from that artifact before any second gameplay hypothesis. If the jump-latch patch regresses a FROZEN_GREEN criterion, revert `c3e7c51...` before any workaround stacking.
-5. If attempt3 again ends before jump admission, do not shorten the `+15` settle gate and do not infer production failure. Inspect only the deterministic fixture/world support-runway selection boundary needed to make the already-proven strict-support jump path reproducible.
-6. Do not change transform math, native drag gate, VS2 body writer, OBB semantics, camera, gravity, or Create collision-response authority from this admission seam.
+1. Inspect only current-head natural-landing run `35071527097` first.
+2. If queued/in_progress: HOLD; stack no gameplay, harness, transform, collision, or verifier hypothesis.
+3. If compile/composition fails: repair only the current jump-landing lifecycle patch mechanics; do not change physics semantics from a compile failure.
+4. If runtime reaches a valid strict-support-qualified jump: inspect the exact artifact before any further gameplay change.
+5. If `REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH` occurs at same-owner native landing and owner-relative continuity remains within proof thresholds through landing, create/repair only the exact artifact verifier as needed; do not stack a second gameplay hypothesis because the historical Phase131 landing predicate is known false-negative.
+6. If owner authority still drops before same-owner native landing or material carriage-relative drift remains, classify the exact lifecycle/authority marker sequence before any second gameplay patch.
+7. Revert `d6e55e2...` before stacking a workaround if a valid runtime proves it regresses a FROZEN_GREEN criterion.
+8. Only after natural landing is genuinely GREEN advance to smallest wall/ceiling solidity proof, then turns/speed changes.
+9. Do not alter transform math, native drag gate, VS2 body writer, OBB semantics, camera, gravity, Phase64 grounding/Y-clip, or Create collision-response authority from this lifecycle seam without new direct evidence.
 
 ## Finalization policy — HARD USER RUNTIME GATE
 Automated proof can never alone set `FINAL_READY`. A new exact JAR must pass direct user runtime for stable standing, forward/back/strafe/sprint, jump+airborne+natural landing, floor/walls/ceiling, turns, acceleration/deceleration/speed changes, no sink/throw/drift/lag-behind, and free/stable camera/look. The watchdog local SHA gate must match that exact accepted JAR.
 
 ## Fresh-chat/watchdog protocol
 1. Inspect actual HEAD.
-2. Read this file completely and reconcile ledger/implementation/proof basis with actual HEAD.
+2. Read this file completely and reconcile `current_head`/implementation/proof basis with actual HEAD.
 3. Inspect only the latest relevant Actions evidence for the active blocker.
 4. Respect FROZEN_GREEN and FAILED_HYPOTHESES.
 5. Execute `next_safe_action`; do not stop at narration.

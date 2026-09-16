@@ -123,10 +123,10 @@ jobs:
           import math,re,sys
           text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
           rx=re.compile(r'REFERENCE_OWNER_V2_CAMERA_TURN_FRAME sample=(\d+) call=(\d+) player_tick=(\d+) owner_id=(-?\d+) partial=([-+0-9.eE]+).*?horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)')
-          rows=[(int(a),int(c),int(t),int(o),float(e),float(h)) for a,c,t,o,e,h in rx.findall(text)]
+          rows=[(int(a),int(c),int(t),int(o),float(p),float(e),float(h)) for a,c,t,o,p,e,h in rx.findall(text)]
           span=0.0
           if rows:
-              hs=[r[5] for r in rows]
+              hs=[r[6] for r in rows]
               un=[hs[0]]; prev=hs[0]
               for h in hs[1:]:
                   d=(h-prev+math.pi)%(2*math.pi)-math.pi

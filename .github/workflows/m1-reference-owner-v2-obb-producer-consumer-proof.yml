@@ -1,0 +1,150 @@
+name: m1-reference-owner-v2-obb-producer-consumer-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-obb-producer-consumer-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  obb-producer-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Compose exact production source and resolve Create dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+          cd upstream
+          chmod +x gradlew
+          ./gradlew --no-daemon :fabric:compileJava >/tmp/obb-producer-consumer-compile.log 2>&1 || {
+            tail -200 /tmp/obb-producer-consumer-compile.log
+            exit 1
+          }
+
+      - name: Map OBB producer to Create consumer read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/obb-pc && mkdir -p /tmp/obb-pc
+          JAR=''
+          while IFS= read -r -d '' candidate; do
+            if jar tf "$candidate" 2>/dev/null | grep -q '^com/zurrtum/create/foundation/collision/ContinuousOBBCollider.class$' \
+              && jar tf "$candidate" 2>/dev/null | grep -q '^com/zurrtum/create/client/content/contraptions/ContraptionColliderClient.class$'; then
+              JAR="$candidate"
+              break
+            fi
+          done < <(find "$HOME/.gradle/caches" -type f -name '*.jar' -print0)
+          test -n "$JAR"
+          echo "REFERENCE_OWNER_V2_OBB_PC_JAR path=$JAR sha256=$(sha256sum "$JAR" | awk '{print $1}')"
+
+          javap -classpath "$JAR" -p -c -l -constants 'com.zurrtum.create.foundation.collision.ContinuousOBBCollider' > /tmp/obb-pc/collider.txt
+          javap -classpath "$JAR" -p -c -l -constants 'com.zurrtum.create.client.content.contraptions.ContraptionColliderClient' > /tmp/obb-pc/client.txt
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          collider = Path('/tmp/obb-pc/collider.txt').read_text(errors='replace')
+          client = Path('/tmp/obb-pc/client.txt').read_text(errors='replace')
+
+          def method_block(text, signature_token):
+              lines=text.splitlines()
+              starts=[i for i,l in enumerate(lines) if signature_token in l]
+              if not starts:
+                  return ''
+              s=starts[0]
+              e=len(lines)
+              for i in range(s+1,len(lines)):
+                  if re.match(r'^  (public|private|protected|static)', lines[i]):
+                      e=i; break
+              return '\n'.join(lines[s:e])
+
+          prod = method_block(collider, ' collideMany(')
+          cons = method_block(client, ' collideEntities(')
+          if not prod or not cons:
+              raise SystemExit('required producer/consumer methods not found in exact Create bytecode')
+
+          plines=prod.splitlines()
+          clines=cons.splitlines()
+
+          def contexts(lines, needle, before=8, after=8):
+              out=[]
+              for i,l in enumerate(lines):
+                  if needle in l:
+                      out.append('\n'.join(lines[max(0,i-before):min(len(lines),i+after+1)]))
+              return out
+
+          response_sets=contexts(plines, 'CollisionResponse.collisionResponse', 10, 5)
+          normal_sets=contexts(plines, 'CollisionResponse.normal', 10, 5)
+          temporal_sets=contexts(plines, 'CollisionResponse.temporalResponse', 10, 5)
+          surface_sets=contexts(plines, 'CollisionResponse.surfaceCollision', 10, 5)
+
+          zero_default_any=any('Vec3.ZERO' in x for x in response_sets)
+          normal_normalized_consumer='.normalize:' in cons or 'Vec3.normalize' in cons
+          reads_response='CollisionResponse.collisionResponse' in cons
+          reads_normal='CollisionResponse.normal' in cons
+          reads_temporal='CollisionResponse.temporalResponse' in cons
+          reads_surface='CollisionResponse.surfaceCollision' in cons
+
+          if zero_default_any and normal_normalized_consumer and all([reads_response,reads_normal,reads_temporal,reads_surface]):
+              cls='CREATE_OBB_ZERO_RESPONSE_HAS_EXPLICIT_PRODUCER_PATH_AND_NORMALIZED_CONSUMER'
+          elif zero_default_any:
+              cls='CREATE_OBB_ZERO_RESPONSE_HAS_EXPLICIT_PRODUCER_PATH'
+          else:
+              cls='CREATE_OBB_ZERO_RESPONSE_PRODUCER_PATH_NOT_MAPPED'
+
+          print('REFERENCE_OWNER_V2_OBB_PRODUCER_CONSUMER_PROOF '
+                f'classification={cls} response_assignment_sites={len(response_sets)} '
+                f'normal_assignment_sites={len(normal_sets)} temporal_assignment_sites={len(temporal_sets)} '
+                f'surface_assignment_sites={len(surface_sets)} response_zero_default_path={str(zero_default_any).lower()} '
+                f'consumer_reads_response={str(reads_response).lower()} consumer_reads_normal={str(reads_normal).lower()} '
+                f'consumer_reads_temporal={str(reads_temporal).lower()} consumer_reads_surface={str(reads_surface).lower()} '
+                f'consumer_normalizes_vector={str(normal_normalized_consumer).lower()} '
+                'read_only=true gameplay_mutation=false final_ready=false')
+
+          for n,ctx in enumerate(response_sets,1):
+              print(f'REFERENCE_OWNER_V2_OBB_RESPONSE_ASSIGNMENT_CONTEXT_BEGIN site={n}')
+              print(ctx)
+              print(f'REFERENCE_OWNER_V2_OBB_RESPONSE_ASSIGNMENT_CONTEXT_END site={n}')
+          for n,ctx in enumerate(normal_sets,1):
+              print(f'REFERENCE_OWNER_V2_OBB_NORMAL_ASSIGNMENT_CONTEXT_BEGIN site={n}')
+              print(ctx)
+              print(f'REFERENCE_OWNER_V2_OBB_NORMAL_ASSIGNMENT_CONTEXT_END site={n}')
+          for label,needle in [('READ_RESPONSE','CollisionResponse.collisionResponse'),('READ_NORMAL','CollisionResponse.normal'),('READ_TEMPORAL','CollisionResponse.temporalResponse'),('READ_SURFACE','CollisionResponse.surfaceCollision')]:
+              for n,ctx in enumerate(contexts(clines, needle, 10, 12),1):
+                  print(f'REFERENCE_OWNER_V2_OBB_CONSUMER_{label}_CONTEXT_BEGIN site={n}')
+                  print(ctx)
+                  print(f'REFERENCE_OWNER_V2_OBB_CONSUMER_{label}_CONTEXT_END site={n}')
+          for n,ctx in enumerate(contexts(clines, 'Vec3.normalize', 10, 12),1):
+              print(f'REFERENCE_OWNER_V2_OBB_CONSUMER_NORMALIZE_CONTEXT_BEGIN site={n}')
+              print(ctx)
+              print(f'REFERENCE_OWNER_V2_OBB_CONSUMER_NORMALIZE_CONTEXT_END site={n}')
+          PY

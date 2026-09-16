@@ -1,0 +1,109 @@
+name: m1-natural-landing-runway-selection-proof
+
+on:
+  push:
+    paths:
+      - '.github/workflows/m1-natural-landing-runway-selection-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  runway-selection-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Verify pinned runs and artifact metadata
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          api() {
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$1"
+          }
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/runs/35062245886 | jq -r '.head_sha')" = 'cb03574bd11d39ba21ef07e18ddfe7fc87c714ce'
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/runs/35071527097 | jq -r '.head_sha')" = 'ff07454329a214a27485c3e4c317c7dadd7818d6'
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10434807961 | jq -r '.digest')" = 'sha256:ee7da59e8eebd01e017c023175e1845db04ed5ffd0dca8ab8d4720c98d4a236a'
+          test "$(api https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/10439801138 | jq -r '.digest')" = 'sha256:6d6f6a3eb2e1683f7599c5466716e03db01897dedfc5a8daa5bdcb97bafc78b0'
+          test "$(git hash-object scripts/prepare_vs2_26_2_natural_landing_harness_v2.py)" = 'f8aad6e7425a37251f670f5e15c79b82c56e5472'
+
+      - name: Download exact admitted and current artifacts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          download_artifact() {
+            local id="$1" dest="$2"
+            mkdir -p "$dest"
+            curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/artifacts/$id/zip" -o "$dest/artifact.zip"
+            unzip -q "$dest/artifact.zip" -d "$dest"
+            rm "$dest/artifact.zip"
+          }
+          download_artifact 10434807961 evidence/admitted
+          download_artifact 10439801138 evidence/current
+
+      - name: Prove identical-harness runway selection boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def load(root):
+              matches=list(Path(root).rglob('reference-owner-v2-natural-landing-v2.log'))
+              if len(matches) != 1:
+                  raise SystemExit(f'expected one exact log under {root}, got {matches}')
+              return re.sub(r'\x1b\[[0-9;]*[mK]', '', matches[0].read_text(encoding='utf-8', errors='replace'))
+
+          def require(pattern, text, label):
+              m=re.search(pattern, text)
+              if not m:
+                  raise SystemExit('missing ' + label)
+              return m
+
+          def support(text, carriage, tick):
+              m=require(rf'GATE_E_PHASE131_SUPPORT_SOURCE player_tick={tick} carriage_id={carriage} physical_support=(true|false)', text, f'support carriage={carriage} tick={tick}')
+              return m.group(1) == 'true'
+
+          admitted=load('evidence/admitted')
+          current=load('evidence/current')
+
+          require(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick=24 carriage_id=8[^\n]*confirmed=true', admitted, 'admitted walk')
+          require(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick=30 support_tick=29 strict_create_support=true', admitted, 'admitted reverse')
+          require(r'GATE_E_M1_NATIVE_STRAFE_REQUESTED player_tick=30[^\n]*direction=right', admitted, 'admitted strafe request')
+          require(r'GATE_E_M1_NATIVE_STRAFE_CONFIRMED player_tick=31 support_tick=30 strict_create_support=true', admitted, 'admitted strafe confirmation')
+          require(r'GATE_E_M1_NATIVE_JUMP_REQUESTED player_tick=45', admitted, 'admitted jump request')
+          require(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE player_tick=45[^\n]*delta_y=0\.33319999363422365', admitted, 'admitted airborne')
+          if not support(admitted, 8, 44):
+              raise SystemExit('historical admitted carriage8 lost strict support before jump')
+          if support(admitted, 8, 45):
+              raise SystemExit('historical admitted carriage8 did not leave strict support on jump tick')
+
+          require(r'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED player_tick=26 carriage_id=2[^\n]*confirmed=true', current, 'current walk')
+          require(r'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED player_tick=32 support_tick=31 strict_create_support=true', current, 'current reverse')
+          require(r'GATE_E_M1_NATIVE_STRAFE_REQUESTED player_tick=32[^\n]*direction=right', current, 'current strafe request')
+          require(r'GATE_E_M1_NATIVE_STRAFE_REJECTED_NO_CREATE_SUPPORT player_tick=33 motion_tick=32 support_tick=32 support_now=false', current, 'current first strafe rejection')
+          if re.search(r'GATE_E_M1_NATIVE_STRAFE_CONFIRMED', current):
+              raise SystemExit('current artifact unexpectedly confirmed strafe')
+          if re.search(r'GATE_E_M1_NATIVE_JUMP_REQUESTED|GATE_E_M1_NATIVE_JUMP_AIRBORNE', current):
+              raise SystemExit('current artifact unexpectedly reached jump seam')
+          if not support(current, 2, 31):
+              raise SystemExit('current carriage2 missing strict support at reverse confirmation')
+          if support(current, 2, 32):
+              raise SystemExit('current carriage2 unexpectedly retained strict support at strafe start')
+
+          print('M1_NATURAL_LANDING_RUNWAY_SELECTION_PROOF classification=IDENTICAL_HARNESS_ADMISSION_DIVERGES_BY_SELECTED_CARRIAGE_RUNWAY'
+                ' harness_blob=f8aad6e7425a37251f670f5e15c79b82c56e5472'
+                ' admitted_run=35062245886 admitted_artifact=10434807961 admitted_carriage=8 admitted_strafe_tick=30 admitted_last_prejump_strict_support_tick=44 admitted_jump_tick=45'
+                ' current_run=35071527097 current_attempt=3 current_artifact=10439801138 current_carriage=2 current_strafe_tick=32 current_first_strafe_support_false_tick=32'
+                ' current_strafe_confirmed=false current_jump_reached=false production_patch_exercised_at_jump=false'
+                ' production_physics_inference=false harness_mutation=false rerun_loop_should_stop=true verifier_only=true final_ready=false')
+          PY

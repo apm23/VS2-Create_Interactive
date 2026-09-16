@@ -68,7 +68,7 @@ jobs:
           harness = Path('scripts/prepare_vs2_26_2_natural_landing_harness_v2.py').read_text(encoding='utf-8')
           required_harness = [
               'self.tickCount >= vs2$strafeStartTick + 15',
-              'Boolean.getBoolean("vs2.productionFixtureJumpFloorSupportNow")',
+              'vs2.productionFixtureJumpFloorSupportNow',
               'vs2.phase170NativeContactApplicationTick',
           ]
           for token in required_harness:

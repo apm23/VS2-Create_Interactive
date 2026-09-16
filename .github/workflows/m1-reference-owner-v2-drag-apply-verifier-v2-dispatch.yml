@@ -14,7 +14,7 @@ jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch verifier v2 at current main
+      - name: Dispatch lifecycle expiry proof at current main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -25,6 +25,6 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/workflows/m1-reference-owner-v2-drag-apply-verifier-v2.yml/dispatches \
+            https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/workflows/m1-reference-owner-v2-lifecycle-expiry-proof.yml/dispatches \
             -d '{"ref":"main"}'
-          echo 'REFERENCE_OWNER_V2_DRAG_APPLY_VERIFIER_V2_DISPATCH dispatched=true'
+          echo 'REFERENCE_OWNER_V2_LIFECYCLE_EXPIRY_DISPATCH dispatched=true'

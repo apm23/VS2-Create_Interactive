@@ -1,0 +1,123 @@
+name: m1-reference-owner-v2-descent-lifecycle-boundary-proof
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v2-descent-lifecycle-boundary-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  descent-lifecycle-boundary-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: pinned-vs2
+
+      - name: Download exact post-lifecycle-fix natural landing artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: reference-owner-v2-natural-landing-log
+          path: evidence
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: apm23/VS2-Create_Interactive
+          run-id: 35049968486
+
+      - name: Prove lifecycle stays active through descent support miss
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          log=Path('evidence/reference-owner-v2-natural-landing.log').read_text(encoding='utf-8',errors='replace')
+          composefix=Path('scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py').read_text(encoding='utf-8')
+          state=Path('pinned-vs2/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDraggingInformation.kt').read_text(encoding='utf-8')
+
+          if 'val nativeUpwardMotion = entity.deltaMovement.y > 1.0E-5' not in composefix:
+              raise SystemExit('current production composition lost upward-jump lifecycle correction')
+          cap_match=re.search(r'const val TICKS_TO_DRAG_ENTITIES\s*=\s*(\d+)',state)
+          if not cap_match:
+              raise SystemExit('pinned VS2 drag lifetime cap unresolved')
+          cap=int(cap_match.group(1))
+
+          acquisitions=[(int(t),int(c)) for t,c in re.findall(r'REFERENCE_OWNER_V2_ACQUIRE[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)',log)]
+          jump=re.search(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)',log)
+          if not acquisitions or not jump:
+              raise SystemExit('missing acquisition or native jump evidence')
+          jump_tick=int(jump.group(1))
+          prior=[x for x in acquisitions if x[0] <= jump_tick]
+          acquire_tick,owner=max(prior)
+          later_same=[t for t,c in acquisitions if acquire_tick < t <= acquire_tick+cap+2 and c==owner]
+
+          writer_ticks=[]
+          for line in log.splitlines():
+              if 'GATE_E_LOCALPLAYER_SET_POS' not in line or 'EntityDragger#dragEntitiesWithShips' not in line:
+                  continue
+              m=re.search(r'player_tick=(\d+)',line)
+              if m:
+                  writer_ticks.append(int(m.group(1)))
+          writer_ticks=sorted(set(writer_ticks))
+          post=[t for t in writer_ticks if t>acquire_tick]
+          if not post:
+              raise SystemExit('no VS2 EntityDragger writer ticks after owner acquisition')
+
+          support_re=re.compile(r'GATE_E_PHASE131_SUPPORT_SOURCE player_tick=(\d+) carriage_id=(\d+) physical_support=(true|false) vertical_gap=([-+0-9.eE]+)')
+          support=[(int(t),int(c),v=='true',float(g)) for t,c,v,g in support_re.findall(log)]
+          owner_support=[x for x in support if x[1]==owner and jump_tick <= x[0] <= acquire_tick+cap]
+          false_support=[x for x in owner_support if not x[2]]
+          if not false_support:
+              raise SystemExit('no same-owner descent support-miss evidence')
+
+          stable_gap=[x for x in false_support if 0.15 <= x[3] <= 0.35]
+          if not stable_gap:
+              raise SystemExit('no bounded above-floor support-miss plateau found')
+          plateau_start=min(x[0] for x in stable_gap)
+          plateau_end=max(x[0] for x in stable_gap)
+          active_on_plateau=[t for t in post if plateau_start <= t <= plateau_end]
+
+          clip=re.search(r'GATE_E_CREATE_GROUNDED_Y_CLIP[^\n]*player_tick=(\d+)[^\n]*before_y=([-+0-9.eE]+)[^\n]*after_y=([-+0-9.eE]+)',log)
+          if not clip:
+              raise SystemExit('Create grounded-Y clip evidence missing')
+          clip_tick=int(clip.group(1)); clip_before=float(clip.group(2)); clip_after=float(clip.group(3))
+
+          predicted_expiry=acquire_tick+cap
+          consecutive_to_before_expiry=all(t in writer_ticks for t in range(acquire_tick+1,predicted_expiry))
+          no_writer_at_expiry=predicted_expiry not in writer_ticks
+          no_refresh_before_expiry=not later_same
+          owner_active_through_plateau=(len(active_on_plateau) >= 3 and max(active_on_plateau) >= min(plateau_end,predicted_expiry-1))
+
+          if owner_active_through_plateau and consecutive_to_before_expiry and no_writer_at_expiry and no_refresh_before_expiry:
+              classification='EXTERNAL_OWNER_ACTIVE_THROUGH_DESCENT_SUPPORT_MISS_MAX_AGE_EXPIRES_AFTERWARD'
+          else:
+              classification='EXTERNAL_OWNER_DESCENT_LIFECYCLE_BOUNDARY_UNRESOLVED'
+
+          min_gap=min(x[3] for x in stable_gap); max_gap=max(x[3] for x in stable_gap)
+          print('REFERENCE_OWNER_V2_DESCENT_LIFECYCLE_BOUNDARY_PROOF classification='+classification+
+                ' source_run=35049968486 owner='+str(owner)+' acquire_tick='+str(acquire_tick)+
+                ' jump_tick='+str(jump_tick)+' drag_cap='+str(cap)+' predicted_expiry_tick='+str(predicted_expiry)+
+                ' writer_first='+str(min(post))+' writer_last='+str(max(post))+
+                ' consecutive_writer_until_before_expiry='+str(consecutive_to_before_expiry).lower()+
+                ' writer_at_expiry='+str(not no_writer_at_expiry).lower()+
+                ' same_owner_refreshes_before_expiry='+str(later_same)+
+                ' support_plateau='+str(plateau_start)+'..'+str(plateau_end)+
+                ' support_gap_min='+str(min_gap)+' support_gap_max='+str(max_gap)+
+                ' active_writer_ticks_on_plateau='+str(active_on_plateau)+
+                ' create_ground_clip_tick='+str(clip_tick)+' create_ground_clip_before_y='+str(clip_before)+' create_ground_clip_after_y='+str(clip_after)+
+                ' verifier_only=true production_unchanged=true final_ready=false')
+
+          if classification!='EXTERNAL_OWNER_ACTIVE_THROUGH_DESCENT_SUPPORT_MISS_MAX_AGE_EXPIRES_AFTERWARD':
+              raise SystemExit(1)
+          PY

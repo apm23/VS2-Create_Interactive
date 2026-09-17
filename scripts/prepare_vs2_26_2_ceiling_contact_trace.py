@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# TARGETED_PROOF_TRIGGER: exact-owner Create/VS2 collision-motion-frame hypothesis.
+# This trace remains observational; production composition supplies the candidate root correction.
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
 obb = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContinuousOBBColliderTrace.java"

@@ -1,0 +1,78 @@
+name: m1-reference-frame-contract-audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-frame-contract-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reference-frame-contract-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Audit current external-owner architecture read-only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          compose = Path('scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py').read_text(encoding='utf-8')
+          v1 = Path('scripts/prepare_vs2_26_2_reference_owner_v1.py').read_text(encoding='utf-8')
+          schedule = Path('scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py').read_text(encoding='utf-8')
+          native = Path('upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt').read_text(encoding='utf-8')
+
+          ttl = (
+              'externalReferenceOwnerLifetimeLimit(): Int' in compose
+              and 'if (externalReferenceOwnerJumpActive) 40 else TICKS_TO_DRAG_ENTITIES' in compose
+          )
+          jump_refresh = (
+              'externalReferenceOwnerJumpActive = true' in compose
+              and 'REFERENCE_OWNER_V2_NATIVE_GROUNDED_REFRESH' in compose
+          )
+          external_zero_yaw = (
+              'val externalReferenceOwnerEntityId = entityDraggingInformation.externalReferenceOwnerEntityId' in v1
+              and 'addedYRot = 0.0' in v1
+          )
+          native_transform_yaw = (
+              'referenceTransform.shipToWorld.transformDirection' in native
+              and 'shipData.prevTickTransform.worldToShip.transformDirection' in native
+              and 'addedYRot = addedYRotFromDragging' in native
+          )
+          singleton_drag_hook = (
+              'vs2$applyExternalReferenceOwnerBeforeCreateCollision' in schedule
+              and 'ClientLevel;tick(Ljava/util/function/BooleanSupplier;)V' in schedule
+              and 'java.util.Collections.singletonList(referencePlayer)' in schedule
+              and 'EntityDragger.INSTANCE.dragEntitiesWithShips' in schedule
+          )
+
+          print('M1_REFERENCE_FRAME_CONTRACT_AUDIT read_only=true gameplay_mutated=false')
+          print(f'OWNER_LIFETIME_FIXED_TTL={str(ttl).lower()}')
+          print(f'OWNER_JUMP_FLAG_REFRESH={str(jump_refresh).lower()}')
+          print(f'EXTERNAL_OWNER_ZERO_YAW_STEP={str(external_zero_yaw).lower()}')
+          print(f'NATIVE_VS2_TRANSFORM_YAW_STEP={str(native_transform_yaw).lower()}')
+          print(f'EXTERNAL_OWNER_SINGLETON_DRAG_AFTER_ENTITY_TICK={str(singleton_drag_hook).lower()}')
+
+          mismatch = ttl and jump_refresh and external_zero_yaw and native_transform_yaw and singleton_drag_hook
+          if not mismatch:
+              raise SystemExit('audit assumptions changed; inspect source before any redesign')
+
+          print('M1_REFERENCE_FRAME_CONTRACT_AUDIT classification=ROOT_REFERENCE_FRAME_CONTRACT_MISMATCH')
+          print('M1_REFERENCE_FRAME_CONTRACT_AUDIT reason=fixed_ttl_plus_jump_refresh_plus_zero_yaw_external_step_plus_separate_singleton_drag_scheduler')
+          print('M1_REFERENCE_FRAME_CONTRACT_AUDIT next=redesign_owner_transform_lifecycle_not_collision_patch')
+          PY

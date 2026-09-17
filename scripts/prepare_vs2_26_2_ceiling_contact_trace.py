@@ -42,6 +42,38 @@ if marker not in s:
     s = s.replace(anchor, replacement, 1)
 probe.write_text(s, encoding="utf-8")
 
+# Identify the exact simplified-collider ceiling candidate used by the same
+# CollisionList that Create passes into ContinuousOBBCollider. Also report the
+# gap after Create's client-player 2/16-block height contraction. This is
+# observational only and resolves whether a full-height overlap is still a real
+# overlap for Create's actual client collision OBB.
+s = probe.read_text(encoding="utf-8")
+if "lowest_bottom_over_head_index=" not in s:
+    old = '''                        double lowestBottomOverHead = Double.MAX_VALUE;\n                        for (int i = 0; i < size; i++) {'''
+    new = '''                        double lowestBottomOverHead = Double.MAX_VALUE;\n                        int lowestBottomOverHeadIndex = -1;\n                        for (int i = 0; i < size; i++) {'''
+    if old not in s:
+        raise SystemExit("ceiling trace could not find lowest overhead declaration")
+    s = s.replace(old, new, 1)
+
+    old = '''                                if (minY >= playerHeadY - 0.25 && minY < lowestBottomOverHead) lowestBottomOverHead = minY;'''
+    new = '''                                if (minY >= playerHeadY - 0.25 && minY < lowestBottomOverHead) {\n                                    lowestBottomOverHead = minY;\n                                    lowestBottomOverHeadIndex = i;\n                                }'''
+    if old not in s:
+        raise SystemExit("ceiling trace could not find lowest overhead update")
+    s = s.replace(old, new, 1)
+
+    old = '''                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());\n                        if (!Boolean.getBoolean("vs2.ceilingInventoryLogged")) {'''
+    new = '''                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());\n                        double createClientCollisionHeight = playerBox.getYsize() > 1.0 ? playerBox.getYsize() - (2.0 / 16.0) : playerBox.getYsize();\n                        double createClientCollisionHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + createClientCollisionHeight);\n                        String ceilingCandidate = "none";\n                        if (lowestBottomOverHeadIndex >= 0) {\n                            int ci = lowestBottomOverHeadIndex;\n                            ceilingCandidate = "i=" + ci\n                                + ",center=" + centerX[ci] + "," + centerY[ci] + "," + centerZ[ci]\n                                + ",extents=" + extentsX[ci] + "," + extentsY[ci] + "," + extentsZ[ci]\n                                + ",bottom=" + (centerY[ci] - extentsY[ci]);\n                        }\n                        if (!Boolean.getBoolean("vs2.ceilingInventoryLogged")) {'''
+    if old not in s:
+        raise SystemExit("ceiling trace could not find ceiling gap anchor")
+    s = s.replace(old, new, 1)
+
+    old = '''                            + ";lowest_bottom_over_head=" + lowestBottomOverHead\n                            + ";ceiling_head_gap=" + ceilingHeadGap;'''
+    new = '''                            + ";lowest_bottom_over_head=" + lowestBottomOverHead\n                            + ";lowest_bottom_over_head_index=" + lowestBottomOverHeadIndex\n                            + ";ceiling_candidate=" + ceilingCandidate\n                            + ";create_client_collision_height=" + createClientCollisionHeight\n                            + ";create_client_collision_head_gap=" + createClientCollisionHeadGap\n                            + ";ceiling_head_gap=" + ceilingHeadGap;'''
+    if old not in s:
+        raise SystemExit("ceiling trace could not find simplified collider output tail")
+    s = s.replace(old, new, 1)
+probe.write_text(s, encoding="utf-8")
+
 # The production OBB telemetry window currently stops at call 128. On the
 # naturally successful jump that window ended at player tick 69, while the
 # existing ceiling overlap occurred at ticks 73-74. Extend observation only;
@@ -78,6 +110,8 @@ setpos.write_text(s, encoding="utf-8")
 for text, required in [
     (probe.read_text(encoding="utf-8"), "GATE_E_CLIENT_STATE player_tick={}"),
     (probe.read_text(encoding="utf-8"), "GATE_E_CEILING_GEOMETRY_INVENTORY"),
+    (probe.read_text(encoding="utf-8"), "lowest_bottom_over_head_index="),
+    (probe.read_text(encoding="utf-8"), "create_client_collision_head_gap="),
     (obb.read_text(encoding="utf-8"), "if (index > 256) return;"),
     (collide.read_text(encoding="utf-8"), "GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT index={} player_tick={}"),
     (setpos.read_text(encoding="utf-8"), "GATE_E_LOCALPLAYER_SET_POS index={} player_tick={}"),
@@ -85,4 +119,4 @@ for text, required in [
     if required not in text:
         raise SystemExit("ceiling trace verification failed: " + required)
 
-print("M1_CEILING_CONTACT_CORRELATION_TRACE prepared=true read_only=true idempotent_tick_anchors=true geometry_inventory=true first_ready_inventory=true obb_window=256 local_frame=create_worldToLocalPos gameplay_mutated=false collision_mutated=false input_mutated=false camera_mutated=false")
+print("M1_CEILING_CONTACT_CORRELATION_TRACE prepared=true read_only=true idempotent_tick_anchors=true geometry_inventory=true exact_ceiling_candidate=true create_client_contracted_gap=true first_ready_inventory=true obb_window=256 local_frame=create_worldToLocalPos gameplay_mutated=false collision_mutated=false input_mutated=false camera_mutated=false")

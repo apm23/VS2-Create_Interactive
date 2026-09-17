@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
-# TARGETED_PROOF_TRIGGER: timeout-recovery rerun of exact-owner collision-motion candidate; observation unchanged.
+# TARGETED_PROOF_TRIGGER: exact-owner Create/VS2 collision-motion-frame hypothesis.
 # This trace remains observational; production composition supplies the candidate root correction.
 ROOT = Path(__file__).resolve().parents[1] / "upstream"
 probe = ROOT / "fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java"
@@ -22,11 +22,8 @@ if ready not in s:
     if old not in s:
         raise SystemExit("ceiling trace could not find GateE state format")
     s = s.replace(old, new, 1)
-    old_args = '''                player.getX(), player.getY(), player.getZ(),
-                playerBox.minX'''
-    new_args = '''                player.tickCount,
-                player.getX(), player.getY(), player.getZ(),
-                playerBox.minX'''
+    old_args = '''                player.getX(), player.getY(), player.getZ(),\n                playerBox.minX'''
+    new_args = '''                player.tickCount,\n                player.getX(), player.getY(), player.getZ(),\n                playerBox.minX'''
     if old_args not in s:
         raise SystemExit("ceiling trace could not find GateE state arguments")
     s = s.replace(old_args, new_args, 1)
@@ -40,61 +37,8 @@ probe.write_text(s, encoding="utf-8")
 s = probe.read_text(encoding="utf-8")
 marker = "GATE_E_CEILING_GEOMETRY_INVENTORY"
 if marker not in s:
-    anchor = '''                        double verticalGap = highestTopUnderFeet == -Double.MAX_VALUE ? Double.NaN : localFeetForCollider.y - highestTopUnderFeet;
-                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());
-                        simplifiedColliderState = "type=" + collisionListClass.getName()'''
-    replacement = '''                        double verticalGap = highestTopUnderFeet == -Double.MAX_VALUE ? Double.NaN : localFeetForCollider.y - highestTopUnderFeet;
-                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());
-                        if (!Boolean.getBoolean("vs2.ceilingInventoryLogged")) {
-                            System.setProperty("vs2.ceilingInventoryLogged", "true");
-                            double bestClearance = Double.POSITIVE_INFINITY;
-                            double bestHeadroom = Double.POSITIVE_INFINITY;
-                            int bestFloorIndex = -1;
-                            int bestCeilingIndex = -1;
-                            double bestOverlapCenterX = Double.NaN;
-                            double bestOverlapCenterZ = Double.NaN;
-                            double bestOverlapSpanX = Double.NaN;
-                            double bestOverlapSpanZ = Double.NaN;
-                            double requiredSpanX = (playerBox.maxX - playerBox.minX) + 0.05;
-                            double requiredSpanZ = (playerBox.maxZ - playerBox.minZ) + 0.05;
-                            for (int floorIndex = 0; floorIndex < size; floorIndex++) {
-                                double floorMinX = centerX[floorIndex] - extentsX[floorIndex];
-                                double floorMaxX = centerX[floorIndex] + extentsX[floorIndex];
-                                double floorTop = centerY[floorIndex] + extentsY[floorIndex];
-                                double floorMinZ = centerZ[floorIndex] - extentsZ[floorIndex];
-                                double floorMaxZ = centerZ[floorIndex] + extentsZ[floorIndex];
-                                for (int ceilingIndex = 0; ceilingIndex < size; ceilingIndex++) {
-                                    if (ceilingIndex == floorIndex) continue;
-                                    double ceilingBottom = centerY[ceilingIndex] - extentsY[ceilingIndex];
-                                    double clearance = ceilingBottom - floorTop;
-                                    if (clearance < player.getBbHeight() + 0.05 || clearance >= bestClearance) continue;
-                                    double ceilingMinX = centerX[ceilingIndex] - extentsX[ceilingIndex];
-                                    double ceilingMaxX = centerX[ceilingIndex] + extentsX[ceilingIndex];
-                                    double ceilingMinZ = centerZ[ceilingIndex] - extentsZ[ceilingIndex];
-                                    double ceilingMaxZ = centerZ[ceilingIndex] + extentsZ[ceilingIndex];
-                                    double overlapMinX = Math.max(floorMinX, ceilingMinX);
-                                    double overlapMaxX = Math.min(floorMaxX, ceilingMaxX);
-                                    double overlapMinZ = Math.max(floorMinZ, ceilingMinZ);
-                                    double overlapMaxZ = Math.min(floorMaxZ, ceilingMaxZ);
-                                    double overlapSpanX = overlapMaxX - overlapMinX;
-                                    double overlapSpanZ = overlapMaxZ - overlapMinZ;
-                                    if (overlapSpanX < requiredSpanX || overlapSpanZ < requiredSpanZ) continue;
-                                    bestClearance = clearance;
-                                    bestHeadroom = clearance - player.getBbHeight();
-                                    bestFloorIndex = floorIndex;
-                                    bestCeilingIndex = ceilingIndex;
-                                    bestOverlapCenterX = (overlapMinX + overlapMaxX) * 0.5;
-                                    bestOverlapCenterZ = (overlapMinZ + overlapMaxZ) * 0.5;
-                                    bestOverlapSpanX = overlapSpanX;
-                                    bestOverlapSpanZ = overlapSpanZ;
-                                }
-                            }
-                            LOGGER.info(
-                                "GATE_E_CEILING_GEOMETRY_INVENTORY player_tick={} size={} player_height={} floor_index={} ceiling_index={} clearance={} headroom={} overlap_center={},{} overlap_span={},{} read_only=true geometry_mutated=false player_mutated=false input_mutated=false",
-                                player.tickCount, size, player.getBbHeight(), bestFloorIndex, bestCeilingIndex,
-                                bestClearance, bestHeadroom, bestOverlapCenterX, bestOverlapCenterZ, bestOverlapSpanX, bestOverlapSpanZ);
-                        }
-                        simplifiedColliderState = "type=" + collisionListClass.getName()'''
+    anchor = '''                        double verticalGap = highestTopUnderFeet == -Double.MAX_VALUE ? Double.NaN : localFeetForCollider.y - highestTopUnderFeet;\n                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());\n                        simplifiedColliderState = "type=" + collisionListClass.getName()'''
+    replacement = '''                        double verticalGap = highestTopUnderFeet == -Double.MAX_VALUE ? Double.NaN : localFeetForCollider.y - highestTopUnderFeet;\n                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());\n                        if (!Boolean.getBoolean("vs2.ceilingInventoryLogged")) {\n                            System.setProperty("vs2.ceilingInventoryLogged", "true");\n                            double bestClearance = Double.POSITIVE_INFINITY;\n                            double bestHeadroom = Double.POSITIVE_INFINITY;\n                            int bestFloorIndex = -1;\n                            int bestCeilingIndex = -1;\n                            double bestOverlapCenterX = Double.NaN;\n                            double bestOverlapCenterZ = Double.NaN;\n                            double bestOverlapSpanX = Double.NaN;\n                            double bestOverlapSpanZ = Double.NaN;\n                            double requiredSpanX = (playerBox.maxX - playerBox.minX) + 0.05;\n                            double requiredSpanZ = (playerBox.maxZ - playerBox.minZ) + 0.05;\n                            for (int floorIndex = 0; floorIndex < size; floorIndex++) {\n                                double floorMinX = centerX[floorIndex] - extentsX[floorIndex];\n                                double floorMaxX = centerX[floorIndex] + extentsX[floorIndex];\n                                double floorTop = centerY[floorIndex] + extentsY[floorIndex];\n                                double floorMinZ = centerZ[floorIndex] - extentsZ[floorIndex];\n                                double floorMaxZ = centerZ[floorIndex] + extentsZ[floorIndex];\n                                for (int ceilingIndex = 0; ceilingIndex < size; ceilingIndex++) {\n                                    if (ceilingIndex == floorIndex) continue;\n                                    double ceilingBottom = centerY[ceilingIndex] - extentsY[ceilingIndex];\n                                    double clearance = ceilingBottom - floorTop;\n                                    if (clearance < player.getBbHeight() + 0.05 || clearance >= bestClearance) continue;\n                                    double ceilingMinX = centerX[ceilingIndex] - extentsX[ceilingIndex];\n                                    double ceilingMaxX = centerX[ceilingIndex] + extentsX[ceilingIndex];\n                                    double ceilingMinZ = centerZ[ceilingIndex] - extentsZ[ceilingIndex];\n                                    double ceilingMaxZ = centerZ[ceilingIndex] + extentsZ[ceilingIndex];\n                                    double overlapMinX = Math.max(floorMinX, ceilingMinX);\n                                    double overlapMaxX = Math.min(floorMaxX, ceilingMaxX);\n                                    double overlapMinZ = Math.max(floorMinZ, ceilingMinZ);\n                                    double overlapMaxZ = Math.min(floorMaxZ, ceilingMaxZ);\n                                    double overlapSpanX = overlapMaxX - overlapMinX;\n                                    double overlapSpanZ = overlapMaxZ - overlapMinZ;\n                                    if (overlapSpanX < requiredSpanX || overlapSpanZ < requiredSpanZ) continue;\n                                    bestClearance = clearance;\n                                    bestHeadroom = clearance - player.getBbHeight();\n                                    bestFloorIndex = floorIndex;\n                                    bestCeilingIndex = ceilingIndex;\n                                    bestOverlapCenterX = (overlapMinX + overlapMaxX) * 0.5;\n                                    bestOverlapCenterZ = (overlapMinZ + overlapMaxZ) * 0.5;\n                                    bestOverlapSpanX = overlapSpanX;\n                                    bestOverlapSpanZ = overlapSpanZ;\n                                }\n                            }\n                            LOGGER.info(\n                                "GATE_E_CEILING_GEOMETRY_INVENTORY player_tick={} size={} player_height={} floor_index={} ceiling_index={} clearance={} headroom={} overlap_center={},{} overlap_span={},{} read_only=true geometry_mutated=false player_mutated=false input_mutated=false",\n                                player.tickCount, size, player.getBbHeight(), bestFloorIndex, bestCeilingIndex,\n                                bestClearance, bestHeadroom, bestOverlapCenterX, bestOverlapCenterZ, bestOverlapSpanX, bestOverlapSpanZ);\n                        }\n                        simplifiedColliderState = "type=" + collisionListClass.getName()'''
     if anchor not in s:
         raise SystemExit("ceiling trace could not find Phase66 simplified-collider summary anchor")
     s = s.replace(anchor, replacement, 1)
@@ -107,50 +51,26 @@ probe.write_text(s, encoding="utf-8")
 # overlap for Create's actual client collision OBB.
 s = probe.read_text(encoding="utf-8")
 if "lowest_bottom_over_head_index=" not in s:
-    old = '''                        double lowestBottomOverHead = Double.MAX_VALUE;
-                        for (int i = 0; i < size; i++) {'''
-    new = '''                        double lowestBottomOverHead = Double.MAX_VALUE;
-                        int lowestBottomOverHeadIndex = -1;
-                        for (int i = 0; i < size; i++) {'''
+    old = '''                        double lowestBottomOverHead = Double.MAX_VALUE;\n                        for (int i = 0; i < size; i++) {'''
+    new = '''                        double lowestBottomOverHead = Double.MAX_VALUE;\n                        int lowestBottomOverHeadIndex = -1;\n                        for (int i = 0; i < size; i++) {'''
     if old not in s:
         raise SystemExit("ceiling trace could not find lowest overhead declaration")
     s = s.replace(old, new, 1)
 
     old = '''                                if (minY >= playerHeadY - 0.25 && minY < lowestBottomOverHead) lowestBottomOverHead = minY;'''
-    new = '''                                if (minY >= playerHeadY - 0.25 && minY < lowestBottomOverHead) {
-                                    lowestBottomOverHead = minY;
-                                    lowestBottomOverHeadIndex = i;
-                                }'''
+    new = '''                                if (minY >= playerHeadY - 0.25 && minY < lowestBottomOverHead) {\n                                    lowestBottomOverHead = minY;\n                                    lowestBottomOverHeadIndex = i;\n                                }'''
     if old not in s:
         raise SystemExit("ceiling trace could not find lowest overhead update")
     s = s.replace(old, new, 1)
 
-    old = '''                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());
-                        if (!Boolean.getBoolean("vs2.ceilingInventoryLogged")) {'''
-    new = '''                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());
-                        double createClientCollisionHeight = playerBox.getYsize() > 1.0 ? playerBox.getYsize() - (2.0 / 16.0) : playerBox.getYsize();
-                        double createClientCollisionHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + createClientCollisionHeight);
-                        String ceilingCandidate = "none";
-                        if (lowestBottomOverHeadIndex >= 0) {
-                            int ci = lowestBottomOverHeadIndex;
-                            ceilingCandidate = "i=" + ci
-                                + ",center=" + centerX[ci] + "," + centerY[ci] + "," + centerZ[ci]
-                                + ",extents=" + extentsX[ci] + "," + extentsY[ci] + "," + extentsZ[ci]
-                                + ",bottom=" + (centerY[ci] - extentsY[ci]);
-                        }
-                        if (!Boolean.getBoolean("vs2.ceilingInventoryLogged")) {'''
+    old = '''                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());\n                        if (!Boolean.getBoolean("vs2.ceilingInventoryLogged")) {'''
+    new = '''                        double ceilingHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + player.getBbHeight());\n                        double createClientCollisionHeight = playerBox.getYsize() > 1.0 ? playerBox.getYsize() - (2.0 / 16.0) : playerBox.getYsize();\n                        double createClientCollisionHeadGap = lowestBottomOverHead == Double.MAX_VALUE ? Double.NaN : lowestBottomOverHead - (localFeetForCollider.y + createClientCollisionHeight);\n                        String ceilingCandidate = "none";\n                        if (lowestBottomOverHeadIndex >= 0) {\n                            int ci = lowestBottomOverHeadIndex;\n                            ceilingCandidate = "i=" + ci\n                                + ",center=" + centerX[ci] + "," + centerY[ci] + "," + centerZ[ci]\n                                + ",extents=" + extentsX[ci] + "," + extentsY[ci] + "," + extentsZ[ci]\n                                + ",bottom=" + (centerY[ci] - extentsY[ci]);\n                        }\n                        if (!Boolean.getBoolean("vs2.ceilingInventoryLogged")) {'''
     if old not in s:
         raise SystemExit("ceiling trace could not find ceiling gap anchor")
     s = s.replace(old, new, 1)
 
-    old = '''                            + ";lowest_bottom_over_head=" + lowestBottomOverHead
-                            + ";ceiling_head_gap=" + ceilingHeadGap;'''
-    new = '''                            + ";lowest_bottom_over_head=" + lowestBottomOverHead
-                            + ";lowest_bottom_over_head_index=" + lowestBottomOverHeadIndex
-                            + ";ceiling_candidate=" + ceilingCandidate
-                            + ";create_client_collision_height=" + createClientCollisionHeight
-                            + ";create_client_collision_head_gap=" + createClientCollisionHeadGap
-                            + ";ceiling_head_gap=" + ceilingHeadGap;'''
+    old = '''                            + ";lowest_bottom_over_head=" + lowestBottomOverHead\n                            + ";ceiling_head_gap=" + ceilingHeadGap;'''
+    new = '''                            + ";lowest_bottom_over_head=" + lowestBottomOverHead\n                            + ";lowest_bottom_over_head_index=" + lowestBottomOverHeadIndex\n                            + ";ceiling_candidate=" + ceilingCandidate\n                            + ";create_client_collision_height=" + createClientCollisionHeight\n                            + ";create_client_collision_head_gap=" + createClientCollisionHeadGap\n                            + ";ceiling_head_gap=" + ceilingHeadGap;'''
     if old not in s:
         raise SystemExit("ceiling trace could not find simplified collider output tail")
     s = s.replace(old, new, 1)
@@ -172,10 +92,8 @@ obb.write_text(s, encoding="utf-8")
 s = collide.read_text(encoding="utf-8")
 ready = '"GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT index={} player_tick={} requested={},{},{} allowed={},{},{} pos={},{},{} on_ground={} thread={}"'
 if ready not in s:
-    old = '"GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT index={} requested={},{},{} allowed={},{},{} pos={},{},{} on_ground={} thread={}",
-            index,'
-    new = '"GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT index={} player_tick={} requested={},{},{} allowed={},{},{} pos={},{},{} on_ground={} thread={}",
-            index, entity.tickCount,'
+    old = '"GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT index={} requested={},{},{} allowed={},{},{} pos={},{},{} on_ground={} thread={}",\n            index,'
+    new = '"GATE_E_CREATE_LOCALPLAYER_COLLIDE_RESULT index={} player_tick={} requested={},{},{} allowed={},{},{} pos={},{},{} on_ground={} thread={}",\n            index, entity.tickCount,'
     if old not in s:
         raise SystemExit("ceiling trace could not find nonzero LocalPlayer collide marker")
     s = s.replace(old, new, 1)
@@ -184,10 +102,8 @@ collide.write_text(s, encoding="utf-8")
 s = setpos.read_text(encoding="utf-8")
 ready = '"GATE_E_LOCALPLAYER_SET_POS index={} player_tick={} from={},{},{} to={},{},{} delta={},{},{} on_ground={} thread={} callers={}"'
 if ready not in s:
-    old = '"GATE_E_LOCALPLAYER_SET_POS index={} from={},{},{} to={},{},{} delta={},{},{} on_ground={} thread={} callers={}",
-            index,'
-    new = '"GATE_E_LOCALPLAYER_SET_POS index={} player_tick={} from={},{},{} to={},{},{} delta={},{},{} on_ground={} thread={} callers={}",
-            index, self.tickCount,'
+    old = '"GATE_E_LOCALPLAYER_SET_POS index={} from={},{},{} to={},{},{} delta={},{},{} on_ground={} thread={} callers={}",\n            index,'
+    new = '"GATE_E_LOCALPLAYER_SET_POS index={} player_tick={} from={},{},{} to={},{},{} delta={},{},{} on_ground={} thread={} callers={}",\n            index, self.tickCount,'
     if old not in s:
         raise SystemExit("ceiling trace could not find LocalPlayer setPos marker")
     s = s.replace(old, new, 1)

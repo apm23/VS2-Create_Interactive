@@ -3,16 +3,37 @@ name: final-build
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/final-build.yml'
 
+permissions:
+  contents: read
+
+env:
+  SOURCE_PROOF_HEAD: 61bc52795a7a812873cf7aa9d21b73a6c0a88bc9
+  SOURCE_PROOF_RUN: '35195464859'
+  SOURCE_PROOF_ARTIFACT: '10485419691'
+  SOURCE_PROOF_DIGEST: 'sha256:59abf647235626fa9c91311f4bf2ecc87a89fd87c060b8c3ef77da978a9feddd'
+  VS2_BASELINE: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+
 jobs:
-  build-proven-m1-artifact:
+  build-exact-v3-production-candidate:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout integration repo
+      - name: Checkout exact V3 source proof head
         uses: actions/checkout@v5
+        with:
+          ref: 61bc52795a7a812873cf7aa9d21b73a6c0a88bc9
+          fetch-depth: 1
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_PROOF_HEAD"
+          echo "FINAL_BUILD_SOURCE_HEAD=$SOURCE_PROOF_HEAD"
 
       - name: Checkout pinned VS2 baseline
         uses: actions/checkout@v5
@@ -27,17 +48,31 @@ jobs:
           distribution: temurin
           java-version: '25'
 
-      - name: Reconstruct exact proven M1 composition
+      - name: Compose exact V3 production source
         shell: bash
         run: |
           set -euo pipefail
           for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
           python3 scripts/prepare_vs2_26_2_phase98.py
-          grep -q 'vs2.createCarryCompat' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/client/GateEClientProbe.java
-          grep -q 'GATE_E_CREATE_GROUNDED_Y_CLIP' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.java
-          grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_camera_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v3_continuous_pose.py
 
-      - name: Build final Fabric distributable
+          # Production composition deliberately excludes proof/harness/media instrumentation:
+          # reference_owner_v3_seam_trace, natural_landing_harness_v2,
+          # camera_external_reference_proof, and framebuffer capture are NOT composed.
+          grep -q 'REFERENCE_OWNER_V3_CONTINUOUS_POSE' upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt
+          grep -q 'previousWorldYawToLocal' upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/ExternalReferenceFrameResolver.kt
+          grep -q 'REFERENCE_OWNER_V3_GROUNDED_OWNER_CONFIRMED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinExternalReferenceOwnerCreateCarry.java
+          ! grep -q 'REFERENCE_OWNER_V3_SEAM_NATIVE' upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt
+          test ! -e upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinRootReferenceFrameCapture.java
+          echo 'EXACT_V3_PRODUCTION_COMPOSITION source_exact=true seam_trace=false landing_harness=false camera_proof=false framebuffer_observer=false'
+
+      - name: Build Fabric distributable
         working-directory: upstream
         shell: bash
         run: |
@@ -52,66 +87,61 @@ jobs:
           python3 - <<'PY'
           import json, re, zipfile
           from pathlib import Path
-          props = (Path('upstream') / 'fabric' / 'gradle.properties').read_text(encoding='utf-8')
-          match = re.search(r'(?m)^kotlin_fabric_version=(.+)$', props)
-          if not match: raise SystemExit('kotlin_fabric_version missing from upstream/fabric/gradle.properties')
-          version = match.group(1).strip()
-          cache_root = Path.home() / '.gradle' / 'caches' / 'modules-2' / 'files-2.1' / 'net.fabricmc' / 'fabric-language-kotlin' / version
-          candidates = sorted(cache_root.glob('**/fabric-language-kotlin-*.jar'))
-          if not candidates: raise SystemExit(f'Fabric Language Kotlin {version} was not resolved into Gradle cache')
-          flk = candidates[0]
+          props=(Path('upstream')/'fabric'/'gradle.properties').read_text(encoding='utf-8')
+          m=re.search(r'(?m)^kotlin_fabric_version=(.+)$',props)
+          if not m: raise SystemExit('kotlin_fabric_version missing')
+          version=m.group(1).strip()
+          root=Path.home()/'.gradle'/'caches'/'modules-2'/'files-2.1'/'net.fabricmc'/'fabric-language-kotlin'/version
+          candidates=sorted(root.glob('**/fabric-language-kotlin-*.jar'))
+          if not candidates: raise SystemExit(f'Fabric Language Kotlin {version} not resolved')
+          flk=candidates[0]
           with zipfile.ZipFile(flk) as nested:
-              nested_meta = json.loads(nested.read('fabric.mod.json'))
-              if nested_meta.get('id') != 'fabric-language-kotlin': raise SystemExit('unexpected nested mod id')
-              if not any(name.startswith('META-INF/jars/') and 'kotlin-stdlib' in name for name in nested.namelist()): raise SystemExit('Fabric Language Kotlin jar does not contain nested kotlin-stdlib runtime')
-          jars = sorted(p for p in (Path('upstream')/'fabric'/'build'/'libs').glob('*.jar') if not p.name.endswith('-sources.jar') and not p.name.endswith('-dev.jar') and not p.name.endswith('-dev-shadow.jar'))
-          if len(jars) != 1: raise SystemExit(f'expected exactly one distributable jar, found {[p.name for p in jars]}')
-          target = jars[0]; nested_path = f'META-INF/jars/{flk.name}'; temp = target.with_suffix('.runtime-fixed.jar')
+              meta=json.loads(nested.read('fabric.mod.json'))
+              if meta.get('id')!='fabric-language-kotlin': raise SystemExit('unexpected nested mod id')
+              if not any(n.startswith('META-INF/jars/') and 'kotlin-stdlib' in n for n in nested.namelist()):
+                  raise SystemExit('nested Kotlin runtime missing stdlib')
+          jars=sorted(p for p in (Path('upstream')/'fabric'/'build'/'libs').glob('*.jar') if not p.name.endswith('-sources.jar') and not p.name.endswith('-dev.jar') and not p.name.endswith('-dev-shadow.jar'))
+          if len(jars)!=1: raise SystemExit(f'expected one distributable jar, got {[p.name for p in jars]}')
+          target=jars[0]; nested_path=f'META-INF/jars/{flk.name}'; temp=target.with_suffix('.runtime-fixed.jar')
           with zipfile.ZipFile(target,'r') as source, zipfile.ZipFile(temp,'w') as out:
-              metadata = json.loads(source.read('fabric.mod.json')); entries=list(metadata.get('jars',[]))
-              if not any(entry.get('file') == nested_path for entry in entries if isinstance(entry,dict)): entries.append({'file':nested_path})
+              metadata=json.loads(source.read('fabric.mod.json')); entries=list(metadata.get('jars',[]))
+              if not any(isinstance(e,dict) and e.get('file')==nested_path for e in entries): entries.append({'file':nested_path})
               metadata['jars']=entries
               for info in source.infolist():
                   if info.filename in {'fabric.mod.json',nested_path}: continue
                   out.writestr(info,source.read(info.filename))
-              out.writestr('fabric.mod.json',json.dumps(metadata,indent=2).encode('utf-8')); out.writestr(nested_path,flk.read_bytes())
-          temp.replace(target); print(f'Embedded {flk.name} into {target.name}')
+              out.writestr('fabric.mod.json',json.dumps(metadata,indent=2).encode())
+              out.writestr(nested_path,flk.read_bytes())
+          temp.replace(target)
+          print(f'Embedded {flk.name} into {target.name}')
           PY
 
-      - name: Verify Kotlin runtime packaging
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import io, json, zipfile
-          from pathlib import Path
-          jars=sorted(p for p in (Path('upstream')/'fabric'/'build'/'libs').glob('*.jar') if not p.name.endswith('-sources.jar') and not p.name.endswith('-dev.jar') and not p.name.endswith('-dev-shadow.jar'))
-          if len(jars)!=1: raise SystemExit(f'expected exactly one distributable jar, found {[p.name for p in jars]}')
-          with zipfile.ZipFile(jars[0]) as outer:
-              meta=json.loads(outer.read('fabric.mod.json')); nested_paths=[entry.get('file') for entry in meta.get('jars',[]) if isinstance(entry,dict)]; flk_paths=[p for p in nested_paths if p and 'fabric-language-kotlin' in p]
-              if len(flk_paths)!=1: raise SystemExit(f'expected one nested Fabric Language Kotlin jar, found {flk_paths}')
-              with zipfile.ZipFile(io.BytesIO(outer.read(flk_paths[0]))) as nested:
-                  if json.loads(nested.read('fabric.mod.json')).get('id')!='fabric-language-kotlin': raise SystemExit('nested runtime is not fabric-language-kotlin')
-                  if not any(name.startswith('META-INF/jars/') and 'kotlin-stdlib' in name for name in nested.namelist()): raise SystemExit('nested Fabric Language Kotlin is missing kotlin-stdlib')
-          print('Kotlin runtime packaging verified')
-          PY
-
-      - name: Stage final artifact and checksums
+      - name: Stage exact V3 candidate and provenance
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p final-dist
           mapfile -t jars < <(find upstream/fabric/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' ! -name '*-dev-shadow.jar' | sort)
           test "${#jars[@]}" -eq 1
-          cp "${jars[@]}" final-dist/
+          cp "${jars[0]}" final-dist/
           (cd final-dist && sha256sum *.jar > SHA256SUMS.txt)
-          printf 'source_commit=%s\nproven_m1_run=34943410005\nbootstrap_packaging=kotlin-runtime-embedded\n' "$GITHUB_SHA" > final-dist/BUILD_INFO.txt
+          cat > final-dist/BUILD_INFO.txt <<EOF
+          source_proof_head=$SOURCE_PROOF_HEAD
+          source_proof_run=$SOURCE_PROOF_RUN
+          source_proof_artifact=$SOURCE_PROOF_ARTIFACT
+          source_proof_digest=$SOURCE_PROOF_DIGEST
+          vs2_baseline=$VS2_BASELINE
+          composition=exact-v3-production-no-proof-harness-media
+          final_ready=false
+          EOF
+          unzip -tq "final-dist/$(basename "${jars[0]}")"
           cat final-dist/SHA256SUMS.txt
+          cat final-dist/BUILD_INFO.txt
 
-      - name: Upload final distributable
+      - name: Upload exact V3 final candidate
         uses: actions/upload-artifact@v4
         with:
-          name: VS2-Create-Interactive-M1-final
+          name: VS2-Create-Interactive-M1-exact-v3-candidate
           path: final-dist/*
           if-no-files-found: error
           retention-days: 90

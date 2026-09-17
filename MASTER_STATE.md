@@ -10,12 +10,12 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Forbidden: fake gravity; synthetic carry velocity/inertia; manual floor/wall clamps; floor-only fixes; per-tick teleport/setPos chase/reanchor architecture; duplicate authority/state; direct camera forcing/counter-rotation; fake/proxy VS2 ships; workaround chains hiding double ownership.
 
 ## Current reconciliation — 2026-09-17
-- `current_head`: `f5640f368734b7b3eed017dc47db42f72d5dcee1` immediately before this ledger-only reconciliation commit.
-- `f5640f368734b7b3eed017dc47db42f72d5dcee1`: `Sample ceiling inventory on first ready observation` — proof-infra/read-only telemetry only; no gameplay, collision, input, world, train, camera, ownership, or physics change.
-- Previous ceiling inventory HEAD: `5cec40cc0f417b834209a9a5940cf6086de67790`.
+- `current_head`: `a56feb3c8498dc73fd96275de4aa833887834aa1` immediately before this ledger-only reconciliation commit.
+- `a56feb3c8498dc73fd96275de4aa833887834aa1`: `Extend ceiling OBB observation through apex` — proof-infra/read-only telemetry only; no gameplay, collision, input, world, train, camera, ownership, geometry, or physics change.
+- Previous ceiling first-ready inventory HEAD: `f5640f368734b7b3eed017dc47db42f72d5dcee1`.
 - Latest gameplay implementation remains `9aea12a6114198c33c70d52897eb9d3c29342425` (`Refresh jump owner from exact Create grounded carry contact`).
 - Active blocker: `CEILING`.
-- Project state: `CAMERA_DATA_PROVEN_VISUAL_INCONCLUSIVE_MEDIA_PENDING_USER_AUDIT; CEILING_EXISTING_GEOMETRY_INVENTORY_FIRST_READY_PROOF_IN_PROGRESS`.
+- Project state: `CAMERA_DATA_PROVEN_VISUAL_INCONCLUSIVE_MEDIA_PENDING_USER_AUDIT; CEILING_APEX_OBB_CORRELATION_PROOF_IN_PROGRESS`.
 - final_ready: `false`.
 - Historical failed user JAR SHA256 `96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef`: grounded floor/walk good, walls soft, jump dragged 2–4 carriages, turns swept player/camera, wall penetration/throw; never retest this SHA.
 
@@ -33,7 +33,7 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Black/unreadable/missed observation after narrow media repair budget => `VISUAL_INCONCLUSIVE_MEDIA_PENDING_USER_AUDIT`; preserve data proof and continue independent engineering.
 - Final exact JAR still requires real-user Minecraft acceptance; CI/video cannot produce `FINAL_READY`.
 
-## Ceiling proof — existing-geometry inventory in progress
+## Ceiling proof — apex OBB correlation in progress
 - Read-only files: `scripts/prepare_vs2_26_2_ceiling_contact_trace.py`, `.github/workflows/m1-ceiling-contact-runtime-proof.yml`.
 - First run `35167469407` on HEAD `61122b80e8e07416af01232e6ac290109f5bf9b2` FAILED in compose only: `ceiling trace could not find LocalPlayer setPos marker`.
 - Repair `82766397300abee3a71b2b2fab5e346ee6fd38fd` made GateE/collide/setPos tick anchors idempotent; proof infra only.
@@ -41,17 +41,21 @@ GitHub code is the implementation source of truth. This file is the durable proj
 - Commit `36ef9a4e12908fb9c384cfc9724a66838aa10675` retried identical pristine launches without changing input sequence, fixture geometry, train route/timing, or gameplay. Targeted run `35168785447` SUCCESS and reached native jump.
 - Commit `5cec40cc0f417b834209a9a5940cf6086de67790` added read-only inventory of EXISTING simplified-collider floor/ceiling clearances; no player relocation, geometry mutation, fixture selection, input timing, collision, or physics change.
 - Targeted run `35169937364` on exact HEAD `5cec40cc0f417b834209a9a5940cf6086de67790` SUCCESS. Exact classifier: `CEILING_NOT_EXERCISED`; native airborne tick `62`; rise `+0.333199994`; `obb_rows=128`; `ceiling_normal_rows=0`; `finite_overhead_rows=29`; nearest observed overhead tick `58`, local feet `(-6.6981282294422755,2.0630680924316422,2.193405150489639)`, ceiling bottom `4.0`, head gap `0.136931955`. No gameplay patch authorized.
-- The new inventory marker itself was absent from run `35169937364` because it was hard-pinned to `player.tickCount == 20`, before a ready player/carriage observation. This is proof-infra timing only.
-- Commit `f5640f368734b7b3eed017dc47db42f72d5dcee1` changes only the inventory sampling gate to the first ready observation in each client process, using a telemetry-only JVM marker to avoid repeat scans. Gameplay/input/fixture/geometry/collision/physics remain unchanged.
-- Relevant targeted workflow now: `m1-ceiling-contact-runtime-proof`, run `35172916766`, exact HEAD `f5640f368734b7b3eed017dc47db42f72d5dcee1`; `in_progress` at this reconciliation.
+- Commit `f5640f368734b7b3eed017dc47db42f72d5dcee1` moved inventory sampling to the first ready player/carriage observation; telemetry only.
+- Targeted run `35172916766` on exact HEAD `f5640f368734b7b3eed017dc47db42f72d5dcee1` SUCCESS; artifact `10476979722`, digest `sha256:b04716cf0cdd488761426b08d0ae47768d27a3cb6e39f3ffd27d1b7409b24957`.
+- That run naturally reached native jump on pristine attempt 3: airborne tick `69`, rise `+0.333199994`. Existing-geometry inventory is valid and observed a 2.0-block floor/ceiling clearance on attempt 2 (player height 1.8, headroom ~0.20) without moving player or changing fixture geometry.
+- On the naturally successful attempt 3, exact Create-frame overhead geometry shows head overlap at apex: tick73 `ceiling_head_gap=-0.049287131060964384`; tick74 `ceiling_head_gap=-0.05230339257001049`, local feet tick74 `(-0.17305388295140767,3.2523034402537263,1.6991401981304932)`, floor top `2.0`, ceiling bottom `5.0`. This geometric overlap alone is NOT yet classified as collision failure.
+- The prior `ceiling_normal_rows=0` cannot be used as gameplay failure evidence because Phase65 OBB telemetry was capped at 128 calls and its final observed player tick was `69`; the actual ceiling-overlap event was ticks `73-74` after telemetry had stopped.
+- Commit `a56feb3c8498dc73fd96275de4aa833887834aa1` extends only the CI OBB observation window from 128 to 256 calls via the ceiling proof script so the exact apex can be correlated. `collideMany` return values and all gameplay/collision/input/geometry state are untouched.
+- Relevant targeted workflow now: `m1-ceiling-contact-runtime-proof`, run `35174843637`, exact proof HEAD `a56feb3c8498dc73fd96275de4aa833887834aa1`; `in_progress` at this reconciliation.
 - Ignore unrelated generic workflow noise while this targeted proof runs.
 - Pristine r0v3 save SHA256 `e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556`.
-- Required timeline remains: tick; exact Create `worldToLocalPos` local position/overhead geometry; OBB normal; collisionResponse; surfaceCollision; temporalResponse; requested/allowed collide; tick-bearing final Create setPos writer.
+- Required timeline: tick; exact Create `worldToLocalPos` local position/overhead geometry; OBB normal; collisionResponse; surfaceCollision; temporalResponse; requested/allowed collide; tick-bearing final Create setPos writer.
 - Classifiers:
   - `CEILING_NOT_EXERCISED` => no gameplay patch; observation/selection only.
   - `CEILING_CONTACT_OBSERVED_CORRELATION_INCOMPLETE` => read-only correlation follow-up only.
   - `CEILING_CONTACT_CORRELATED` => inspect exact timeline before any gameplay conclusion.
-- Compile/harness/verifier/inventory-observation failures authorize proof-infra repair only.
+- Compile/harness/verifier/telemetry-window failures authorize proof-infra repair only.
 - No ceiling video until data/runtime closure-ready.
 
 ## Preserved evidence / FROZEN boundaries
@@ -69,10 +73,10 @@ GitHub code is the implementation source of truth. This file is the durable proj
 Do not reintroduce absent new direct evidence: `EXACT_SHAPES_LOCALPLAYER_0fa4aa`; generic frame lease/replay/carry extension; lifecycle extension beyond proven jump/landing seam; synthetic carry velocity/inertia; fake gravity; manual floor/wall clamp; floor-only workaround; per-tick teleport/setPos chase; direct camera forcing/counter-rotation; jump/input timing production tuning; sprint/reverse/strafe tuning as reference-frame fix; global collider suppression; suppressing Create collision-response writer; duplicate Create/VS2 authority; fake/proxy VS2 ship; harness mutation to manufacture green; blind resolver prev/current/yaw/point changes; old `toLocalVector(...,0)` mismatch as current failure; temporal-only zero response as failure; patching `isDraggable`/`vs$shouldDrag`; adding/replacing body-position writer; Phase64 Y/grounding clip from code location; hardcoded carriage id/block/span/geometry; changing server `firstOrNull` fixture selector; post-release hypothetical camera rows as active mismatch; camera counter-rotation after exact active-turn proof.
 
 ## next_safe_action
-1. Inspect only targeted run `35172916766` first. While queued/in_progress, HOLD and do not stack another patch.
-2. If run succeeds, inspect `GATE_E_CEILING_GEOMETRY_INVENTORY` and classify whether the existing carriage already contains a naturally reachable low-clearance floor/ceiling pair. Do not reposition player or mutate geometry merely to force contact.
-3. If the inventory marker is still absent or malformed, repair proof telemetry only.
-4. If ceiling contact becomes naturally exercised, correlate exact tick timeline before any gameplay conclusion. No gameplay patch without direct complete runtime failure evidence.
+1. Inspect only targeted run `35174843637` first. While queued/in_progress, HOLD and do not stack another patch.
+2. If run succeeds and native jump is exercised, inspect exact ticks around geometric overhead overlap for OBB normal, surfaceCollision, temporalResponse, collisionResponse, requested/allowed collide, and final Create setPos writer.
+3. Geometric head overlap by itself does not authorize a gameplay patch. Only a complete current-frame runtime timeline proving missing/incorrect Create ceiling response authorizes the smallest gameplay/root correction.
+4. If OBB telemetry still does not span the overlap event or classifier/verifier fails, repair proof telemetry only.
 5. Never patch walls from temporal-only rows. No ceiling video before closure-ready data proof.
 6. Protected/FROZEN regression => REVERT before workaround.
 7. `FINAL_READY` forbidden until exact final JAR passes real-user actual Minecraft: no sinking, stable standing, forward/back/strafe/sprint, jump+natural landing, floor/wall/ceiling solidity, stable train movement/speed changes.

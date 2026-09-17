@@ -1,0 +1,191 @@
+name: m1-reference-owner-v3-collider-frame-reclass
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-reference-owner-v3-collider-frame-reclass.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  reclassify-exact-v3-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact V3 runtime artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: reference-owner-v3-continuous-pose-proof
+          path: proof
+          github-token: ${{ github.token }}
+          run-id: 35189934265
+
+      - name: Verify source run and reclassify Create collision frame
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, math, os, re, urllib.request
+
+          EXPECTED_HEAD = '43242a04e42fc0919a07c3d94b594696ff62023a'
+          RUN_ID = 35189934265
+          EXPECTED_ARTIFACT_DIGEST = 'sha256:6daf70e643dc150c4f4141829c1ff9c1a5e0f38b43b4fa24fb3f067e8cb6a584'
+
+          def api_json(url):
+              req = urllib.request.Request(
+                  url,
+                  headers={
+                      'Authorization': f'Bearer {os.environ["GH_TOKEN"]}',
+                      'Accept': 'application/vnd.github+json',
+                      'X-GitHub-Api-Version': '2022-11-28',
+                  },
+              )
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          meta = api_json(f'https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/runs/{RUN_ID}')
+          if meta.get('head_sha') != EXPECTED_HEAD:
+              raise SystemExit(f'wrong source head {meta.get("head_sha")} expected {EXPECTED_HEAD}')
+
+          artifacts = api_json(
+              f'https://api.github.com/repos/apm23/VS2-Create_Interactive/actions/runs/{RUN_ID}/artifacts'
+          ).get('artifacts', [])
+          selected = [a for a in artifacts if a.get('name') == 'reference-owner-v3-continuous-pose-proof']
+          if len(selected) != 1:
+              raise SystemExit(f'exact source artifact count != 1: {len(selected)}')
+          if selected[0].get('digest') != EXPECTED_ARTIFACT_DIGEST:
+              raise SystemExit(
+                  f'artifact digest mismatch {selected[0].get("digest")} expected {EXPECTED_ARTIFACT_DIGEST}'
+              )
+
+          p = 'proof/reference-owner-v3-continuous-pose.log'
+          text = re.sub(r'\x1b\[[0-9;]*[mK]', '', open(p, encoding='utf-8', errors='replace').read())
+
+          airborne = re.search(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)', text)
+          landed = re.search(r'GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)', text)
+          if not airborne or not landed:
+              raise SystemExit('native jump markers missing')
+          a_tick = int(airborne.group(1))
+          l_tick = int(landed.group(1))
+          if l_tick <= a_tick:
+              raise SystemExit(f'invalid native jump interval {a_tick}-{l_tick}')
+
+          pose_rx = re.compile(
+              r'REFERENCE_OWNER_V3_CONTINUOUS_POSE player_tick=(\d+) owner_id=(\d+) owner_age=(\d+) '
+              r'on_ground=(true|false) yaw_delta=([-+0-9.eE]+)'
+          )
+          poses = [(int(t), int(o), int(age), g == 'true', float(y)) for t, o, age, g, y in pose_rx.findall(text)]
+          jump_poses = [r for r in poses if a_tick <= r[0] <= l_tick]
+          if not jump_poses:
+              raise SystemExit('no V3 pose rows in native jump interval')
+          owners = {r[1] for r in jump_poses}
+          if len(owners) != 1:
+              raise SystemExit(f'owner changed during native jump: {sorted(owners)}')
+          owner = next(iter(owners))
+          pose_ticks = {r[0] for r in jump_poses if r[1] == owner}
+          missing_pose = [t for t in range(a_tick, l_tick + 1) if t not in pose_ticks]
+          if missing_pose:
+              raise SystemExit(f'V3 owner pose missing native jump ticks: {missing_pose}')
+
+          number = r'([-+0-9.eE]+)'
+          cand_rx = re.compile(r'GATE_E_CARRIAGE_CANDIDATES player_tick=(\d+) count=\d+ state=([^\n]+)')
+          collision_by_tick = {}
+          for ts, state in cand_rx.findall(text):
+              t = int(ts)
+              if not (a_tick <= t < l_tick):
+                  continue
+              for part in state.split(' || '):
+                  m_id = re.match(r'#\d+@id=(\d+);', part)
+                  if not m_id or int(m_id.group(1)) != owner:
+                      continue
+                  m = re.search(r'collider_local_feet=' + number + ',' + number + ',' + number, part)
+                  if m:
+                      collision_by_tick[t] = (t, float(m.group(1)), float(m.group(2)), float(m.group(3)))
+                      break
+
+          missing_collision = [t for t in range(a_tick, l_tick) if t not in collision_by_tick]
+          if missing_collision:
+              raise SystemExit(f'Create collision-local rows missing airborne ticks: {missing_collision}')
+          rows = [collision_by_tick[t] for t in sorted(collision_by_tick)]
+          x0, z0 = rows[0][1], rows[0][3]
+          max_collision_drift = max(math.hypot(x - x0, z - z0) for _, x, _, z in rows)
+          max_collision_step = max(
+              [math.hypot(b[1] - a[1], b[3] - a[3]) for a, b in zip(rows, rows[1:])] or [0.0]
+          )
+          if max_collision_drift > 1.5:
+              raise SystemExit(f'Create collision-local airborne drift too large: {max_collision_drift:.6f}')
+          if max_collision_step > 0.75:
+              raise SystemExit(f'Create collision-local one-tick discontinuity too large: {max_collision_step:.6f}')
+
+          old_rx = re.compile(
+              r'GATE_E_CARRIAGE_LOCAL_CONTINUITY[^\n]*player_tick=(\d+)[^\n]*carriage_id=(\d+)'
+              r'[^\n]*local_feet=\(([-+0-9.eE]+), ([-+0-9.eE]+), ([-+0-9.eE]+)\)'
+          )
+          old_rows = {
+              int(t): (float(x), float(z))
+              for t, o, x, y, z in old_rx.findall(text)
+              if int(o) == owner and a_tick <= int(t) < l_tick
+          }
+          old_vs_collision_mismatch = 0.0
+          for t, _, _, _ in rows:
+              if t in old_rows:
+                  cx, cz = collision_by_tick[t][1], collision_by_tick[t][3]
+                  ox, oz = old_rows[t]
+                  old_vs_collision_mismatch = max(
+                      old_vs_collision_mismatch, math.hypot(cx - ox, cz - oz)
+                  )
+
+          turn_rx = re.compile(
+              r'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample=(\d+) player_tick=(\d+) owner_id=(-?\d+)'
+              r'.*?horizontal_error=([-+0-9.eE]+) owner_heading=([-+0-9.eE]+)'
+          )
+          turn_rows = [
+              (int(t), float(e), float(h))
+              for _, t, o, e, h in turn_rx.findall(text)
+              if int(o) == owner
+          ]
+          if len({r[0] for r in turn_rows}) < 2:
+              raise SystemExit('insufficient active-owner turn rows')
+          hs = [h for _, _, h in turn_rows]
+          unwrapped = [hs[0]]
+          prev = hs[0]
+          for h in hs[1:]:
+              d = (h - prev + math.pi) % (2 * math.pi) - math.pi
+              unwrapped.append(unwrapped[-1] + d)
+              prev = h
+          heading_span = max(unwrapped) - min(unwrapped)
+          if heading_span < 0.01:
+              raise SystemExit('turn not exercised while owner active')
+          max_camera_error = max(e for _, e, _ in turn_rows)
+          turn_tick_min = min(t for t, _, _ in turn_rows)
+          turn_tick_max = max(t for t, _, _ in turn_rows)
+          turn_pose = [
+              r for r in poses
+              if r[1] == owner and turn_tick_min - 2 <= r[0] <= turn_tick_max + 2
+          ]
+          if not turn_pose:
+              raise SystemExit('no V3 pose rows during active-owner turn window')
+          max_abs_yaw = max(abs(r[4]) for r in turn_pose)
+          if max_abs_yaw <= 1.0e-5:
+              raise SystemExit('V3 previous-to-current yaw transform not exercised')
+
+          print(
+              'REFERENCE_OWNER_V3_COLLIDER_FRAME_RECLASS '
+              'classification=CONTINUOUS_OWNER_POSE_JUMP_TURN_PROVEN '
+              f'source_run={RUN_ID} source_head={EXPECTED_HEAD} owner={owner} '
+              f'airborne_tick={a_tick} landed_tick={l_tick} jump_pose_ticks={len(pose_ticks)} '
+              f'max_create_collision_local_drift={max_collision_drift:.9f} '
+              f'max_create_collision_local_step={max_collision_step:.9f} '
+              f'old_toLocalVector_vs_collider_mismatch={old_vs_collision_mismatch:.9f} '
+              f'heading_span_deg={math.degrees(heading_span):.6f} '
+              f'max_abs_pose_yaw_delta={max_abs_yaw:.9f} '
+              f'max_camera_horizontal_error={max_camera_error:.9f} '
+              'verdict_source=create_worldToLocalPos gameplay_mutated=false '
+              'video_recorded=false final_ready=false'
+          )
+          PY

@@ -55,7 +55,11 @@ if state.count(reset_line) < 2:
     raise SystemExit(f"V3 expected jump-active resets in refresh+clear, found {state.count(reset_line)}")
 state = state.replace(reset_line, "")
 
-# Remove the jump latch / cap from the lifecycle while retaining age as diagnostics and grounded-off-owner release.
+# Remove the jump latch / cap from the lifecycle. Age remains diagnostics plus a short contact-loss
+# debounce only; it is never an absolute ownership lifetime. Vanilla onGround is known to stay true
+# during this fixture's real upward jump arc, so a release is "settled grounded loss" only when
+# vertical motion has also stopped. This keeps the same owner through actual airborne motion without
+# introducing a jump flag/window, synthetic velocity, or another movement writer.
 old_motion_latch = '''                val nativeUpwardMotion = entity.deltaMovement.y > 1.0E-5
                 if (nativeUpwardMotion) {
                     entityDraggingInformation.externalReferenceOwnerJumpActive = true
@@ -68,9 +72,11 @@ old_motion_latch = '''                val nativeUpwardMotion = entity.deltaMovem
                     entityDraggingInformation.clearExternalReferenceOwner()
                 }
 '''
-new_motion_latch = '''                val groundedContactExpired =
-                    entity.onGround() && entityDraggingInformation.ticksSinceExternalReferenceOwner > 2
-                if (!ownerStillResolvable || groundedContactExpired) {
+new_motion_latch = '''                val hasVerticalMotion = kotlin.math.abs(entity.deltaMovement.y) > 1.0E-5
+                val settledGroundedContactLost =
+                    entity.onGround() && !hasVerticalMotion &&
+                    entityDraggingInformation.ticksSinceExternalReferenceOwner > 2
+                if (!ownerStillResolvable || settledGroundedContactLost) {
                     entityDraggingInformation.clearExternalReferenceOwner()
                 }
 '''

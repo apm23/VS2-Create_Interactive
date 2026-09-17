@@ -315,7 +315,7 @@ jobs:
             -vf vflip -c:v libx264 -preset ultrafast -crf 23 -pix_fmt yuv420p "$MP4"
           test -s "$MP4"
 
-          ffmpeg -hide_banner -loglevel error -i "$MP4" -vf 'signalstats,metadata=print' -an -f null - 2> "$LUMA" || true
+          ffmpeg -hide_banner -loglevel error -i "$MP4" -vf "signalstats,metadata=print:file=$LUMA" -an -f null - >/dev/null 2>&1
           MAX_Y=$(grep -o 'lavfi.signalstats.YAVG=[0-9.]*' "$LUMA" | cut -d= -f2 | sort -n | tail -1 || true)
           BRIGHT_FRAMES=$(awk -F= '/lavfi.signalstats.YAVG=/{if ($2+0 > 20) n++} END{print n+0}' "$LUMA")
           ffmpeg -hide_banner -loglevel error -i "$MP4" -map 0:v:0 -f framemd5 "$FRAMEHASH"

@@ -3,6 +3,7 @@ name: final-verify
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/final-verify.yml'
 
@@ -10,78 +11,90 @@ permissions:
   contents: read
   actions: read
 
+env:
+  FINAL_BUILD_RUN: '35205992947'
+  FINAL_ARTIFACT_NAME: VS2-Create-Interactive-M1-exact-v3-candidate
+  FINAL_JAR: valkyrienskies-26-2-2.4.205+0bc19eac8f.jar
+  FINAL_JAR_SHA256: c7b9f840cab83682108d5040c0fe13539eb9da1292566b6a7a77c49569875097
+  SOURCE_PROOF_HEAD: 61bc52795a7a812873cf7aa9d21b73a6c0a88bc9
+  SOURCE_PROOF_RUN: '35195464859'
+  SOURCE_PROOF_ARTIFACT: '10485419691'
+  SOURCE_PROOF_DIGEST: 'sha256:59abf647235626fa9c91311f4bf2ecc87a89fd87c060b8c3ef77da978a9feddd'
+  VS2_BASELINE: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+
 jobs:
-  verify-final-artifact:
+  verify-exact-v3-final-artifact:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout finalization repo
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
-      - name: Prove finalization-only change after candidate build
-        shell: bash
-        run: |
-          set -euo pipefail
-          git diff --name-only 3224ef5f0f4d3162430d4597512a7637f0df3ea9..HEAD > changed.txt
-          cat changed.txt
-          test "$(wc -l < changed.txt)" -eq 1
-          grep -qx '.github/workflows/final-verify.yml' changed.txt
-
-      - name: Download exact selected-owner final-build artifact
+      - name: Download exact V3 final-build artifact
         uses: actions/download-artifact@v4
         with:
-          name: VS2-Create-Interactive-M1-final
+          name: ${{ env.FINAL_ARTIFACT_NAME }}
           path: final-artifact
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: 34953958207
+          run-id: ${{ env.FINAL_BUILD_RUN }}
 
-      - name: Verify final artifact identity and integrity
+      - name: Verify exact identity integrity and provenance
         shell: bash
         run: |
           set -euo pipefail
           cd final-artifact
           test -f BUILD_INFO.txt
           test -f SHA256SUMS.txt
-          grep -qx 'source_commit=3224ef5f0f4d3162430d4597512a7637f0df3ea9' BUILD_INFO.txt
-          grep -qx 'proven_m1_run=34943410005' BUILD_INFO.txt
-          grep -qx 'bootstrap_packaging=kotlin-runtime-embedded' BUILD_INFO.txt
-          grep -qx '96053e314891495fbb4bf16c446023568fed542497e083083dad7ed420dcd7ef  valkyrienskies-26-2-2.4.205+0bc19eac8f.jar' SHA256SUMS.txt
+          test -f "$FINAL_JAR"
+          grep -qx "source_proof_head=$SOURCE_PROOF_HEAD" BUILD_INFO.txt
+          grep -qx "source_proof_run=$SOURCE_PROOF_RUN" BUILD_INFO.txt
+          grep -qx "source_proof_artifact=$SOURCE_PROOF_ARTIFACT" BUILD_INFO.txt
+          grep -qx "source_proof_digest=$SOURCE_PROOF_DIGEST" BUILD_INFO.txt
+          grep -qx "vs2_baseline=$VS2_BASELINE" BUILD_INFO.txt
+          grep -qx 'composition=exact-v3-production-no-proof-harness-media' BUILD_INFO.txt
+          grep -qx 'final_ready=false' BUILD_INFO.txt
+          grep -qx "$FINAL_JAR_SHA256  $FINAL_JAR" SHA256SUMS.txt
           sha256sum -c SHA256SUMS.txt
-          unzip -tq valkyrienskies-26-2-2.4.205+0bc19eac8f.jar
+          test "$(sha256sum "$FINAL_JAR" | awk '{print $1}')" = "$FINAL_JAR_SHA256"
+          unzip -tq "$FINAL_JAR"
 
-      - name: Require frozen-green compiled seams in final JAR
+      - name: Require exact V3 production seam and exclude proof media instrumentation
         shell: bash
         run: |
           set -euo pipefail
-          JAR=final-artifact/valkyrienskies-26-2-2.4.205+0bc19eac8f.jar
-          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/fabric/client/GateEClientProbe.class'
-          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.class'
-          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.class'
-          unzip -p "$JAR" org/valkyrienskies/mod/fabric/client/GateEClientProbe.class | strings | grep -q 'vs2.createCarryCompat'
-          unzip -p "$JAR" org/valkyrienskies/mod/fabric/client/GateEClientProbe.class | strings | grep -q 'GATE_E_PHASE154_FIXTURE_WALK_CONFIRMED'
-          unzip -p "$JAR" org/valkyrienskies/mod/fabric/mixin/gatee/MixinContraptionColliderClientTrace.class | strings | grep -q 'GATE_E_CREATE_GROUNDED_Y_CLIP'
-          unzip -p "$JAR" org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.class | strings | grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED'
+          JAR="final-artifact/$FINAL_JAR"
+          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/common/util/EntityDragger.class'
+          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/common/util/ExternalReferenceFrameResolver.class'
+          jar tf "$JAR" | grep -qx 'org/valkyrienskies/mod/fabric/mixin/gatee/MixinExternalReferenceOwnerCreateCarry.class'
+          ! jar tf "$JAR" | grep -q 'MixinRootReferenceFrameCapture'
+          unzip -p "$JAR" org/valkyrienskies/mod/common/util/EntityDragger.class | strings | grep -q 'REFERENCE_OWNER_V3_CONTINUOUS_POSE'
+          unzip -p "$JAR" org/valkyrienskies/mod/common/util/EntityDragger.class | strings | grep -q 'previousWorldYawToLocal'
+          unzip -p "$JAR" org/valkyrienskies/mod/common/util/ExternalReferenceFrameResolver.class | strings | grep -q 'previousWorldYawToLocal'
+          unzip -p "$JAR" org/valkyrienskies/mod/fabric/mixin/gatee/MixinExternalReferenceOwnerCreateCarry.class | strings | grep -q 'REFERENCE_OWNER_V3_GROUNDED_OWNER_CONFIRMED'
+          ! unzip -p "$JAR" org/valkyrienskies/mod/common/util/EntityDragger.class | strings | grep -q 'REFERENCE_OWNER_V3_SEAM_NATIVE'
+          ! unzip -p "$JAR" org/valkyrienskies/mod/fabric/client/GateEClientProbe.class | strings | grep -q 'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF'
 
       - name: Require embedded Kotlin runtime chain
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import io, json, zipfile
+          import io, json, os, zipfile
           from pathlib import Path
-          jar = Path('final-artifact/valkyrienskies-26-2-2.4.205+0bc19eac8f.jar')
+          jar = Path('final-artifact') / os.environ['FINAL_JAR']
           with zipfile.ZipFile(jar) as outer:
               meta = json.loads(outer.read('fabric.mod.json'))
               flk = [entry.get('file') for entry in meta.get('jars', []) if isinstance(entry, dict) and 'fabric-language-kotlin' in entry.get('file', '')]
-              if len(flk) != 1: raise SystemExit(f'expected exactly one embedded Fabric Language Kotlin jar, found {flk}')
+              if len(flk) != 1:
+                  raise SystemExit(f'expected exactly one embedded Fabric Language Kotlin jar, found {flk}')
               with zipfile.ZipFile(io.BytesIO(outer.read(flk[0]))) as nested:
-                  if json.loads(nested.read('fabric.mod.json')).get('id') != 'fabric-language-kotlin': raise SystemExit('embedded runtime mod id mismatch')
+                  if json.loads(nested.read('fabric.mod.json')).get('id') != 'fabric-language-kotlin':
+                      raise SystemExit('embedded runtime mod id mismatch')
                   names = nested.namelist()
                   required = ['kotlin-stdlib-', 'kotlin-stdlib-jdk7-', 'kotlin-stdlib-jdk8-', 'kotlin-reflect-']
                   missing = [token for token in required if not any(name.startswith('META-INF/jars/') and token in name for name in names)]
-                  if missing: raise SystemExit('embedded Kotlin runtime chain missing: ' + ', '.join(missing))
-          print('FINAL_VERIFY selected-owner artifact identity, integrity, frozen-green seams, and Kotlin runtime chain passed.')
+                  if missing:
+                      raise SystemExit('embedded Kotlin runtime chain missing: ' + ', '.join(missing))
+          print('FINAL_VERIFY_EXACT_V3 identity=true integrity=true provenance=true production_seam=true proof_media_absent=true kotlin_runtime=true final_ready=false')
           PY

@@ -1,0 +1,364 @@
+name: m1-root-reference-frame-visual-close
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m1-root-reference-frame-visual-close.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_PROOF_HEAD: 61bc52795a7a812873cf7aa9d21b73a6c0a88bc9
+  SOURCE_PROOF_RUN: '35195464859'
+  SOURCE_PROOF_ARTIFACT: '10485419691'
+  SOURCE_PROOF_DIGEST: 'sha256:59abf647235626fa9c91311f4bf2ecc87a89fd87c060b8c3ef77da978a9feddd'
+  PRISTINE_SHA256: e78bfb854a0f3ad0bfb87ded836ef322335812d303e51223825f3741f7232556
+
+jobs:
+  root-reference-frame-visual-close:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    steps:
+      - name: Checkout exact source proof head
+        uses: actions/checkout@v5
+        with:
+          ref: 61bc52795a7a812873cf7aa9d21b73a6c0a88bc9
+          fetch-depth: 1
+
+      - name: Verify exact source proof head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_PROOF_HEAD"
+          echo "ROOT_VISUAL_SOURCE_HEAD=$SOURCE_PROOF_HEAD"
+
+      - name: Checkout pinned VS2 baseline
+        uses: actions/checkout@v5
+        with:
+          repository: Eminai-LeoVinci/VS2
+          ref: 0bc19eac8f23258bbe03bdccb929c24d13e93838
+          path: upstream
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Compose exact V3 proof source
+        shell: bash
+        run: |
+          set -euo pipefail
+          for script in scripts/prepare_vs2_26_2.py scripts/prepare_vs2_26_2_phase{2..54}.py; do python3 "$script"; done
+          python3 scripts/prepare_vs2_26_2_phase98.py
+          python3 scripts/prepare_vs2_26_2_phase205.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v1.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_composefix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_schedule_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_authority_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v2_camera_fix.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v3_continuous_pose.py
+          python3 scripts/prepare_vs2_26_2_reference_owner_v3_seam_trace.py
+          python3 scripts/prepare_vs2_26_2_natural_landing_harness_v2.py
+          python3 scripts/prepare_vs2_26_2_camera_external_reference_proof.py
+          grep -q 'REFERENCE_OWNER_V3_SEAM_NATIVE' upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt
+          grep -q 'GATE_E_M1_NATIVE_JUMP_AIRBORNE' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java
+          echo 'ROOT_REFERENCE_FRAME_VISUAL_SOURCE_CONTRACT exact_v3_source=true gameplay_mutated=false camera_mutated=false input_mutated=false collision_mutated=false train_mutated=false fixture_mutated=false observational_only=true'
+
+      - name: Add CI-only framebuffer observer
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          root=Path('upstream')
+          java=root/'fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinRootReferenceFrameCapture.java'
+          mixin=root/'fabric/src/main/resources/vs2-create-compat.mixins.json'
+          java.parent.mkdir(parents=True,exist_ok=True)
+          java.write_text(r'''package org.valkyrienskies.mod.fabric.mixin.gatee;
+
+          import java.nio.ByteBuffer;
+          import java.nio.channels.FileChannel;
+          import java.nio.file.Files;
+          import java.nio.file.Path;
+          import java.nio.file.StandardOpenOption;
+          import net.minecraft.client.DeltaTracker;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.renderer.GameRenderer;
+          import org.apache.logging.log4j.LogManager;
+          import org.apache.logging.log4j.Logger;
+          import org.lwjgl.BufferUtils;
+          import org.lwjgl.opengl.GL11;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.Unique;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+          import org.valkyrienskies.mod.common.util.IEntityDraggingInformationProvider;
+
+          /** CI-only observer: reads the framebuffer and external-owner flag; never writes gameplay/camera/input/collision/train state. */
+          @Mixin(GameRenderer.class)
+          public abstract class MixinRootReferenceFrameCapture {
+              @Unique private static final Logger VS2_LOGGER = LogManager.getLogger("VS2-RootReferenceFrameVisual");
+              @Unique private static final long VS2_FRAME_NS = 100_000_000L;
+              @Unique private static final long VS2_DURATION_NS = 12_000_000_000L;
+              @Unique private static boolean vs2$started;
+              @Unique private static boolean vs2$finished;
+              @Unique private static long vs2$startNs;
+              @Unique private static long vs2$lastFrameNs;
+              @Unique private static int vs2$startTick = -1;
+              @Unique private static int vs2$lastTick = -1;
+              @Unique private static int vs2$width;
+              @Unique private static int vs2$height;
+              @Unique private static int vs2$frames;
+              @Unique private static Path vs2$rawPath;
+              @Unique private static FileChannel vs2$channel;
+              @Unique private static ByteBuffer vs2$buffer;
+
+              @Inject(method = "render", at = @At("TAIL"), require = 1)
+              private void vs2$capture(final DeltaTracker deltaTracker, final boolean renderLevel, final CallbackInfo ci) {
+                  if (!Boolean.getBoolean("vs2.rootReferenceFrameVisualCapture") || vs2$finished) return;
+                  final Minecraft mc = Minecraft.getInstance();
+                  if (mc.player == null || mc.level == null) return;
+                  if (!vs2$started) {
+                      if (mc.player.tickCount < 24) return;
+                      if (!(mc.player instanceof IEntityDraggingInformationProvider provider)) return;
+                      if (!provider.getDraggingInformation().isEntityBeingDraggedByExternalReference()) return;
+                      try {
+                          vs2$width = mc.getWindow().getWidth();
+                          vs2$height = mc.getWindow().getHeight();
+                          if (vs2$width <= 0 || vs2$height <= 0) return;
+                          final String configured = System.getProperty("vs2.rootReferenceFrameVisualPath");
+                          if (configured == null || configured.isBlank()) return;
+                          vs2$rawPath = Path.of(configured).toAbsolutePath();
+                          if (vs2$rawPath.getParent() != null) Files.createDirectories(vs2$rawPath.getParent());
+                          vs2$channel = FileChannel.open(vs2$rawPath, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+                          vs2$buffer = BufferUtils.createByteBuffer(vs2$width * vs2$height * 3);
+                          vs2$startNs = System.nanoTime();
+                          vs2$lastFrameNs = 0L;
+                          vs2$startTick = mc.player.tickCount;
+                          vs2$lastTick = mc.player.tickCount;
+                          vs2$started = true;
+                          VS2_LOGGER.info("VS2_ROOT_REFERENCE_VISUAL_CAPTURE_STARTED player_tick={} width={} height={} fps=10 duration_seconds=12 path={} observational_only=true", vs2$startTick, vs2$width, vs2$height, vs2$rawPath);
+                      } catch (Throwable t) {
+                          VS2_LOGGER.error("VS2_ROOT_REFERENCE_VISUAL_CAPTURE_START_FAILED", t);
+                          vs2$finished = true;
+                          return;
+                      }
+                  }
+                  final long now = System.nanoTime();
+                  if (now - vs2$startNs >= VS2_DURATION_NS) {
+                      vs2$finish(mc.player.tickCount);
+                      return;
+                  }
+                  if (vs2$lastFrameNs != 0L && now - vs2$lastFrameNs < VS2_FRAME_NS) return;
+                  vs2$lastFrameNs = now;
+                  vs2$lastTick = mc.player.tickCount;
+                  try {
+                      vs2$buffer.clear();
+                      GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
+                      GL11.glReadPixels(0, 0, vs2$width, vs2$height, GL11.GL_RGB, GL11.GL_UNSIGNED_BYTE, vs2$buffer);
+                      final int glError = GL11.glGetError();
+                      if (glError != GL11.GL_NO_ERROR) VS2_LOGGER.warn("VS2_ROOT_REFERENCE_VISUAL_GL_ERROR frame={} error={}", vs2$frames, glError);
+                      vs2$buffer.position(0);
+                      vs2$buffer.limit(vs2$width * vs2$height * 3);
+                      while (vs2$buffer.hasRemaining()) vs2$channel.write(vs2$buffer);
+                      vs2$frames++;
+                  } catch (Throwable t) {
+                      VS2_LOGGER.error("VS2_ROOT_REFERENCE_VISUAL_CAPTURE_FRAME_FAILED frame={}", vs2$frames, t);
+                      vs2$finish(mc.player.tickCount);
+                  }
+              }
+
+              @Unique
+              private static void vs2$finish(final int tick) {
+                  if (vs2$finished) return;
+                  vs2$finished = true;
+                  vs2$lastTick = Math.max(vs2$lastTick, tick);
+                  try {
+                      if (vs2$channel != null) vs2$channel.close();
+                      if (vs2$rawPath != null) {
+                          Files.writeString(Path.of(vs2$rawPath.toString() + ".meta"),
+                              "width=" + vs2$width + "\nheight=" + vs2$height + "\nfps=10\nframes=" + vs2$frames +
+                              "\nstart_tick=" + vs2$startTick + "\nlast_tick=" + vs2$lastTick + "\nduration_seconds=12\n");
+                      }
+                      VS2_LOGGER.info("VS2_ROOT_REFERENCE_VISUAL_CAPTURE_FINISHED start_tick={} last_tick={} width={} height={} fps=10 frames={} path={} observational_only=true", vs2$startTick, vs2$lastTick, vs2$width, vs2$height, vs2$frames, vs2$rawPath);
+                  } catch (Throwable t) {
+                      VS2_LOGGER.error("VS2_ROOT_REFERENCE_VISUAL_CAPTURE_FINISH_FAILED", t);
+                  }
+              }
+          }
+          ''',encoding='utf-8')
+          data=json.loads(mixin.read_text(encoding='utf-8'))
+          client=data.setdefault('client',[])
+          if 'MixinRootReferenceFrameCapture' not in client:
+              client.append('MixinRootReferenceFrameCapture')
+          mixin.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+          PY
+          grep -q 'MixinRootReferenceFrameCapture' upstream/fabric/src/main/resources/vs2-create-compat.mixins.json
+
+      - name: Compile exact source plus observer
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon :fabric:compileJava
+
+      - name: Reconstruct pristine verified r0v3 save
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t parts < <(find .ci/world -maxdepth 1 -type f -name 'r0v3.part-*' -print | sort -V)
+          test "${#parts[@]}" -eq 17
+          cat "${parts[@]}" > train-world-state-r0v3.b64
+          base64 -d train-world-state-r0v3.b64 > train-world-state-r0v3.zip
+          test "$(sha256sum train-world-state-r0v3.zip | awk '{print $1}')" = "$PRISTINE_SHA256"
+          rm -rf root-visual-pristine
+          mkdir root-visual-pristine
+          unzip -q train-world-state-r0v3.zip -d root-visual-pristine
+          test -d 'root-visual-pristine/train build 1'
+
+      - name: Prefetch client assets
+        working-directory: upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if ./gradlew --no-daemon :fabric:downloadAssets; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
+
+      - name: Ensure encoder dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1; then sudo apt-get update && sudo apt-get install -y ffmpeg; fi
+          ffmpeg -version | head -1
+
+      - name: Record exact V3 jump turn speed closure event
+        working-directory: upstream
+        timeout-minutes: 9
+        env:
+          LIBGL_ALWAYS_SOFTWARE: 'true'
+          MESA_LOADER_DRIVER_OVERRIDE: llvmpipe
+          MESA_GL_VERSION_OVERRIDE: '4.6'
+          MESA_GLSL_VERSION_OVERRIDE: '460'
+          ALSOFT_DRIVERS: 'null'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=../root-reference-frame-visual-runtime.log
+          XVFB_LOG=../root-reference-frame-visual-xvfb.log
+          RAW=../root-reference-frame-visual.rgb
+          RAW_META=${RAW}.meta
+          MP4=../root-reference-frame-visual.mp4
+          META=../root-reference-frame-visual-metadata.txt
+          PROOF=../root-reference-frame-visual-proof.txt
+          FRAMEHASH=../root-reference-frame-visual-framemd5.txt
+          rm -f "$LOG" "$XVFB_LOG" "$RAW" "$RAW_META" "$MP4" "$META" "$PROOF" "$FRAMEHASH"
+          rm -rf fabric/run/crash-reports fabric/run/saves/train-v3-root-visual
+          rm -f fabric/run/hs_err_pid*.log fabric/run/replay_pid*.log
+          mkdir -p fabric/run/saves
+          cp -a '../root-visual-pristine/train build 1' fabric/run/saves/train-v3-root-visual
+
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 -nolisten tcp > "$XVFB_LOG" 2>&1 &
+          XVFB_PID=$!
+          export JAVA_TOOL_OPTIONS="-Dvs2.createCarryCompat=true -Dvs2.productionSmoke=true -Dvs2.productionSmokeFixture=true -Dvs2.referenceOwnerV3Trace=true -Dvs2.referenceOwnerV3SeamTrace=true -Dvs2.rootReferenceFrameVisualCapture=true -Dvs2.rootReferenceFrameVisualPath=$(pwd)/$RAW"
+          ./gradlew --no-daemon :fabric:runClient --args='--quickPlaySingleplayer train-v3-root-visual' > "$LOG" 2>&1 &
+          CLIENT_PID=$!
+          cleanup() { kill "$CLIENT_PID" 2>/dev/null || true; kill "$XVFB_PID" 2>/dev/null || true; }
+          trap cleanup EXIT
+
+          fatal_state() {
+            grep -Eiq 'Could not execute entrypoint|Mixin (apply|prepare) failed|Exception in server tick loop|Minecraft has crashed|Exception in thread "Render thread"|Game crashed|VS2_ROOT_REFERENCE_VISUAL_CAPTURE_(START|FRAME|FINISH)_FAILED' "$LOG" \
+              || compgen -G 'fabric/run/crash-reports/*' >/dev/null \
+              || compgen -G 'fabric/run/hs_err_pid*.log' >/dev/null \
+              || compgen -G 'fabric/run/replay_pid*.log' >/dev/null
+          }
+
+          STARTED=0
+          for i in $(seq 1 180); do
+            if grep -q 'VS2_ROOT_REFERENCE_VISUAL_CAPTURE_STARTED' "$LOG"; then STARTED=1; break; fi
+            if fatal_state; then tail -260 "$LOG"; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -260 "$LOG"; exit 1; fi
+            sleep 1
+          done
+          test "$STARTED" -eq 1
+
+          FINISHED=0
+          for i in $(seq 1 90); do
+            if grep -q 'VS2_ROOT_REFERENCE_VISUAL_CAPTURE_FINISHED' "$LOG"; then FINISHED=1; break; fi
+            if fatal_state; then tail -260 "$LOG"; exit 1; fi
+            if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -260 "$LOG"; exit 1; fi
+            sleep 1
+          done
+          test "$FINISHED" -eq 1
+          test -s "$RAW" && test -s "$RAW_META"
+
+          WIDTH=$(awk -F= '$1=="width"{print $2}' "$RAW_META")
+          HEIGHT=$(awk -F= '$1=="height"{print $2}' "$RAW_META")
+          FPS=$(awk -F= '$1=="fps"{print $2}' "$RAW_META")
+          FRAMES=$(awk -F= '$1=="frames"{print $2}' "$RAW_META")
+          START_TICK=$(awk -F= '$1=="start_tick"{print $2}' "$RAW_META")
+          LAST_TICK=$(awk -F= '$1=="last_tick"{print $2}' "$RAW_META")
+          test "$FRAMES" -ge 20
+
+          ffmpeg -y -f rawvideo -pixel_format rgb24 -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "$RAW" -vf vflip -c:v libx264 -preset veryfast -crf 20 -pix_fmt yuv420p -movflags +faststart "$MP4" >/dev/null 2>&1
+          test -s "$MP4"
+          ffmpeg -v error -i "$MP4" -f framemd5 "$FRAMEHASH"
+
+          python3 - "$LOG" "$START_TICK" "$LAST_TICK" <<'PY' | tee "$PROOF"
+          import math,re,sys
+          text=re.sub(r'\x1b\[[0-9;]*[mK]','',open(sys.argv[1],encoding='utf-8',errors='replace').read())
+          start=int(sys.argv[2]); last=int(sys.argv[3])
+          air=re.search(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)',text)
+          land=re.search(r'GATE_E_M1_NATIVE_JUMP_LANDED[^\n]*player_tick=(\d+)',text)
+          if not air or not land: raise SystemExit('native jump+landing not exercised')
+          at=int(air.group(1)); lt=int(land.group(1))
+          if not (start <= at <= lt <= last): raise SystemExit(f'capture missed jump interval start={start} air={at} land={lt} last={last}')
+          rx=re.compile(r'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample=\d+ player_tick=(\d+) owner_id=(-?\d+).*?owner_heading=([-+0-9.eE]+)')
+          groups={}
+          for t,o,h in rx.findall(text):
+              t=int(t); o=int(o); h=float(h)
+              if start <= t <= last: groups.setdefault(o,[]).append((t,h))
+          best=0.0; best_owner=None
+          for owner,rows in groups.items():
+              rows=sorted(rows)
+              if len(rows)<2: continue
+              hs=[h for _,h in rows]; un=[hs[0]]; prev=hs[0]
+              for h in hs[1:]:
+                  d=(h-prev+math.pi)%(2*math.pi)-math.pi
+                  un.append(un[-1]+d); prev=h
+              span=max(un)-min(un)
+              if span>best: best=span; best_owner=owner
+          if best < 0.01: raise SystemExit(f'capture missed real turn heading span={best}')
+          seam_ticks=[int(x) for x in re.findall(r'REFERENCE_OWNER_V3_SEAM_NATIVE player_tick=(\d+)',text)]
+          if not any(start <= t <= last for t in seam_ticks): raise SystemExit('capture lacks active V3 seam rows')
+          print(f'ROOT_REFERENCE_FRAME_VISUAL_EVENT_PROVEN start_tick={start} airborne_tick={at} landed_tick={lt} last_tick={last} owner={best_owner} heading_span_rad={best:.9f} exact_v3_source=true observational_only=true video_recorded=true gameplay_mutated=false camera_mutated=false input_mutated=false collision_mutated=false train_mutated=false fixture_mutated=false')
+          PY
+
+          ffprobe -v error -show_entries format=duration,size -show_entries stream=width,height,avg_frame_rate,nb_frames -of default=noprint_wrappers=1 "$MP4" | tee "$META"
+          printf 'source_head=%s\nsource_run=%s\nsource_artifact=%s\nsource_digest=%s\nstart_tick=%s\nlast_tick=%s\nraw_frames=%s\nobservational_only=true\n' "$SOURCE_PROOF_HEAD" "$SOURCE_PROOF_RUN" "$SOURCE_PROOF_ARTIFACT" "$SOURCE_PROOF_DIGEST" "$START_TICK" "$LAST_TICK" "$FRAMES" >> "$META"
+          rm -f "$RAW"
+
+      - name: Upload root reference-frame visual review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: root-reference-frame-visual-close
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            root-reference-frame-visual.mp4
+            root-reference-frame-visual-metadata.txt
+            root-reference-frame-visual-proof.txt
+            root-reference-frame-visual-framemd5.txt
+            root-reference-frame-visual-runtime.log
+            root-reference-frame-visual-xvfb.log

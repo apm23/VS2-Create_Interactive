@@ -64,7 +64,7 @@ jobs:
           python3 scripts/prepare_vs2_26_2_natural_landing_harness_v2.py
           python3 scripts/prepare_vs2_26_2_camera_external_reference_proof.py
           grep -q 'REFERENCE_OWNER_V3_SEAM_NATIVE' upstream/common/src/main/kotlin/org/valkyrienskies/mod/common/util/EntityDragger.kt
-          grep -q 'GATE_E_M1_NATIVE_STRAFE_CONFIRMED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinGateEClient.java
+          grep -q 'GATE_E_M1_NATIVE_STRAFE_CONFIRMED' upstream/fabric/src/main/java/org/valkyrienskies/mod/fabric/mixin/gatee/MixinLocalPlayerFixtureInput.java
           echo 'WALL_VISUAL_SOURCE_CONTRACT exact_v3_source=true gameplay_mutated=false observational_only=true'
 
       - name: Add CI-only framebuffer recorder

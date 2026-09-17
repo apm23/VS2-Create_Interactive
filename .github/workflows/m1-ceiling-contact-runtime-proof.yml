@@ -154,7 +154,7 @@ jobs:
           ticks=[int(x) for x in re.findall(r'GATE_E_CLIENT_STATE player_tick=(\d+)',text)]
           if air and ticks and max(ticks) >= int(air.group(1))+25:
               air_tick=int(air.group(1))
-              finite_overhead=False
+              overlap=False
               for line in text.splitlines():
                   m=re.search(r'GATE_E_CLIENT_STATE player_tick=(\d+).*?ceiling_head_gap=([-+0-9.eE]+|NaN)',line)
                   if not m: continue
@@ -162,17 +162,17 @@ jobs:
                   if not (air_tick-4 <= tick <= air_tick+25): continue
                   try: gap=float(m.group(2))
                   except ValueError: continue
-                  if math.isfinite(gap):
-                      finite_overhead=True
+                  if math.isfinite(gap) and gap <= 0.0:
+                      overlap=True
                       break
-              print('READY_OVERHEAD' if finite_overhead else 'READY_NO_OVERHEAD')
+              print('READY_OVERLAP' if overlap else 'READY_NO_OVERLAP')
           elif ticks and max(ticks) >= 180:
               print('EXHAUSTED')
           else:
               print('WAIT')
           PY
               )
-              if [ "$STATE" = READY_OVERHEAD ] || [ "$STATE" = READY_NO_OVERHEAD ]; then break; fi
+              if [ "$STATE" = READY_OVERLAP ] || [ "$STATE" = READY_NO_OVERLAP ]; then break; fi
               if [ "$STATE" = EXHAUSTED ]; then break; fi
               if fatal_state; then tail -260 "$ATTEMPT_LOG"; exit 1; fi
               if ! kill -0 "$CLIENT_PID" 2>/dev/null; then wait "$CLIENT_PID" || true; tail -260 "$ATTEMPT_LOG"; exit 1; fi
@@ -185,6 +185,7 @@ jobs:
           ticks=[int(x) for x in re.findall(r'GATE_E_CLIENT_STATE player_tick=(\d+)',text)]
           air=re.search(r'GATE_E_M1_NATIVE_JUMP_AIRBORNE[^\n]*player_tick=(\d+)',text)
           finite=False
+          overlap=False
           if air:
               air_tick=int(air.group(1))
               for line in text.splitlines():
@@ -196,10 +197,12 @@ jobs:
                   except ValueError: continue
                   if math.isfinite(gap):
                       finite=True
-                      break
-          print('CEILING_PRISTINE_ATTEMPT attempt={} state={} max_tick={} airborne={} finite_overhead={} backward_confirmed={} strafe_confirmed={}'.format(
+                      if gap <= 0.0:
+                          overlap=True
+                          break
+          print('CEILING_PRISTINE_ATTEMPT attempt={} state={} max_tick={} airborne={} finite_overhead={} ceiling_overlap={} backward_confirmed={} strafe_confirmed={}'.format(
               sys.argv[2], sys.argv[3], max(ticks) if ticks else -1,
-              'GATE_E_M1_NATIVE_JUMP_AIRBORNE' in text, finite,
+              'GATE_E_M1_NATIVE_JUMP_AIRBORNE' in text, finite, overlap,
               'GATE_E_M1_NATIVE_BACKWARD_CONFIRMED' in text,
               'GATE_E_M1_NATIVE_STRAFE_CONFIRMED' in text))
           PY
@@ -207,7 +210,7 @@ jobs:
             kill "$CLIENT_PID" 2>/dev/null || true
             wait "$CLIENT_PID" 2>/dev/null || true
             CLIENT_PID=''
-            if [ "$STATE" = READY_OVERHEAD ]; then
+            if [ "$STATE" = READY_OVERLAP ]; then
               WINNER="$ATTEMPT_LOG"
               cp "$ATTEMPT_LOG" "$LOG"
               break
@@ -218,7 +221,7 @@ jobs:
           if [ -z "$WINNER" ]; then
             cp "${LOG_BASE}-attempt-3.log" "$LOG"
             cat "$ATTEMPT_SUMMARY" | tee "$PROOF"
-            echo 'M1_CEILING_CONTACT_RUNTIME_PROOF classification=CEILING_NOT_EXERCISED reason=no_native_jump_with_finite_overhead_across_3_pristine_launches unchanged_input_sequence=true unchanged_fixture_geometry=true unchanged_train_route_timing=true no_gameplay_patch_authorized=true' | tee -a "$PROOF"
+            echo 'M1_CEILING_CONTACT_RUNTIME_PROOF classification=CEILING_NOT_EXERCISED reason=no_native_jump_with_ceiling_overlap_across_3_pristine_launches unchanged_input_sequence=true unchanged_fixture_geometry=true unchanged_train_route_timing=true no_gameplay_patch_authorized=true' | tee -a "$PROOF"
             exit 0
           fi
           if fatal_state; then tail -260 "$LOG"; exit 1; fi
@@ -267,12 +270,24 @@ jobs:
                   if m: setpos.setdefault(int(m.group(1)),[]).append(line)
 
           finite_over=[x for x in overhead if math.isfinite(x[2]) and air_tick-4 <= x[0] <= air_tick+25]
-          print(f'M1_CEILING_CONTACT_RUNTIME_PROOF airborne_tick={air_tick} rise_delta={rise:.9f} obb_rows={len(obb)} ceiling_normal_rows={len(ceiling)} finite_overhead_rows={len(finite_over)} telemetry_only=true gameplay_mutated=false collision_mutated=false')
+          overlap=[x for x in finite_over if x[2] <= 0.0]
+          print(f'M1_CEILING_CONTACT_RUNTIME_PROOF airborne_tick={air_tick} rise_delta={rise:.9f} obb_rows={len(obb)} ceiling_normal_rows={len(ceiling)} finite_overhead_rows={len(finite_over)} overlap_rows={len(overlap)} telemetry_only=true gameplay_mutated=false collision_mutated=false')
           if finite_over:
               best=min(finite_over,key=lambda x: abs(x[2]))
               print(f'CEILING_GEOMETRY_NEAREST tick={best[0]} local_pos={best[1]} ceiling_head_gap={best[2]:.9f} ceiling_bottom={best[3]}')
+          if overlap:
+              for t,local,gap,bottom in overlap:
+                  crows=collide.get(t,[])
+                  srows=setpos.get(t,[])
+                  create_writers=[x for x in srows if 'zurrtum.create' in x]
+                  print(f'CEILING_GEOMETRY_OVERLAP_ROW tick={t} local_pos={local} ceiling_head_gap={gap:.9f} ceiling_bottom={bottom} collide_rows={len(crows)} create_setpos_rows={len(create_writers)}')
+                  for row in crows[:3]: print('CEILING_OVERLAP_COLLIDE_CORRELATION '+row)
+                  for row in create_writers[:3]: print('CEILING_OVERLAP_CREATE_WRITER_CORRELATION '+row)
           if not ceiling:
-              print('M1_CEILING_CONTACT_RUNTIME_PROOF classification=CEILING_NOT_EXERCISED no_gameplay_patch_authorized=true')
+              if overlap:
+                  print('M1_CEILING_CONTACT_RUNTIME_PROOF classification=CEILING_CONTACT_OBSERVED_CORRELATION_INCOMPLETE reason=geometry_overlap_without_ceiling_normal no_gameplay_patch_authorized=true')
+              else:
+                  print('M1_CEILING_CONTACT_RUNTIME_PROOF classification=CEILING_NOT_EXERCISED no_gameplay_patch_authorized=true')
               raise SystemExit(0)
 
           complete=0

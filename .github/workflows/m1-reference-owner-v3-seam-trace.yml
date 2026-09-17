@@ -86,7 +86,7 @@ jobs:
             sleep $((attempt * 10))
           done
 
-      - name: Trace actual V3 seam through native jump and turn
+      - name: Trace actual V3 seam through native jump and real turn
         working-directory: upstream
         timeout-minutes: 16
         env:
@@ -136,7 +136,33 @@ jobs:
             for i in $(seq 1 210); do
               if grep -q 'GATE_E_M1_NATIVE_JUMP_AIRBORNE' "$LOG" \
                 && grep -q 'GATE_E_M1_NATIVE_JUMP_LANDED' "$LOG" \
-                && grep -q 'REFERENCE_OWNER_V3_SEAM_NATIVE' "$LOG"; then
+                && grep -q 'REFERENCE_OWNER_V3_SEAM_NATIVE' "$LOG" \
+                && python3 - "$LOG" <<'PY'
+          import math,re,sys
+          text=open(sys.argv[1],encoding='utf-8',errors='replace').read()
+          rx=re.compile(
+              r'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample=\d+ player_tick=(\d+) '
+              r'owner_id=(-?\d+).*?owner_heading=([-+0-9.eE]+)'
+          )
+          groups={}
+          for t,o,h in rx.findall(text):
+              groups.setdefault(int(o),[]).append((int(t),float(h)))
+          for rows in groups.values():
+              rows=sorted(rows)
+              if len({t for t,_ in rows}) < 2:
+                  continue
+              hs=[h for _,h in rows]
+              un=[hs[0]]
+              prev=hs[0]
+              for h in hs[1:]:
+                  d=(h-prev+math.pi)%(2*math.pi)-math.pi
+                  un.append(un[-1]+d)
+                  prev=h
+              if max(un)-min(un) >= 0.01:
+                  raise SystemExit(0)
+          raise SystemExit(1)
+          PY
+              then
                 ATTEMPT_READY=1
                 READY=1
                 WINNER=$ATTEMPT
@@ -192,69 +218,140 @@ jobs:
               except (KeyError,ValueError):
                   continue
               rows.append(row)
+
           jump_rows=[r for r in rows if a_tick <= r['player_tick'] <= l_tick]
           if len(jump_rows) < 3:
               raise SystemExit(f'insufficient seam rows in native jump interval: {len(jump_rows)}')
           owners={}
-          for r in jump_rows: owners[r['owner_id']]=owners.get(r['owner_id'],0)+1
+          for r in jump_rows:
+              owners[r['owner_id']]=owners.get(r['owner_id'],0)+1
           owner=max(owners,key=owners.get)
           rows=[r for r in rows if r['owner_id']==owner]
           jump_rows=[r for r in jump_rows if r['owner_id']==owner]
 
-          def finite(*xs): return all(math.isfinite(x) for x in xs)
-          position_errors=[]; added_errors=[]; yaw_local_errors=[]; yaw_steps=[]
-          for r in rows:
-              req=['resolver_local_x','resolver_local_y','resolver_local_z','create_target_local_x','create_target_local_y','create_target_local_z',
-                   'world_x','world_y','world_z','target_x','target_y','target_z','added_x','added_y','added_z',
-                   'resolver_local_yaw','create_target_local_yaw','added_yaw']
-              if not all(k in r for k in req):
-                  continue
-              vals=[r[k] for k in req]
-              if not finite(*vals):
-                  continue
-              position_errors.append(math.sqrt(
-                  (r['resolver_local_x']-r['create_target_local_x'])**2+
-                  (r['resolver_local_y']-r['create_target_local_y'])**2+
-                  (r['resolver_local_z']-r['create_target_local_z'])**2))
-              added_errors.append(math.sqrt(
-                  ((r['target_x']-r['world_x'])-r['added_x'])**2+
-                  ((r['target_y']-r['world_y'])-r['added_y'])**2+
-                  ((r['target_z']-r['world_z'])-r['added_z'])**2))
-              dyaw=(r['resolver_local_yaw']-r['create_target_local_yaw']+math.pi)%(2*math.pi)-math.pi
-              yaw_local_errors.append(abs(dyaw))
-              yaw_steps.append(abs(r['added_yaw']))
-
-          if len(position_errors) < 3:
-              raise SystemExit('insufficient finite same-tick seam rows')
-          max_pos=max(position_errors); max_added=max(added_errors); max_yaw=max(yaw_local_errors)
-          max_step=max(yaw_steps) if yaw_steps else 0.0
-          jump_pos=max(
-              math.sqrt((r['resolver_local_x']-r['create_target_local_x'])**2+
-                        (r['resolver_local_y']-r['create_target_local_y'])**2+
-                        (r['resolver_local_z']-r['create_target_local_z'])**2)
-              for r in jump_rows
-              if finite(r.get('resolver_local_x',math.nan),r.get('resolver_local_y',math.nan),r.get('resolver_local_z',math.nan),
-                        r.get('create_target_local_x',math.nan),r.get('create_target_local_y',math.nan),r.get('create_target_local_z',math.nan))
+          turn_rx=re.compile(
+              r'REFERENCE_OWNER_V2_CAMERA_REFERENCE_FRAME_PROOF sample=(\d+) player_tick=(\d+) '
+              r'owner_id=(-?\d+).*?owner_heading=([-+0-9.eE]+)'
           )
+          groups={}
+          for _,t,o,h in turn_rx.findall(text):
+              groups.setdefault(int(o),[]).append((int(t),float(h)))
+          candidates=[]
+          for turn_owner,turn_camera_rows in groups.items():
+              turn_camera_rows=sorted(turn_camera_rows)
+              if len({t for t,_ in turn_camera_rows}) < 2:
+                  continue
+              hs=[h for _,h in turn_camera_rows]
+              un=[hs[0]]
+              prev=hs[0]
+              for h in hs[1:]:
+                  d=(h-prev+math.pi)%(2*math.pi)-math.pi
+                  un.append(un[-1]+d)
+                  prev=h
+              span=max(un)-min(un)
+              if span >= 0.01:
+                  candidates.append((span,turn_owner,turn_camera_rows))
+          if not candidates:
+              print(
+                  'REFERENCE_OWNER_V3_SEAM_PROOF classification=TURN_NOT_EXERCISED_WHILE_OWNER_ACTIVE '
+                  f'ready={ready} attempt={winner} jump_owner={owner} gameplay_mutated=false video_recorded=false'
+              )
+              raise SystemExit(2)
 
-          if max_added > 1e-7:
+          heading_span,turn_owner,turn_camera_rows=max(candidates,key=lambda x:x[0])
+          if turn_owner != owner:
+              raise SystemExit(f'owner changed between jump and real turn: jump={owner} turn={turn_owner}')
+          turn_tick_min=min(t for t,_ in turn_camera_rows)
+          turn_tick_max=max(t for t,_ in turn_camera_rows)
+          turn_rows=[
+              r for r in rows
+              if turn_tick_min-2 <= r['player_tick'] <= turn_tick_max+2
+          ]
+          if not turn_rows:
+              raise SystemExit('no seam rows during active-owner real turn window')
+
+          def finite(*xs):
+              return all(math.isfinite(x) for x in xs)
+
+          def errors(sample_rows):
+              position=[]; added=[]; yaw_local=[]; yaw_steps=[]
+              for r in sample_rows:
+                  req=[
+                      'resolver_local_x','resolver_local_y','resolver_local_z',
+                      'create_target_local_x','create_target_local_y','create_target_local_z',
+                      'world_x','world_y','world_z','target_x','target_y','target_z',
+                      'added_x','added_y','added_z',
+                      'resolver_local_yaw','create_target_local_yaw','added_yaw'
+                  ]
+                  if not all(k in r for k in req):
+                      continue
+                  vals=[r[k] for k in req]
+                  if not finite(*vals):
+                      continue
+                  position.append(math.sqrt(
+                      (r['resolver_local_x']-r['create_target_local_x'])**2+
+                      (r['resolver_local_y']-r['create_target_local_y'])**2+
+                      (r['resolver_local_z']-r['create_target_local_z'])**2
+                  ))
+                  added.append(math.sqrt(
+                      ((r['target_x']-r['world_x'])-r['added_x'])**2+
+                      ((r['target_y']-r['world_y'])-r['added_y'])**2+
+                      ((r['target_z']-r['world_z'])-r['added_z'])**2
+                  ))
+                  dyaw=(r['resolver_local_yaw']-r['create_target_local_yaw']+math.pi)%(2*math.pi)-math.pi
+                  yaw_local.append(abs(dyaw))
+                  yaw_steps.append(abs(r['added_yaw']))
+              return position,added,yaw_local,yaw_steps
+
+          position_errors,added_errors,yaw_local_errors,yaw_steps=errors(rows)
+          turn_position_errors,turn_added_errors,turn_yaw_local_errors,turn_yaw_steps=errors(turn_rows)
+          jump_position_errors,_,_,_=errors(jump_rows)
+
+          if len(position_errors) < 3 or len(turn_position_errors) < 1 or len(jump_position_errors) < 3:
+              raise SystemExit('insufficient finite same-tick seam rows for jump+turn proof')
+
+          max_pos=max(position_errors)
+          max_added=max(added_errors)
+          max_yaw=max(yaw_local_errors)
+          max_step=max(yaw_steps) if yaw_steps else 0.0
+          max_turn_pos=max(turn_position_errors)
+          max_turn_added=max(turn_added_errors)
+          max_turn_yaw=max(turn_yaw_local_errors)
+          max_turn_step=max(turn_yaw_steps) if turn_yaw_steps else 0.0
+          jump_pos=max(jump_position_errors)
+
+          if max_turn_step <= 1e-5:
+              print(
+                  'REFERENCE_OWNER_V3_SEAM_PROOF classification=TURN_YAW_APPLICATION_NOT_EXERCISED '
+                  f'attempt={winner} owner={owner} heading_span_rad={heading_span:.9f} '
+                  f'turn_rows={len(turn_rows)} max_abs_turn_added_yaw_deg={max_turn_step:.9f} '
+                  'gameplay_mutated=false video_recorded=false'
+              )
+              raise SystemExit(2)
+
+          if max_added > 1e-7 or max_turn_added > 1e-7:
               classification='NATIVE_ADDED_DELTA_INCONSISTENT'
-          elif max_pos > 0.05:
+          elif max_turn_pos > 0.05:
               classification='POSITION_SEAM_DIVERGED_FROM_CREATE_COLLISION_FRAME'
-          elif max_yaw > 0.05:
+          elif max_turn_yaw > 0.05:
               classification='YAW_SEAM_DIVERGED_FROM_CREATE_COLLISION_FRAME'
           else:
-              classification='POSITION_AND_YAW_SEAM_ALIGNED_WITH_CREATE_COLLISION_FRAME'
+              classification='POSITION_AND_YAW_SEAM_ALIGNED_WITH_CREATE_COLLISION_FRAME_THROUGH_REAL_TURN'
 
           print(
               'REFERENCE_OWNER_V3_SEAM_PROOF '
               f'classification={classification} attempt={winner} owner={owner} airborne_tick={a_tick} landed_tick={l_tick} '
-              f'jump_rows={len(jump_rows)} total_rows={len(rows)} max_position_local_error={max_pos:.9f} '
-              f'max_jump_position_local_error={jump_pos:.9f} max_native_added_consistency_error={max_added:.9f} '
-              f'max_yaw_local_error_rad={max_yaw:.9f} max_abs_native_added_yaw_deg={max_step:.9f} '
+              f'jump_rows={len(jump_rows)} total_rows={len(rows)} turn_rows={len(turn_rows)} '
+              f'turn_tick_min={turn_tick_min} turn_tick_max={turn_tick_max} heading_span_rad={heading_span:.9f} '
+              f'max_position_local_error={max_pos:.9f} max_jump_position_local_error={jump_pos:.9f} '
+              f'max_turn_position_local_error={max_turn_pos:.9f} max_native_added_consistency_error={max_added:.9f} '
+              f'max_turn_native_added_consistency_error={max_turn_added:.9f} '
+              f'max_yaw_local_error_rad={max_yaw:.9f} max_turn_yaw_local_error_rad={max_turn_yaw:.9f} '
+              f'max_abs_native_added_yaw_deg={max_step:.9f} max_abs_turn_added_yaw_deg={max_turn_step:.9f} '
               'gameplay_mutated=false video_recorded=false final_ready=false'
           )
-          if classification == 'NATIVE_ADDED_DELTA_INCONSISTENT': raise SystemExit(3)
+          if classification == 'NATIVE_ADDED_DELTA_INCONSISTENT':
+              raise SystemExit(3)
           PY
 
       - name: Upload seam trace evidence
